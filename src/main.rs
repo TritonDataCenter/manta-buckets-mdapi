@@ -66,7 +66,14 @@ fn msg_handler(msg: &FastMessage,
 }
 
 fn main() {
-    let _matches = opts::parse(APP.to_string());
+    let matches = opts::parse(APP.to_string());
+
+    let pg_url = matches.value_of("pg_url")
+        .unwrap_or("postgresql://postgres@localhost:5432/test");
+    let listen_address = matches.value_of("address")
+        .unwrap_or("127.0.0.1");
+    let listen_port = value_t!(matches, "port", u32)
+        .unwrap_or(2030);
 
     let root_log = Logger::root(
         Mutex::new(
@@ -78,12 +85,12 @@ fn main() {
     );
 
     info!(root_log, "establishing postgres connection pool");
-    let pg_url = "postgresql://postgres@localhost:5432/test";
-    let manager = PostgresConnectionManager::new(pg_url, TlsMode::None).expect("Failed to create pg connection manager");
+    let manager = PostgresConnectionManager::new(pg_url, TlsMode::None)
+        .expect("Failed to create pg connection manager");
     let pool = Pool::new(manager).expect("Failed to create pg connection pool");
     info!(root_log, "established postgres connection pool");
 
-    let addr = "127.0.0.1:2030".to_string();
+    let addr = [listen_address, &":", &listen_port.to_string()].concat();
     let addr = addr.parse::<SocketAddr>().unwrap();
 
     let listener = TcpListener::bind(&addr).expect("failed to bind");
