@@ -14,6 +14,7 @@ extern crate r2d2_postgres;
 extern crate rust_fast;
 #[macro_use]
 extern crate serde_derive;
+#[macro_use]
 extern crate serde_json;
 #[macro_use]
 extern crate slog;

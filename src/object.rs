@@ -73,13 +73,25 @@ pub fn get_handler(msg_id: u32,
                 Ok(payload) => {
                     // Make db request and form response
                     get(payload, pool)
-                        .and_then(|resp| {
-                            // let name = msg.data.m.name.clone();
+                        .and_then(|maybe_resp| {
                             let method = String::from("getobject");
-                            let value = array_wrap(serde_json::to_value(resp).unwrap());
-                            let msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
-                            response.push(msg);
-                            Ok(response)
+                            match maybe_resp {
+                                Some(resp) => {
+                                    let value = array_wrap(serde_json::to_value(resp).unwrap());
+                                    let msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
+                                    response.push(msg);
+                                    Ok(response)
+                                },
+                                None => {
+                                    let value = json!({
+                                        "name": "ObjectNotFoundError",
+                                        "message": "requested object not found"
+                                    });
+                                    let err_msg = FastMessage::error(msg_id, FastMessageData::new(method, value));
+                                    response.push(err_msg);
+                                    Ok(response)
+                                }
+                            }
                         })
                         //TODO: Proper error handling
                         .map_err(|e| {
@@ -87,8 +99,8 @@ pub fn get_handler(msg_id: u32,
                             other_error("postgres error")
                         })
                 },
-                Err(_) =>
-                    Err(other_error("Failed to parse JSON data as payload for getobject function"))
+                Err(e) =>
+                    Err(other_error(&e.to_string()))
             }
         }
         _ => Err(other_error("Expected JSON object"))
@@ -172,7 +184,7 @@ fn other_error(msg: &str) -> IOError {
 }
 
 fn get(payload: GetObjectPayload, pool: &Pool<PostgresConnectionManager>)
-                     -> PostgresResult<ObjectResponse>
+                     -> PostgresResult<Option<ObjectResponse>>
 {
     let conn = pool.get().unwrap();
     let sql = get_sql(&payload.vnode);
@@ -183,8 +195,10 @@ fn get(payload: GetObjectPayload, pool: &Pool<PostgresConnectionManager>)
         .map_err(|e| e)
 }
 
-fn response(rows: Rows) -> PostgresResult<ObjectResponse> {
-    if rows.len() == 1 {
+fn response(rows: Rows) -> PostgresResult<Option<ObjectResponse>> {
+    if rows.len() == 0 {
+        Ok(None)
+    } else if rows.len() == 1 {
         let row = rows.get(0);
         let content_md5_bytes: Vec<u8> = row.get(7);
         let content_md5 = base64::encode(&content_md5_bytes);
@@ -203,7 +217,7 @@ fn response(rows: Rows) -> PostgresResult<ObjectResponse> {
             sharks         : row.get(10),
             properties     : row.get(11),
         };
-        Ok(resp)
+        Ok(Some(resp))
     } else {
         let err = format!("Get query found {} results, but expected only 1.",
                           rows.len());
@@ -222,7 +236,7 @@ fn get_sql(vnode: &u64) -> String {
 }
 
 fn put(payload: PutObjectPayload, pool: &Pool<PostgresConnectionManager>)
-           -> PostgresResult<ObjectResponse>
+       -> PostgresResult<Option<ObjectResponse>>
 {
     let conn = pool.get().unwrap();
     let txn = conn.transaction().unwrap();

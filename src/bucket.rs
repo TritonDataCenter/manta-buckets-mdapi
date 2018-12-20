@@ -58,13 +58,25 @@ pub fn get_handler(msg_id: u32,
                 Ok(payload) => {
                     // Make db request and form response
                     get(payload, pool)
-                        .and_then(|resp| {
-                            // let name = msg.data.m.name.clone();
+                        .and_then(|maybe_resp| {
                             let method = String::from("getbucket");
-                            let value = array_wrap(serde_json::to_value(resp).unwrap());
-                            let msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
-                            response.push(msg);
-                            Ok(response)
+                            match maybe_resp {
+                                Some(resp) => {
+                                    let value = array_wrap(serde_json::to_value(resp).unwrap());
+                                    let msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
+                                    response.push(msg);
+                                    Ok(response)
+                                },
+                                None => {
+                                    let value = json!({
+                                        "name": "BucketNotFoundError",
+                                        "message": "requested bucket not found"
+                                    });
+                                    let err_msg = FastMessage::error(msg_id, FastMessageData::new(method, value));
+                                    response.push(err_msg);
+                                    Ok(response)
+                                }
+                            }
                         })
                         //TODO: Proper error handling
                         .map_err(|e| {
@@ -130,16 +142,32 @@ pub fn delete_handler(msg_id: u32,
             match payload_result {
                 Ok(payload) => {
                     // Make db request and form response
-                    delete(payload, pool)
+                    let response_msg: Result<FastMessage, IOError> =
+                        delete(payload, pool)
                         .and_then(|resp| {
                             let method = String::from("deletebucket");
                             let value = array_wrap(serde_json::to_value(resp).unwrap());
                             let msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
-                            response.push(msg);
-                            Ok(response)
+                            // response.push(msg);
+                            // Ok(response)
+                            Ok(msg)
                         })
-                        //TODO: Proper error handling
-                        .map_err(|_e| other_error("postgres error"))
+                        .or_else(|e| {
+                            let method = String::from("deletebucket");
+                            // let err_str = format!("{}", e);
+                            let value = array_wrap(json!({
+                                "name": "BucketNotFoundError",
+                                "message": e.to_string()
+                            }));
+                            // let value = array_wrap(serde_json::to_value(e).unwrap());
+                            let err_msg = FastMessage::error(msg_id, FastMessageData::new(method, value));
+                            // response.push(err_msg);
+                            // Ok(response)
+                            Ok(err_msg)
+                            // other_error()
+                        });
+                    response.push(response_msg.unwrap());
+                    Ok(response)
                 },
                 Err(_) =>
                     Err(other_error("Failed to parse JSON data as payload for deletebucket function"))
@@ -155,8 +183,10 @@ fn other_error(msg: &str) -> IOError {
 }
 
 
-fn response(rows: Rows) -> PostgresResult<BucketResponse> {
-    if rows.len() == 1 {
+fn response(rows: Rows) -> PostgresResult<Option<BucketResponse>> {
+    if rows.len() == 0 {
+        Ok(None)
+    } else if rows.len() == 1 {
         let row = rows.get(0);
         //TODO: Valdate # of cols
         let resp = BucketResponse {
@@ -165,7 +195,7 @@ fn response(rows: Rows) -> PostgresResult<BucketResponse> {
             name           : row.get(2),
             created        : row.get(3)
         };
-        Ok(resp)
+        Ok(Some(resp))
     } else {
         let err = format!("Get query found {} results, but expected only 1.",
                           rows.len());
@@ -191,7 +221,7 @@ fn put_sql(vnode: &u64) -> String {
 }
 
 fn get(payload: GetBucketPayload, pool: &Pool<PostgresConnectionManager>)
-           -> PostgresResult<BucketResponse>
+           -> PostgresResult<Option<BucketResponse>>
 {
     let conn = pool.get().unwrap();
     let sql = get_sql(&payload.vnode);
@@ -203,7 +233,7 @@ fn get(payload: GetBucketPayload, pool: &Pool<PostgresConnectionManager>)
 
 
 fn put(payload: PutBucketPayload, pool: &Pool<PostgresConnectionManager>)
-           -> PostgresResult<BucketResponse>
+           -> PostgresResult<Option<BucketResponse>>
 {
     let conn = pool.get().unwrap();
     let txn = conn.transaction().unwrap();
