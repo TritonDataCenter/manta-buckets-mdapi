@@ -23,7 +23,7 @@ pub struct GetBucketPayload {
 
 type DeleteBucketPayload = GetBucketPayload;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct BucketResponse {
     id      : Uuid,
     owner   : Uuid,
@@ -35,6 +35,12 @@ pub struct BucketResponse {
 pub struct PutBucketPayload {
     owner : Uuid,
     name  : String,
+    vnode : u64
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ListBucketsPayload {
+    owner : Uuid,
     vnode : u64
 }
 
@@ -92,6 +98,51 @@ pub fn get_handler(msg_id: u32,
     }
 }
 
+pub fn list_handler(msg_id: u32,
+                    args: &Vec<Value>,
+                    mut response: Vec<FastMessage>,
+                    pool: &Pool<PostgresConnectionManager>,
+                    log: &Logger) -> Result<Vec<FastMessage>, IOError> {
+    debug!(log, "handling listbuckets function request");
+
+    let arg0 = match &args[0] {
+        Value::Object(_) => &args[0],
+        _ => {
+            return Err(other_error("Expected JSON object"))
+        }
+    };
+
+    let data_clone = arg0.clone();
+    let payload_result: Result<ListBucketsPayload, _> =
+        serde_json::from_value(data_clone);
+
+    let payload = match payload_result {
+        Ok(o) => o,
+        Err(_) => {
+            return Err(other_error("Failed to parse JSON data as payload for listbuckets function"))
+        }
+    };
+
+    // Make db request and form response
+    let conn = pool.get().unwrap();
+    let txn = conn.transaction().unwrap();
+    let list_sql = list_sql(&payload.vnode);
+
+    for row in txn.query(&list_sql, &[&payload.owner]).unwrap().iter() {
+        let resp = BucketResponse {
+            id      : row.get(0),
+            owner   : row.get(1),
+            name    : row.get(2),
+            created : row.get(3)
+        };
+
+        let value = array_wrap(serde_json::to_value(resp).unwrap());
+        let msg = FastMessage::data(msg_id, FastMessageData::new(String::from("listbuckets"), value));
+        response.push(msg);
+    }
+
+    Ok(response)
+}
 
 pub fn put_handler(msg_id: u32,
                    args: &Vec<Value>,
@@ -218,6 +269,13 @@ fn put_sql(vnode: &u64) -> String {
        (id, owner, name) \
        VALUES ($1, $2, $3) \
        RETURNING id, owner, name, created"].concat()
+}
+
+fn list_sql(vnode: &u64) -> String {
+    ["SELECT id, owner, name, created \
+      FROM manta_bucket_",
+     &vnode.to_string(),
+     &".manta_bucket WHERE owner = $1"].concat()
 }
 
 fn get(payload: GetBucketPayload, pool: &Pool<PostgresConnectionManager>)
