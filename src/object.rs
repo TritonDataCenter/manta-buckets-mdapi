@@ -1,3 +1,7 @@
+/*
+ * Copyright 2019 Joyent, Inc.
+ */
+
 use std::collections::HashMap;
 use std::io::Error as IOError;
 use std::io::ErrorKind as IOErrorKind;
