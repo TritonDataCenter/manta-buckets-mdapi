@@ -107,9 +107,7 @@ pub fn list_handler(msg_id: u32,
 
     let arg0 = match &args[0] {
         Value::Object(_) => &args[0],
-        _ => {
-            return Err(other_error("Expected JSON object"))
-        }
+        _ => return Err(other_error("Expected JSON object"))
     };
 
     let data_clone = arg0.clone();
@@ -118,22 +116,21 @@ pub fn list_handler(msg_id: u32,
 
     let payload = match payload_result {
         Ok(o) => o,
-        Err(_) => {
-            return Err(other_error("Failed to parse JSON data as payload for listbuckets function"))
-        }
+        Err(_) => return Err(other_error("Failed to parse JSON data as payload for listbuckets function"))
     };
 
     // Make db request and form response
+    // TODO: make this call safe
     let conn = pool.get().unwrap();
     let txn = conn.transaction().unwrap();
     let list_sql = list_sql(&payload.vnode);
 
     for row in txn.query(&list_sql, &[&payload.owner]).unwrap().iter() {
         let resp = BucketResponse {
-            id      : row.get(0),
-            owner   : row.get(1),
-            name    : row.get(2),
-            created : row.get(3)
+            id: row.get(0),
+            owner: row.get(1),
+            name: row.get(2),
+            created: row.get(3)
         };
 
         let value = array_wrap(serde_json::to_value(resp).unwrap());
@@ -271,6 +268,9 @@ fn put_sql(vnode: &u64) -> String {
        RETURNING id, owner, name, created"].concat()
 }
 
+/*
+ * TODO: add a limit clause for eventual pagination.
+ */
 fn list_sql(vnode: &u64) -> String {
     ["SELECT id, owner, name, created \
       FROM manta_bucket_",
