@@ -1,3 +1,7 @@
+/*
+ * Copyright 2019 Joyent, Inc.
+ */
+
 use clap::{App, Arg, ArgMatches};
 
 pub fn parse<'a, 'b>(app: String) -> ArgMatches<'a> {
