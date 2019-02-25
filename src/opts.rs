@@ -26,5 +26,12 @@ pub fn parse<'a, 'b>(app: String) -> ArgMatches<'a> {
              .long("port")
              .takes_value(true)
              .required(false))
+        .arg(Arg::with_name("level")
+             .help("Log level")
+             .short("l")
+             .long("level")
+             .takes_value(true)
+             .required(false),
+        )
         .get_matches()
 }

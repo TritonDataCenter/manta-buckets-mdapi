@@ -33,7 +33,7 @@ use std::sync::{Arc, Mutex};
 use r2d2::Pool;
 use r2d2_postgres::{TlsMode, PostgresConnectionManager};
 use serde_json::Value;
-use slog::{Drain, Logger};
+use slog::{Drain, Level, LevelFilter, Logger};
 use tokio::net::TcpListener;
 use tokio::prelude::*;
 use rust_fast::protocol::FastMessage;
@@ -77,15 +77,27 @@ fn main() {
     let listen_port = value_t!(matches, "port", u32)
         .unwrap_or(2030);
 
+    let level = matches.value_of("level").unwrap_or("info");
+
+    let filter_level = match level.parse::<Level>() {
+        Ok(filter_level) => filter_level,
+        Err(_) => {
+            println!("invalid log level: {}", level);
+            std::process::exit(1);
+        }
+    };
+
     let root_log = Logger::root(
-        Mutex::new(
+        Mutex::new(LevelFilter::new(
             slog_bunyan::default(
                 std::io::stdout()
-            )
-        ).fuse(),
+            ),
+            filter_level
+        )).fuse(),
         o!("build-id" => crate_version!())
     );
 
+    trace!(root_log, "postgres connection pool url: {}", pg_url);
     info!(root_log, "establishing postgres connection pool");
     let manager = PostgresConnectionManager::new(pg_url, TlsMode::None)
         .expect("Failed to create pg connection manager");
