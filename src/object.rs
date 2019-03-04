@@ -61,6 +61,13 @@ pub struct PutObjectPayload {
     properties     : Option<Value>
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ListObjectsPayload {
+    owner     : Uuid,
+    bucket_id : Uuid,
+    vnode     : u64
+}
+
 pub fn get_handler(msg_id: u32,
                       args: &Vec<Value>,
                       mut response: Vec<FastMessage>,
@@ -109,6 +116,59 @@ pub fn get_handler(msg_id: u32,
         }
         _ => Err(other_error("Expected JSON object"))
     }
+}
+
+pub fn list_handler(msg_id: u32,
+                    args: &Vec<Value>,
+                    mut response: Vec<FastMessage>,
+                    pool: &Pool<PostgresConnectionManager>,
+                    log: &Logger) -> Result<Vec<FastMessage>, IOError> {
+    debug!(log, "handling listobjects function request");
+
+    let arg0 = match &args[0] {
+        Value::Object(_) => &args[0],
+        _ => return Err(other_error("Expected JSON object"))
+    };
+
+    let data_clone = arg0.clone();
+    let payload_result: Result<ListObjectsPayload, _> =
+        serde_json::from_value(data_clone);
+
+    let payload = match payload_result {
+        Ok(o) => o,
+        Err(_) => return Err(other_error("Failed to parse JSON data as payload for listobjects function"))
+    };
+
+    // Make db request and form response
+    // TODO: make this call safe
+    let conn = pool.get().unwrap();
+    let txn = conn.transaction().unwrap();
+    let list_sql = list_sql(&payload.vnode);
+
+    for row in txn.query(&list_sql, &[&payload.owner, &payload.bucket_id]).unwrap().iter() {
+        let content_md5_bytes: Vec<u8> = row.get(7);
+        let content_md5 = base64::encode(&content_md5_bytes);
+        let resp = ObjectResponse {
+            id             : row.get(0),
+            owner          : row.get(1),
+            bucket_id      : row.get(2),
+            name           : row.get(3),
+            created        : row.get(4),
+            modified       : row.get(5),
+            content_length : row.get(6),
+            content_md5    : content_md5,
+            content_type   : row.get(8),
+            headers        : row.get(9),
+            sharks         : row.get(10),
+            properties     : row.get(11),
+        };
+
+        let value = array_wrap(serde_json::to_value(resp).unwrap());
+        let msg = FastMessage::data(msg_id, FastMessageData::new(String::from("listobjects"), value));
+        response.push(msg);
+    }
+
+    Ok(response)
 }
 
 pub fn put_handler(msg_id: u32,
@@ -237,6 +297,16 @@ fn get_sql(vnode: &u64) -> String {
      &".manta_bucket_object WHERE owner = $1 \
        AND bucket_id = $2 \
        AND name = $3"].concat()
+}
+
+// TODO add limits to this
+fn list_sql(vnode: &u64) -> String {
+    ["SELECT id, owner, bucket_id, name, created, modified, content_length, \
+      content_md5, content_type, headers, sharks, properties \
+      FROM manta_bucket_",
+     &vnode.to_string(),
+     &".manta_bucket_object WHERE owner = $1 \
+       AND bucket_id = $2"].concat()
 }
 
 fn put(payload: PutObjectPayload, pool: &Pool<PostgresConnectionManager>)
