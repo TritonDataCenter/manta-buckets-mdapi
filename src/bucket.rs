@@ -58,48 +58,48 @@ pub fn get_handler(msg_id: u32,
                    pool: &Pool<PostgresConnectionManager>,
                    log: &Logger) -> Result<Vec<FastMessage>, IOError> {
     debug!(log, "handling getbucket function request");
-    let arg0 = &args[0];
-    match arg0 {
-        Value::Object(_) => {
-            let data_clone = arg0.clone();
-            let payload_result: Result<GetBucketPayload, _> =
-                serde_json::from_value(data_clone);
-            match payload_result {
-                Ok(payload) => {
-                    // Make db request and form response
-                    get(payload, pool)
-                        .and_then(|maybe_resp| {
-                            let method = String::from("getbucket");
-                            match maybe_resp {
-                                Some(resp) => {
-                                    let value = array_wrap(serde_json::to_value(resp).unwrap());
-                                    let msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
-                                    response.push(msg);
-                                    Ok(response)
-                                },
-                                None => {
-                                    let value = json!({
-                                        "name": "BucketNotFoundError",
-                                        "message": "requested bucket not found"
-                                    });
-                                    let err_msg = FastMessage::error(msg_id, FastMessageData::new(method, value));
-                                    response.push(err_msg);
-                                    Ok(response)
-                                }
-                            }
-                        })
-                        //TODO: Proper error handling
-                        .map_err(|e| {
-                            println!("Error: {}", e);
-                            other_error("postgres error")
-                        })
+
+    let arg0 = match &args[0] {
+        Value::Object(_) => &args[0],
+        _ => return Err(other_error("Expected JSON object"))
+    };
+
+    let data_clone = arg0.clone();
+    let payload_result: Result<GetBucketPayload, _> =
+        serde_json::from_value(data_clone);
+
+    let payload = match payload_result {
+        Ok(o) => o,
+        Err(_) => return Err(other_error("Failed to parse JSON data as payload for getbucket function"))
+    };
+
+    // Make db request and form response
+    get(payload, pool)
+        .and_then(|maybe_resp| {
+            let method = String::from("getbucket");
+            match maybe_resp {
+                Some(resp) => {
+                    let value = array_wrap(serde_json::to_value(resp).unwrap());
+                    let msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
+                    response.push(msg);
+                    Ok(response)
                 },
-                Err(_) =>
-                    Err(other_error("Failed to parse JSON data as payload for getbucket function"))
+                None => {
+                    let value = json!({
+                        "name": "BucketNotFoundError",
+                        "message": "requested bucket not found"
+                    });
+                    let err_msg = FastMessage::error(msg_id, FastMessageData::new(method, value));
+                    response.push(err_msg);
+                    Ok(response)
+                }
             }
-        }
-        _ => Err(other_error("Expected JSON object"))
-    }
+        })
+        //TODO: Proper error handling
+        .map_err(|e| {
+            println!("Error: {}", e);
+            other_error("postgres error")
+        })
 }
 
 pub fn list_handler(msg_id: u32,
@@ -151,32 +151,32 @@ pub fn put_handler(msg_id: u32,
                    pool: &Pool<PostgresConnectionManager>,
                    log: &Logger) -> Result<Vec<FastMessage>, IOError> {
     debug!(log, "handling putbucket function request");
-    let arg0 = &args[0];
-    match arg0 {
-        Value::Object(_) => {
-            let data_clone = arg0.clone();
-            let payload_result: Result<PutBucketPayload, _> =
-                serde_json::from_value(data_clone);
-            match payload_result {
-                Ok(payload) => {
-                    // Make db request and form response
-                    put(payload, pool)
-                        .and_then(|resp| {
-                            let method = String::from("putbucket");
-                            let value = array_wrap(serde_json::to_value(resp).unwrap());
-                            let msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
-                            response.push(msg);
-                            Ok(response)
-                        })
-                        //TODO: Proper error handling
-                        .map_err(|_e| other_error("postgres error"))
-                },
-                Err(_) =>
-                    Err(other_error("Failed to parse JSON data as payload for putbucket function"))
-            }
-        }
-        _ => Err(other_error("Expected JSON object"))
-    }
+
+    let arg0 = match &args[0] {
+        Value::Object(_) => &args[0],
+        _ => return Err(other_error("Expected JSON object"))
+    };
+
+    let data_clone = arg0.clone();
+    let payload_result: Result<PutBucketPayload, _> =
+        serde_json::from_value(data_clone);
+
+    let payload = match payload_result {
+        Ok(o) => o,
+        Err(_) => return Err(other_error("Failed to parse JSON data as payload for putbucket function"))
+    };
+
+    // Make db request and form response
+    put(payload, pool)
+        .and_then(|resp| {
+            let method = String::from("putbucket");
+            let value = array_wrap(serde_json::to_value(resp).unwrap());
+            let msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
+            response.push(msg);
+            Ok(response)
+        })
+        //TODO: Proper error handling
+        .map_err(|_e| other_error("postgres error"))
 }
 
 pub fn delete_handler(msg_id: u32,
@@ -185,48 +185,49 @@ pub fn delete_handler(msg_id: u32,
                       pool: &Pool<PostgresConnectionManager>,
                       log: &Logger) -> Result<Vec<FastMessage>, IOError> {
     debug!(log, "handling putbucket function request");
-    let arg0 = &args[0];
-    match arg0 {
-        Value::Object(_) => {
-            let data_clone = arg0.clone();
-            let payload_result: Result<DeleteBucketPayload, _> =
-                serde_json::from_value(data_clone);
-            match payload_result {
-                Ok(payload) => {
-                    // Make db request and form response
-                    let response_msg: Result<FastMessage, IOError> =
-                        delete(payload, pool)
-                        .and_then(|resp| {
-                            let method = String::from("deletebucket");
-                            let value = array_wrap(serde_json::to_value(resp).unwrap());
-                            let msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
-                            // response.push(msg);
-                            // Ok(response)
-                            Ok(msg)
-                        })
-                        .or_else(|e| {
-                            let method = String::from("deletebucket");
-                            // let err_str = format!("{}", e);
-                            let value = array_wrap(json!({
-                                "name": "BucketNotFoundError",
-                                "message": e.to_string()
-                            }));
-                            // let value = array_wrap(serde_json::to_value(e).unwrap());
-                            let err_msg = FastMessage::error(msg_id, FastMessageData::new(method, value));
-                            // response.push(err_msg);
-                            // Ok(response)
-                            Ok(err_msg)
-                            // other_error()
-                        });
-                    response.push(response_msg.unwrap());
-                    Ok(response)
-                },
-                Err(_) =>
-                    Err(other_error("Failed to parse JSON data as payload for deletebucket function"))
-            }
-        }
-        _ => Err(other_error("Expected JSON object"))
-    }
+
+    let arg0 = match &args[0] {
+        Value::Object(_) => &args[0],
+        _ => return Err(other_error("Expected JSON object"))
+    };
+
+    let data_clone = arg0.clone();
+    let payload_result: Result<DeleteBucketPayload, _> =
+        serde_json::from_value(data_clone);
+
+    let payload = match payload_result {
+        Ok(o) => o,
+        Err(_) => return Err(other_error("Failed to parse JSON data as payload for deletebucket function"))
+    };
+
+    // Make db request and form response
+    let response_msg: Result<FastMessage, IOError> =
+        delete(payload, pool)
+        .and_then(|resp| {
+            let method = String::from("deletebucket");
+            let value = array_wrap(serde_json::to_value(resp).unwrap());
+            let msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
+            // response.push(msg);
+            // Ok(response)
+            Ok(msg)
+        })
+        .or_else(|e| {
+            let method = String::from("deletebucket");
+            // let err_str = format!("{}", e);
+            let value = array_wrap(json!({
+                "name": "BucketNotFoundError",
+                "message": e.to_string()
+            }));
+            // let value = array_wrap(serde_json::to_value(e).unwrap());
+            let err_msg = FastMessage::error(msg_id, FastMessageData::new(method, value));
+            // response.push(err_msg);
+            // Ok(response)
+            Ok(err_msg)
+            // other_error()
+        });
+
+    response.push(response_msg.unwrap());
+    Ok(response)
 }
 
 
