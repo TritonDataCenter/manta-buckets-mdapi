@@ -7,8 +7,13 @@ extern crate base64;
 extern crate chrono;
 #[macro_use]
 extern crate clap;
+extern crate hyper;
+#[macro_use]
+extern crate lazy_static;
 extern crate md5;
 extern crate postgres;
+#[macro_use]
+extern crate prometheus;
 extern crate r2d2;
 extern crate r2d2_postgres;
 extern crate rust_fast;
@@ -23,12 +28,14 @@ extern crate tokio;
 extern crate uuid;
 
 mod bucket;
+mod metrics;
 mod object;
 mod opts;
 
 use std::io::{Error, ErrorKind};
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use std::thread;
 
 use r2d2::Pool;
 use r2d2_postgres::{TlsMode, PostgresConnectionManager};
@@ -77,6 +84,10 @@ fn main() {
         .unwrap_or("127.0.0.1");
     let listen_port = value_t!(matches, "port", u32)
         .unwrap_or(2030);
+    let metrics_address_str = matches.value_of("metrics-address")
+        .unwrap_or("0.0.0.0");
+    let metrics_port = value_t!(matches, "metrics-port", u32)
+        .unwrap_or(3020);
 
     let level = matches.value_of("level").unwrap_or("info");
 
@@ -97,6 +108,13 @@ fn main() {
         )).fuse(),
         o!("build-id" => crate_version!())
     );
+
+    // Configure and start metrics server
+    let metrics_log = root_log.clone();
+    let metrics_address = metrics_address_str.to_owned();
+    thread::spawn(move || metrics::start_server(metrics_address,
+                                                metrics_port,
+                                                metrics_log));
 
     trace!(root_log, "postgres connection pool url: {}", pg_url);
     info!(root_log, "establishing postgres connection pool");
@@ -120,6 +138,7 @@ fn main() {
             })
             .for_each(
                 move |socket| {
+                    metrics::INCOMING_REQUEST_COUNTER.inc();
                     let pool_clone = pool.clone();
                     server::process(socket,
                                     Arc::new(move |a, c| msg_handler(a, &pool_clone, c)),

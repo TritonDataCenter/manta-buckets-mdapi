@@ -8,8 +8,11 @@ authors = ["Kelly McLaughlin <kelly.mclaughlin@joyent.com>"]
 base64 = "0.10.1"
 chrono = { version = "0.4.6", features = ["serde"] }
 clap = "2.32"
+hyper = {version = "0.12.25"}
+lazy_static = "1.1.0"
 md5 = "0.5.0"
 postgres = {version = "0.15.2", features=["with-chrono", "with-serde_json", "with-uuid"]}
+prometheus = "0.5.0"
 r2d2 = "0.8.3"
 r2d2_postgres = "0.14.0"
 rust_fast = { git = "https://github.com/joyent/rust-fast", branch = "master" }
