@@ -10,8 +10,9 @@ use r2d2::Pool;
 use postgres::Result as PostgresResult;
 use postgres::rows::Rows;
 use r2d2_postgres::PostgresConnectionManager;
-use serde_json::Value;
-use slog::Logger;
+use serde_derive::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use slog::{Logger, debug};
 use uuid::Uuid;
 
 use rust_fast::protocol::{FastMessage, FastMessageData};

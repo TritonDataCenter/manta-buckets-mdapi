@@ -11,8 +11,9 @@ use hyper::rt::{self, Future};
 use hyper::server::Server;
 use hyper::service::service_fn_ok;
 use hyper::StatusCode;
-use prometheus::{Counter, Encoder, TextEncoder};
-use slog::{Logger, info};
+use lazy_static::lazy_static;
+use prometheus::{Counter, Encoder, TextEncoder, labels, opts, register_counter};
+use slog::{Logger, error, info};
 
 
 lazy_static! {

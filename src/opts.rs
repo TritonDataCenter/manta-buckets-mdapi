@@ -2,7 +2,7 @@
  * Copyright 2019 Joyent, Inc.
  */
 
-use clap::{App, Arg, ArgMatches};
+use clap::{App, Arg, ArgMatches, crate_version};
 
 pub fn parse<'a, 'b>(app: String) -> ArgMatches<'a> {
     App::new(app)

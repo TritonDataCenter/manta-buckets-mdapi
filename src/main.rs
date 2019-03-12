@@ -2,31 +2,6 @@
  * Copyright 2019 Joyent, Inc.
  */
 
-
-extern crate base64;
-extern crate chrono;
-#[macro_use]
-extern crate clap;
-extern crate hyper;
-#[macro_use]
-extern crate lazy_static;
-extern crate md5;
-extern crate postgres;
-#[macro_use]
-extern crate prometheus;
-extern crate r2d2;
-extern crate r2d2_postgres;
-extern crate rust_fast;
-#[macro_use]
-extern crate serde_derive;
-#[macro_use]
-extern crate serde_json;
-#[macro_use]
-extern crate slog;
-extern crate slog_bunyan;
-extern crate tokio;
-extern crate uuid;
-
 mod bucket;
 mod metrics;
 mod object;
@@ -37,14 +12,16 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+use clap::{crate_version, value_t};
 use r2d2::Pool;
 use r2d2_postgres::{TlsMode, PostgresConnectionManager};
 use serde_json::Value;
-use slog::{Drain, Level, LevelFilter, Logger};
+use slog::{Drain, Level, LevelFilter, Logger, o};
 use tokio::net::TcpListener;
 use tokio::prelude::*;
 use rust_fast::protocol::FastMessage;
 use rust_fast::server;
+use slog::{error, info, trace};
 
 static APP: &'static str = "buckets-demo";
 
