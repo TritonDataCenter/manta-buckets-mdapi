@@ -31,7 +31,16 @@ pub fn parse<'a, 'b>(app: String) -> ArgMatches<'a> {
              .short("l")
              .long("level")
              .takes_value(true)
-             .required(false),
-        )
+             .required(false))
+        .arg(Arg::with_name("metrics address")
+             .help("Address to listen for metrics queries")
+             .long("metrics-address")
+             .takes_value(true)
+             .required(false))
+        .arg(Arg::with_name("metrics port")
+             .help("Port to listen for metrics queries")
+             .long("metrics-port")
+             .takes_value(true)
+             .required(false))
         .get_matches()
 }
