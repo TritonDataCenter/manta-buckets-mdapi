@@ -66,7 +66,9 @@ pub struct PutObjectPayload {
 pub struct ListObjectsPayload {
     owner     : Uuid,
     bucket_id : Uuid,
-    vnode     : u64
+    vnode     : u64,
+    limit     : u64,
+    offset    : u64
 }
 
 pub fn get_handler(msg_id: u32,
@@ -139,11 +141,14 @@ pub fn list_handler(msg_id: u32,
         Err(_) => return Err(other_error("Failed to parse JSON data as payload for listobjects function"))
     };
 
+    assert!(payload.limit > 0);
+    assert!(payload.limit <= 1000);
+
     // Make db request and form response
     // TODO: make this call safe
     let conn = pool.get().unwrap();
     let txn = conn.transaction().unwrap();
-    let list_sql = list_sql(&payload.vnode);
+    let list_sql = list_sql(&payload.vnode, &payload.limit, &payload.offset);
 
     for row in txn.query(&list_sql, &[&payload.owner, &payload.bucket_id]).unwrap().iter() {
         let content_md5_bytes: Vec<u8> = row.get(7);
@@ -299,14 +304,16 @@ fn get_sql(vnode: &u64) -> String {
        AND name = $3"].concat()
 }
 
-// TODO add limits to this
-fn list_sql(vnode: &u64) -> String {
-    ["SELECT id, owner, bucket_id, name, created, modified, content_length, \
-      content_md5, content_type, headers, sharks, properties \
-      FROM manta_bucket_",
-     &vnode.to_string(),
-     &".manta_bucket_object WHERE owner = $1 \
-       AND bucket_id = $2"].concat()
+fn list_sql(vnode: &u64, limit: &u64, offset: &u64) -> String {
+    format!("SELECT id, owner, bucket_id, name, created, modified, \
+        content_length, content_md5, content_type, headers, sharks, \
+        properties \
+        FROM manta_bucket_{}.manta_bucket_object
+        WHERE owner = $1 AND bucket_id = $2
+        ORDER BY created
+        LIMIT {}
+        OFFSET {}",
+        vnode, limit, offset)
 }
 
 fn put(payload: PutObjectPayload, pool: &Pool<PostgresConnectionManager>)
