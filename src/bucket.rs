@@ -283,7 +283,7 @@ fn list_sql(vnode: &u64, limit: &u64, offset: &u64) -> String {
     format!("SELECT id, owner, name, created
         FROM manta_bucket_{}.manta_bucket
         WHERE owner = $1
-        ORDER BY created
+        ORDER BY created ASC
         LIMIT {}
         OFFSET {}",
         vnode, limit, offset)

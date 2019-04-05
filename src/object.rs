@@ -310,7 +310,7 @@ fn list_sql(vnode: &u64, limit: &u64, offset: &u64) -> String {
         properties \
         FROM manta_bucket_{}.manta_bucket_object
         WHERE owner = $1 AND bucket_id = $2
-        ORDER BY created
+        ORDER BY created ASC
         LIMIT {}
         OFFSET {}",
         vnode, limit, offset)
