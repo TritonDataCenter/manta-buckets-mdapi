@@ -16,7 +16,7 @@ postgres = {version = "0.15.2", features=["with-chrono", "with-serde_json", "wit
 prometheus = "0.5.0"
 r2d2 = "0.8.3"
 r2d2_postgres = "0.14.0"
-rust_fast = { git = "https://github.com/joyent/rust-fast", branch = "master" }
+rust_fast = { git = "https://github.com/joyent/rust-fast" }
 serde = "1.0.84"
 serde_derive = "1.0.84"
 serde_json = "1.0.36"
