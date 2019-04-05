@@ -9,7 +9,7 @@ mod opts;
 
 use std::io::{Error, ErrorKind};
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use std::thread;
 
 use clap::{crate_version, value_t};
@@ -117,11 +117,13 @@ fn main() {
             })
             .for_each(
                 move |socket| {
-
                     let pool_clone = pool.clone();
-                    server::process(socket,
-                                    Arc::new(move |a, c| msg_handler(a, &pool_clone, c)),
-                                    &process_log);
+                    let task = server::make_task(
+                        socket,
+                        move |a, c| msg_handler(a, &pool_clone, c),
+                        &process_log,
+                    );
+                    tokio::spawn(task);
                     Ok(())
                 })
     });
