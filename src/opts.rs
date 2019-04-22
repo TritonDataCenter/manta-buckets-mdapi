@@ -4,7 +4,7 @@
 
 use clap::{App, Arg, ArgMatches, crate_version};
 
-pub fn parse<'a, 'b>(app: String) -> ArgMatches<'a> {
+pub fn parse<'a, 'b>(app: &str) -> ArgMatches<'a> {
     App::new(app)
         .about("Tool to test different hierarchy options offered by PostgreSQL")
         .version(crate_version!())

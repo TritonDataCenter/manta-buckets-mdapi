@@ -12,7 +12,7 @@ use std::net::SocketAddr;
 use std::sync::Mutex;
 use std::thread;
 
-use clap::{crate_version, value_t};
+use clap::{crate_version, crate_name, value_t};
 use r2d2::Pool;
 use r2d2_postgres::{TlsMode, PostgresConnectionManager};
 use serde_json::Value;
@@ -22,8 +22,6 @@ use tokio::prelude::*;
 use rust_fast::protocol::FastMessage;
 use rust_fast::server;
 use slog::{error, info, trace};
-
-static APP: &'static str = "buckets-demo";
 
 fn other_error(msg: &str) -> Error {
     Error::new(ErrorKind::Other, String::from(msg))
@@ -55,7 +53,7 @@ fn msg_handler(msg: &FastMessage,
 }
 
 fn main() {
-    let matches = opts::parse(APP.to_string());
+    let matches = opts::parse(crate_name!());
 
     let pg_url = matches.value_of("pg_url")
         .unwrap_or("postgresql://postgres@localhost:5432/test");
