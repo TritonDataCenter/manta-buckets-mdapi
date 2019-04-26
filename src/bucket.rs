@@ -45,8 +45,12 @@ pub struct PutBucketPayload {
 
 #[derive(Serialize, Deserialize)]
 pub struct ListBucketsPayload {
-    owner : Uuid,
-    vnode : u64
+    owner    : Uuid,
+    vnode    : u64,
+    prefix   : String,
+    order_by : String,
+    limit    : u64,
+    offset   : u64
 }
 
 fn array_wrap(v: Value) -> Value {
@@ -124,13 +128,25 @@ pub fn list_handler(msg_id: u32,
         Err(_) => return Err(other_error("Failed to parse JSON data as payload for listbuckets function"))
     };
 
+    // TODO catch these as errors and return to the caller
+    assert!(payload.limit > 0);
+    assert!(payload.limit <= 1000);
+
+    match payload.order_by.as_ref() {
+        "created" | "name" => {},
+        _ => return Err(other_error("Unexpected value for payload.order_by"))
+    }
+
+    let prefix = format!("{}%", &payload.prefix);
+
     // Make db request and form response
     // TODO: make this call safe
     let conn = pool.get().unwrap();
     let txn = conn.transaction().unwrap();
-    let list_sql = list_sql(&payload.vnode);
+    let list_sql = list_sql(&payload.vnode, &payload.limit,
+        &payload.offset, &payload.order_by);
 
-    for row in txn.query(&list_sql, &[&payload.owner]).unwrap().iter() {
+    for row in txn.query(&list_sql, &[&payload.owner, &prefix]).unwrap().iter() {
         let resp = BucketResponse {
             id: row.get(0),
             owner: row.get(1),
@@ -274,14 +290,14 @@ fn put_sql(vnode: &u64) -> String {
        RETURNING id, owner, name, created"].concat()
 }
 
-/*
- * TODO: add a limit clause for eventual pagination.
- */
-fn list_sql(vnode: &u64) -> String {
-    ["SELECT id, owner, name, created \
-      FROM manta_bucket_",
-     &vnode.to_string(),
-     &".manta_bucket WHERE owner = $1"].concat()
+fn list_sql(vnode: &u64, limit: &u64, offset: &u64, order_by: &str) -> String {
+    format!("SELECT id, owner, name, created
+        FROM manta_bucket_{}.manta_bucket
+        WHERE owner = $1 AND name like $2
+        ORDER BY {} ASC
+        LIMIT {}
+        OFFSET {}",
+        vnode, order_by, limit, offset)
 }
 
 fn get(payload: GetBucketPayload, pool: &Pool<PostgresConnectionManager>)

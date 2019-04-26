@@ -66,7 +66,11 @@ pub struct PutObjectPayload {
 pub struct ListObjectsPayload {
     owner     : Uuid,
     bucket_id : Uuid,
-    vnode     : u64
+    vnode     : u64,
+    prefix    : String,
+    order_by  : String,
+    limit     : u64,
+    offset    : u64
 }
 
 pub fn get_handler(msg_id: u32,
@@ -139,13 +143,25 @@ pub fn list_handler(msg_id: u32,
         Err(_) => return Err(other_error("Failed to parse JSON data as payload for listobjects function"))
     };
 
+    // TODO catch these as errors and return to the caller
+    assert!(payload.limit > 0);
+    assert!(payload.limit <= 1000);
+
+    match payload.order_by.as_ref() {
+        "created" | "name" => {},
+        _ => return Err(other_error("Unexpected value for payload.order_by"))
+    }
+
+    let prefix = format!("{}%", &payload.prefix);
+
     // Make db request and form response
     // TODO: make this call safe
     let conn = pool.get().unwrap();
     let txn = conn.transaction().unwrap();
-    let list_sql = list_sql(&payload.vnode);
+    let list_sql = list_sql(&payload.vnode, &payload.limit, &payload.offset,
+        &payload.order_by);
 
-    for row in txn.query(&list_sql, &[&payload.owner, &payload.bucket_id]).unwrap().iter() {
+    for row in txn.query(&list_sql, &[&payload.owner, &payload.bucket_id, &prefix]).unwrap().iter() {
         let content_md5_bytes: Vec<u8> = row.get(7);
         let content_md5 = base64::encode(&content_md5_bytes);
         let resp = ObjectResponse {
@@ -299,14 +315,16 @@ fn get_sql(vnode: &u64) -> String {
        AND name = $3"].concat()
 }
 
-// TODO add limits to this
-fn list_sql(vnode: &u64) -> String {
-    ["SELECT id, owner, bucket_id, name, created, modified, content_length, \
-      content_md5, content_type, headers, sharks, properties \
-      FROM manta_bucket_",
-     &vnode.to_string(),
-     &".manta_bucket_object WHERE owner = $1 \
-       AND bucket_id = $2"].concat()
+fn list_sql(vnode: &u64, limit: &u64, offset: &u64, order_by: &str) -> String {
+    format!("SELECT id, owner, bucket_id, name, created, modified, \
+        content_length, content_md5, content_type, headers, sharks, \
+        properties \
+        FROM manta_bucket_{}.manta_bucket_object
+        WHERE owner = $1 AND bucket_id = $2 AND name like $3
+        ORDER BY {} ASC
+        LIMIT {}
+        OFFSET {}",
+        vnode, order_by, limit, offset)
 }
 
 fn put(payload: PutObjectPayload, pool: &Pool<PostgresConnectionManager>)
