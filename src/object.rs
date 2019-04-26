@@ -239,20 +239,45 @@ pub fn delete_handler(msg_id: u32,
 
     let payload = match payload_result {
         Ok(o) => o,
-        Err(_) => return Err(other_error("Failed to parse JSON data as payload for deleteobject function"))
+        Err(_) => return Err(other_error("Failed to parse JSON data as payload \
+                                          for deleteobject function"))
     };
 
     // Make db request and form response
-    delete(payload, pool)
-        .and_then(|resp| {
+    let response_msg: Result<FastMessage, IOError> =
+        delete(payload, pool)
+        .and_then(|affected_rows| {
             let method = String::from("deleteobject");
-            let value = array_wrap(serde_json::to_value(resp).unwrap());
-            let msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
-            response.push(msg);
-            Ok(response)
+            if affected_rows > 0 {
+                let value = array_wrap(serde_json::to_value(affected_rows).unwrap());
+                let msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
+                Ok(msg)
+            } else {
+                let value = json!({
+                    "name": "ObjectNotFoundError",
+                    "message": "requested object not found"
+                });
+                let err_msg = FastMessage::error(msg_id, FastMessageData::new(method, value));
+                Ok(err_msg)
+            }
         })
-        //TODO: Proper error handling
-        .map_err(|_e| other_error("postgres error"))
+        .or_else(|e| {
+            // TODO: Write a helper function to deconstruct the postgres::Error
+            // and populate meaningful name and message fields for the error
+            // dependent on the details of the postgres error.
+            let err_str = format!("{}", e);
+            let value = array_wrap(json!({
+                "name": "PostgresError",
+                "message": err_str
+            }));
+            let method = String::from("deleteobject");
+            let err_msg_data = FastMessageData::new(method, value);
+            let err_msg = FastMessage::error(msg_id, err_msg_data);
+            Ok(err_msg)
+        });
+
+    response.push(response_msg.unwrap());
+    Ok(response)
 }
 
 fn array_wrap(v: Value) -> Value {
