@@ -3,27 +3,88 @@
  */
 
 use std::collections::HashMap;
+use std::error::Error;
 use std::io::Error as IOError;
 use std::io::ErrorKind as IOErrorKind;
 use std::vec::Vec;
 
 use base64;
 use chrono;
-use cueball::connection_pool::ConnectionPool;
-use cueball::backend::Backend;
-use cueball_static_resolver::StaticIpResolver;
-use cueball_postgres_connection::PostgresConnection;
-use rust_fast::protocol::{FastMessage, FastMessageData};
+use postgres::types::{FromSql, IsNull, ToSql, Type};
+use tokio_postgres::{accepts, to_sql_checked};
 use serde_derive::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use slog::{Logger, debug};
 use uuid::Uuid;
 
+use cueball::connection_pool::ConnectionPool;
+use cueball::backend::Backend;
+use cueball_static_resolver::StaticIpResolver;
+use cueball_postgres_connection::PostgresConnection;
+use rust_fast::protocol::{FastMessage, FastMessageData};
+
 use crate::util::Rows;
 
 type Hstore = HashMap<String, Option<String>>;
-type TextArray = Vec<String>;
 type Timestamptz = chrono::DateTime<chrono::Utc>;
+
+
+/// A type that represents the information about the datacenter and storage node
+/// id of a copy of an object's data.
+///
+/// The incoming representation of the sharks data is a JSON array of objects
+/// where each object has two keys: datacenter and manta_storage_id. The custom
+/// ToSQL instance for the this type converts the each object in this
+/// representation into a String that represents the same data in fewer
+/// bytes. The postgres column type for the sharks column is a text array.
+///
+/// Likewise, the custom FromSql instance for the type converts the members of
+/// the text array format stored in the database back into an instance of
+/// StorageNodeIdentifier.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StorageNodeIdentifier {
+    pub datacenter: String,
+    pub manta_storage_id: String
+}
+
+impl ToString for StorageNodeIdentifier {
+    fn to_string(&self) -> String {
+        [&self.datacenter, ":", &self.manta_storage_id].concat()
+    }
+}
+
+impl From<String> for StorageNodeIdentifier {
+    fn from(s: String) -> Self {
+        let v: Vec<&str> = s.split(':').collect();
+        StorageNodeIdentifier {
+            datacenter: String::from(v[0]),
+            manta_storage_id: String::from(v[1])
+        }
+    }
+}
+
+impl ToSql for StorageNodeIdentifier {
+    fn to_sql(&self, ty: &Type, w: &mut Vec<u8>) ->
+        Result<IsNull, Box<dyn Error + Sync + Send>> {
+            <String as ToSql>::to_sql(&self.to_string(), ty, w)
+    }
+
+    accepts!(TEXT);
+
+    to_sql_checked!();
+}
+
+impl<'a> FromSql<'a> for StorageNodeIdentifier {
+    fn from_sql(ty: &Type, raw: &'a [u8]) ->
+        Result<StorageNodeIdentifier, Box<dyn Error + Sync + Send>> {
+            String::from_sql(ty, raw)
+                .and_then(|s| {
+                    Ok(StorageNodeIdentifier::from(s))
+                })
+    }
+
+    accepts!(TEXT);
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GetObjectPayload {
@@ -47,7 +108,7 @@ pub struct ObjectResponse {
     pub content_md5    : String,
     pub content_type   : String,
     pub headers        : Hstore,
-    pub sharks         : TextArray,
+    pub sharks         : Vec<StorageNodeIdentifier>,
     pub properties     : Option<Value>
 }
 
@@ -61,7 +122,7 @@ pub struct PutObjectPayload {
     pub content_md5    : String,
     pub content_type   : String,
     pub headers        : Hstore,
-    pub sharks         : TextArray,
+    pub sharks         : Vec<StorageNodeIdentifier>,
     pub properties     : Option<Value>
 }
 

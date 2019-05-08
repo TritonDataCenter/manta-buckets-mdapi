@@ -246,6 +246,15 @@ fn verify_rpc_handlers() {
 
 
     // Create an object
+    let shark1 = object::StorageNodeIdentifier {
+        datacenter: "us-east-1".into(),
+        manta_storage_id: "1.stor.us-east.joyent.com".into(),
+    };
+    let shark2 = object::StorageNodeIdentifier {
+        datacenter: "us-east-2".into(),
+        manta_storage_id: "3.stor.us-east.joyent.com".into(),
+    };
+
     let put_object_payload = object::PutObjectPayload {
         owner: owner_id,
         bucket_id,
@@ -255,8 +264,8 @@ fn verify_rpc_handlers() {
         content_md5: "xzY5jJbR9rcrMRhlcmi/8g==".into(),
         content_type: "text/plain".into(),
         headers: HashMap::new(),
-        sharks: Vec::new(),
-        properties: None
+        sharks: vec![shark1, shark2],
+        properties: None,
     };
 
     let put_object_json = serde_json::to_value(put_object_payload).unwrap();
