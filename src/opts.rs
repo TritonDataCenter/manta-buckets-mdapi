@@ -4,14 +4,23 @@
 
 use clap::{App, Arg, ArgMatches, crate_version};
 
-pub fn parse<'a, 'b>(app: &str) -> ArgMatches<'a> {
+pub fn parse<'a>(app: &str) -> ArgMatches<'a> {
     App::new(app)
         .about("Tool to test different hierarchy options offered by PostgreSQL")
         .version(crate_version!())
-        .arg(Arg::with_name("pg_url")
-             .help("Postgres URL")
-             .short("u")
-             .long("pg-url")
+        .arg(Arg::with_name("pg ip")
+             .help("Postgres IP address")
+             .long("pg-ip")
+             .takes_value(true)
+             .required(false))
+        .arg(Arg::with_name("pg port")
+             .help("Postgres port")
+             .long("pg-port")
+             .takes_value(true)
+             .required(false))
+        .arg(Arg::with_name("pg database")
+             .help("Postgres database name")
+             .long("pg-db")
              .takes_value(true)
              .required(false))
         .arg(Arg::with_name("address")

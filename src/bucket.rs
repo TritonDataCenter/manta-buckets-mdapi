@@ -6,61 +6,106 @@ use std::io::Error as IOError;
 use std::io::ErrorKind as IOErrorKind;
 
 use chrono;
-use r2d2::Pool;
-use postgres::Result as PostgresResult;
-use postgres::rows::Rows;
-use r2d2_postgres::PostgresConnectionManager;
+use cueball::connection_pool::ConnectionPool;
+use cueball::backend::Backend;
+use cueball_static_resolver::StaticIpResolver;
+use cueball_postgres_connection::PostgresConnection;
+use rust_fast::protocol::{FastMessage, FastMessageData};
 use serde_derive::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use slog::{Logger, debug};
 use uuid::Uuid;
 
-use rust_fast::protocol::{FastMessage, FastMessageData};
+use crate::util::Rows;
 
 type Timestamptz = chrono::DateTime<chrono::Utc>;
 
 #[derive(Serialize, Deserialize)]
 pub struct GetBucketPayload {
-    owner     : Uuid,
-    name      : String,
-    vnode     : u64
+    pub owner     : Uuid,
+    pub name      : String,
+    pub vnode     : u64
 }
 
 type DeleteBucketPayload = GetBucketPayload;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct BucketResponse {
-    id      : Uuid,
-    owner   : Uuid,
-    name    : String ,
-    created : Timestamptz
+    pub id      : Uuid,
+    pub owner   : Uuid,
+    pub name    : String ,
+    pub created : Timestamptz
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct PutBucketPayload {
-    owner : Uuid,
-    name  : String,
-    vnode : u64
+    pub owner : Uuid,
+    pub name  : String,
+    pub vnode : u64
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct ListBucketsPayload {
-    owner    : Uuid,
-    vnode    : u64,
-    prefix   : String,
-    order_by : String,
-    limit    : u64,
-    offset   : u64
+    pub owner    : Uuid,
+    pub vnode    : u64,
+    pub prefix   : String,
+    pub order_by : String,
+    pub limit    : u64,
+    pub offset   : u64
+}
+
+#[derive(Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct BucketNotFoundError {
+    pub name    : String,
+    pub message : String
+}
+
+impl BucketNotFoundError {
+    pub fn new() -> Self {
+        BucketNotFoundError {
+            name: "BucketNotFoundError".into(),
+            message: "requested bucket not found".into()
+        }
+    }
+}
+
+#[derive(Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct BucketAlreadyExistsError {
+    pub name    : String,
+    pub message : String
+}
+
+impl BucketAlreadyExistsError {
+    pub fn new() -> Self {
+        BucketAlreadyExistsError {
+            name: "BucketAlreadyExistsError".into(),
+            message: "requested bucket already exists".into()
+        }
+    }
 }
 
 fn array_wrap(v: Value) -> Value {
     Value::Array(vec![v])
 }
 
+pub fn bucket_not_found() -> Value {
+    // The data for this JSON conversion is locally controlled
+    // so unwrapping the result is ok here.
+    serde_json::to_value(BucketNotFoundError::new())
+        .expect("failed to encode a BucketNotFoundError")
+}
+
+pub fn bucket_already_exists() -> Value {
+    // The data for this JSON conversion is locally controlled
+    // so unwrapping the result is ok here.
+    serde_json::to_value(BucketAlreadyExistsError::new())
+        .expect("failed to encode a BucketAlreadyExistsError")
+}
+
 pub fn get_handler(msg_id: u32,
-                   args: &Vec<Value>,
+                   args: &[Value],
                    mut response: Vec<FastMessage>,
-                   pool: &Pool<PostgresConnectionManager>,
+                   pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>,
                    log: &Logger) -> Result<Vec<FastMessage>, IOError> {
     debug!(log, "handling getbucket function request");
 
@@ -90,11 +135,8 @@ pub fn get_handler(msg_id: u32,
                     Ok(response)
                 },
                 None => {
-                    let value = json!({
-                        "name": "BucketNotFoundError",
-                        "message": "requested bucket not found"
-                    });
-                    let err_msg = FastMessage::error(msg_id, FastMessageData::new(method, value));
+
+                    let err_msg = FastMessage::error(msg_id, FastMessageData::new(method, bucket_not_found()));
                     response.push(err_msg);
                     Ok(response)
                 }
@@ -108,9 +150,9 @@ pub fn get_handler(msg_id: u32,
 }
 
 pub fn list_handler(msg_id: u32,
-                    args: &Vec<Value>,
+                    args: &[Value],
                     mut response: Vec<FastMessage>,
-                    pool: &Pool<PostgresConnectionManager>,
+                    pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>,
                     log: &Logger) -> Result<Vec<FastMessage>, IOError> {
     debug!(log, "handling listbuckets function request");
 
@@ -141,12 +183,13 @@ pub fn list_handler(msg_id: u32,
 
     // Make db request and form response
     // TODO: make this call safe
-    let conn = pool.get().unwrap();
-    let txn = conn.transaction().unwrap();
-    let list_sql = list_sql(&payload.vnode, &payload.limit,
-        &payload.offset, &payload.order_by);
+    let mut conn = pool.claim().unwrap();
 
-    for row in txn.query(&list_sql, &[&payload.owner, &prefix]).unwrap().iter() {
+    let mut txn = (*conn).transaction().unwrap();
+    let list_sql = list_sql(payload.vnode, payload.limit,
+        payload.offset, &payload.order_by);
+
+    for row in txn.query(list_sql.as_str(), &[&payload.owner, &prefix]).unwrap().iter() {
         let resp = BucketResponse {
             id: row.get(0),
             owner: row.get(1),
@@ -163,9 +206,9 @@ pub fn list_handler(msg_id: u32,
 }
 
 pub fn put_handler(msg_id: u32,
-                   args: &Vec<Value>,
+                   args: &[Value],
                    mut response: Vec<FastMessage>,
-                   pool: &Pool<PostgresConnectionManager>,
+                   pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>,
                    log: &Logger) -> Result<Vec<FastMessage>, IOError> {
     debug!(log, "handling putbucket function request");
 
@@ -195,11 +238,7 @@ pub fn put_handler(msg_id: u32,
                     Ok(response)
                 },
                 None => {
-                    let value = json!({
-                        "name": "BucketAlreadyExistsError",
-                        "message": "requested bucket already exists"
-                    });
-                    let err_msg = FastMessage::error(msg_id, FastMessageData::new(method, value));
+                    let err_msg = FastMessage::error(msg_id, FastMessageData::new(method, bucket_already_exists()));
                     response.push(err_msg);
                     Ok(response)
                 }
@@ -210,9 +249,9 @@ pub fn put_handler(msg_id: u32,
 }
 
 pub fn delete_handler(msg_id: u32,
-                      args: &Vec<Value>,
+                      args: &[Value],
                       mut response: Vec<FastMessage>,
-                      pool: &Pool<PostgresConnectionManager>,
+                      pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>,
                       log: &Logger) -> Result<Vec<FastMessage>, IOError> {
     debug!(log, "handling putbucket function request");
 
@@ -241,11 +280,7 @@ pub fn delete_handler(msg_id: u32,
                 let msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
                 Ok(msg)
             } else {
-                let value = json!({
-                    "name": "BucketNotFoundError",
-                    "message": "requested bucket not found"
-                });
-                let err_msg = FastMessage::error(msg_id, FastMessageData::new(method, value));
+                let err_msg = FastMessage::error(msg_id, FastMessageData::new(method, bucket_not_found()));
                 Ok(err_msg)
             }
         })
@@ -274,11 +309,12 @@ fn other_error(msg: &str) -> IOError {
 }
 
 
-fn response(rows: Rows) -> PostgresResult<Option<BucketResponse>> {
-    if rows.len() == 0 {
+fn response(rows: Rows) -> Result<Option<BucketResponse>, IOError> {
+    if rows.is_empty() {
         Ok(None)
     } else if rows.len() == 1 {
-        let row = rows.get(0);
+        let row = &rows[0];
+
         //TODO: Valdate # of cols
         let resp = BucketResponse {
             id             : row.get(0),
@@ -290,11 +326,11 @@ fn response(rows: Rows) -> PostgresResult<Option<BucketResponse>> {
     } else {
         let err = format!("Get query found {} results, but expected only 1.",
                           rows.len());
-        Err(IOError::new(IOErrorKind::Other, err).into())
+        Err(IOError::new(IOErrorKind::Other, err))
     }
 }
 
-fn get_sql(vnode: &u64) -> String {
+fn get_sql(vnode: u64) -> String {
     ["SELECT id, owner, name, created \
       FROM manta_bucket_",
      &vnode.to_string(),
@@ -302,7 +338,7 @@ fn get_sql(vnode: &u64) -> String {
        AND name = $2"].concat()
 }
 
-fn put_sql(vnode: &u64) -> String {
+fn put_sql(vnode: u64) -> String {
     ["INSERT INTO manta_bucket_",
      &vnode.to_string(),
      &".manta_bucket \
@@ -312,7 +348,7 @@ fn put_sql(vnode: &u64) -> String {
        RETURNING id, owner, name, created"].concat()
 }
 
-fn list_sql(vnode: &u64, limit: &u64, offset: &u64, order_by: &str) -> String {
+fn list_sql(vnode: u64, limit: u64, offset: u64, order_by: &str) -> String {
     format!("SELECT id, owner, name, created
         FROM manta_bucket_{}.manta_bucket
         WHERE owner = $1 AND name like $2
@@ -322,41 +358,46 @@ fn list_sql(vnode: &u64, limit: &u64, offset: &u64, order_by: &str) -> String {
         vnode, order_by, limit, offset)
 }
 
-fn get(payload: GetBucketPayload, pool: &Pool<PostgresConnectionManager>)
-           -> PostgresResult<Option<BucketResponse>>
+fn get(payload: GetBucketPayload,
+       pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>)
+       -> Result<Option<BucketResponse>, IOError>
 {
-    let conn = pool.get().unwrap();
-    let sql = get_sql(&payload.vnode);
-    conn.query(&sql, &[&payload.owner,
-                       &payload.name])
-        .and_then(|rows| response(rows))
-        .map_err(|e| e)
+    let mut conn = pool.claim().unwrap();
+    let sql = get_sql(payload.vnode);
+    (*conn).query(sql.as_str(), &[&payload.owner,
+                                  &payload.name])
+        .map_err(|e| {
+           let pg_err = format!("{}", e);
+            IOError::new(IOErrorKind::Other, pg_err)
+        })
+        .and_then(response)
 }
 
 
-fn put(payload: PutBucketPayload, pool: &Pool<PostgresConnectionManager>)
-           -> PostgresResult<Option<BucketResponse>>
+fn put(payload: PutBucketPayload,
+       pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>)
+       -> Result<Option<BucketResponse>, IOError>
 {
-    let conn = pool.get().unwrap();
-    let txn = conn.transaction().unwrap();
-    let put_sql = put_sql(&payload.vnode);
+    let mut conn = pool.claim().unwrap();
+    let mut txn = (*conn).transaction().unwrap();
+    let put_sql = put_sql(payload.vnode);
 
     let insert_result =
-        txn.query(&put_sql, &[&Uuid::new_v4(),
-                              &payload.owner,
-                              &payload.name])
-        .and_then(|rows| response(rows))
+        txn.query(put_sql.as_str(), &[&Uuid::new_v4(),
+                                      &payload.owner,
+                                      &payload.name])
         .map_err(|e| {
            let pg_err = format!("{}", e);
-            IOError::new(IOErrorKind::Other, pg_err).into()
-        });
+            IOError::new(IOErrorKind::Other, pg_err)
+        })
+        .and_then(response);
 
-    let _commit_result = txn.commit().unwrap();
+    txn.commit().unwrap();
 
     insert_result
 }
 
-fn insert_delete_table_sql(vnode: &u64) -> String {
+fn insert_delete_table_sql(vnode: u64) -> String {
     let vnode_str = vnode.to_string();
     ["INSERT INTO manta_bucket_",
      &vnode_str,
@@ -370,7 +411,7 @@ fn insert_delete_table_sql(vnode: &u64) -> String {
        AND name = $2"].concat()
 }
 
-fn delete_sql(vnode: &u64) -> String {
+fn delete_sql(vnode: u64) -> String {
     ["DELETE FROM manta_bucket_",
      &vnode.to_string(),
      &".manta_bucket \
@@ -378,26 +419,26 @@ fn delete_sql(vnode: &u64) -> String {
        AND name = $2"].concat()
 }
 
-fn delete(payload: DeleteBucketPayload, pool: &Pool<PostgresConnectionManager>)
-          -> PostgresResult<u64>
+fn delete(payload: DeleteBucketPayload,
+          pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>)
+          -> Result<u64, IOError>
 {
-    let conn = pool.get().unwrap();
-    let txn = conn.transaction().unwrap();
-    let move_sql = insert_delete_table_sql(&payload.vnode);
-    let delete_sql = delete_sql(&payload.vnode);
-    let result = txn.execute(&move_sql, &[&payload.owner,
-                                          &payload.name])
+    let mut conn = pool.claim().unwrap();
+    let mut txn = (*conn).transaction().unwrap();
+    let move_sql = insert_delete_table_sql(payload.vnode);
+    let delete_sql = delete_sql(payload.vnode);
+    txn.execute(move_sql.as_str(), &[&payload.owner,
+                                     &payload.name])
         .and_then(|_moved_rows| {
-            txn.execute(&delete_sql, &[&payload.owner,
-                                       &payload.name])
+            txn.execute(delete_sql.as_str(), &[&payload.owner,
+                                               &payload.name])
         })
         .and_then(|row_count| {
-            let _commit_result = txn.commit().unwrap();
+            txn.commit().unwrap();
             Ok(row_count)
         })
         .map_err(|e| {
             let pg_err = format!("{}", e);
-            IOError::new(IOErrorKind::Other, pg_err).into()
-        });
-    result
+            IOError::new(IOErrorKind::Other, pg_err)
+        })
 }

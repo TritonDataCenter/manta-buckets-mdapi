@@ -2,61 +2,30 @@
  * Copyright 2019 Joyent, Inc.
  */
 
-mod bucket;
-mod metrics;
-mod object;
-mod opts;
-
-use std::io::{Error, ErrorKind};
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Mutex;
 use std::thread;
 
 use clap::{crate_version, crate_name, value_t};
-use r2d2::Pool;
-use r2d2_postgres::{TlsMode, PostgresConnectionManager};
-use serde_json::Value;
+use cueball::connection_pool::ConnectionPool;
+use cueball::connection_pool::types::ConnectionPoolOptions;
+use cueball_static_resolver::StaticIpResolver;
+use cueball_postgres_connection::{PostgresConnection, PostgresConnectionConfig};
 use slog::{Drain, Level, LevelFilter, Logger, o};
 use tokio::net::TcpListener;
 use tokio::prelude::*;
-use rust_fast::protocol::FastMessage;
 use rust_fast::server;
-use slog::{error, info, trace};
-
-fn other_error(msg: &str) -> Error {
-    Error::new(ErrorKind::Other, String::from(msg))
-}
-
-fn msg_handler(msg: &FastMessage,
-               pool: &Pool<PostgresConnectionManager>,
-               log: &Logger) -> Result<Vec<FastMessage>, Error> {
-    let response: Vec<FastMessage> = vec![];
-
-    metrics::INCOMING_REQUEST_COUNTER.inc();
-
-    match msg.data.d {
-        Value::Array(ref args) => {
-            match msg.data.m.name.as_str() {
-                "getobject"    => object::get_handler(msg.id, &args, response, &pool, &log),
-                "putobject"    => object::put_handler(msg.id, &args, response, &pool, &log),
-                "deleteobject" => object::delete_handler(msg.id, &args, response, &pool, &log),
-                "listobjects"  => object::list_handler(msg.id, &args, response, &pool, &log),
-                "getbucket"    => bucket::get_handler(msg.id, &args, response, &pool, &log),
-                "putbucket"    => bucket::put_handler(msg.id, &args, response, &pool, &log),
-                "deletebucket" => bucket::delete_handler(msg.id, &args, response, &pool, &log),
-                "listbuckets"  => bucket::list_handler(msg.id, &args, response, &pool, &log),
-                _ => Err(Error::new(ErrorKind::Other, format!("Unsupported functon: {}", msg.data.m.name)))
-            }
-        }
-        _ => Err(other_error("Expected JSON array"))
-    }
-}
+use slog::{error, info};
 
 fn main() {
-    let matches = opts::parse(crate_name!());
+    let matches = boray::opts::parse(crate_name!());
 
-    let pg_url = matches.value_of("pg_url")
-        .unwrap_or("postgresql://postgres@localhost:5432/test");
+    let pg_ip = value_t!(matches, "pg ip", IpAddr)
+        .unwrap_or_else(|_| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+    let pg_port = value_t!(matches, "pg port", u16)
+        .unwrap_or(5432);
+    let pg_db = matches.value_of("pg database")
+        .unwrap_or("moray");
     let listen_address = matches.value_of("address")
         .unwrap_or("127.0.0.1");
     let listen_port = value_t!(matches, "port", u32)
@@ -89,15 +58,39 @@ fn main() {
     // Configure and start metrics server
     let metrics_log = root_log.clone();
     let metrics_address = metrics_address_str.to_owned();
-    thread::spawn(move || metrics::start_server(metrics_address,
-                                                metrics_port,
-                                                metrics_log));
+    thread::spawn(move || boray::metrics::start_server(metrics_address,
+                                                       metrics_port,
+                                                       metrics_log));
 
-    trace!(root_log, "postgres connection pool url: {}", pg_url);
     info!(root_log, "establishing postgres connection pool");
-    let manager = PostgresConnectionManager::new(pg_url, TlsMode::None)
-        .expect("Failed to create pg connection manager");
-    let pool = Pool::new(manager).expect("Failed to create pg connection pool");
+    let user = "postgres";
+    let application_name = "boray";
+    let pg_config = PostgresConnectionConfig {
+        user: Some(user.into()),
+        password: None,
+        host: None,
+        port: None,
+        database: Some(pg_db.into()),
+        application_name: Some(application_name.into())
+    };
+
+    let connection_creator = PostgresConnection::connection_creator(pg_config);
+    let pool_opts = ConnectionPoolOptions {
+        maximum: 5,
+        claim_timeout: None,
+        log: root_log.clone(),
+        rebalancer_action_delay: None
+    };
+
+    let primary_backend = (pg_ip, pg_port);
+    let resolver = StaticIpResolver::new(vec![primary_backend]);
+
+    let pool = ConnectionPool::new(
+        pool_opts,
+        resolver,
+        connection_creator
+    );
+
     info!(root_log, "established postgres connection pool");
 
     let addr = [listen_address, &":", &listen_port.to_string()].concat();
@@ -118,7 +111,7 @@ fn main() {
                     let pool_clone = pool.clone();
                     let task = server::make_task(
                         socket,
-                        move |a, c| msg_handler(a, &pool_clone, c),
+                        move |a, c| boray::util::msg_handler(a, &pool_clone, c),
                         &process_log,
                     );
                     tokio::spawn(task);
