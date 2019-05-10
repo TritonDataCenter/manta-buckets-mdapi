@@ -126,25 +126,25 @@ fn verify_rpc_handlers() {
 
 
     // Create a bucket
-    let put_bucket_payload = bucket::PutBucketPayload {
+    let create_bucket_payload = bucket::CreateBucketPayload {
         owner: owner_id,
         name: bucket.clone(),
         vnode: 0
     };
 
-    let put_bucket_json = serde_json::to_value(put_bucket_payload).unwrap();
-    let put_bucket_args = vec![put_bucket_json];
-    let mut put_bucket_result =
-        bucket::put_handler(msg_id, &put_bucket_args, vec![], &pool, &log);
+    let create_bucket_json = serde_json::to_value(create_bucket_payload).unwrap();
+    let create_bucket_args = vec![create_bucket_json];
+    let mut create_bucket_result =
+        bucket::create_handler(msg_id, &create_bucket_args, vec![], &pool, &log);
 
-    assert!(put_bucket_result.is_ok());
-    let put_bucket_response = put_bucket_result.unwrap();
-    assert_eq!(put_bucket_response.len(), 1);
+    assert!(create_bucket_result.is_ok());
+    let create_bucket_response = create_bucket_result.unwrap();
+    assert_eq!(create_bucket_response.len(), 1);
 
-    let put_bucket_response_result: Result<bucket::BucketResponse, _> =
-        serde_json::from_value(put_bucket_response[0].data.d[0].clone());
-    assert!(put_bucket_response_result.is_ok());
-    assert_eq!(put_bucket_response_result.unwrap().name, bucket);
+    let create_bucket_response_result: Result<bucket::BucketResponse, _> =
+        serde_json::from_value(create_bucket_response[0].data.d[0].clone());
+    assert!(create_bucket_response_result.is_ok());
+    assert_eq!(create_bucket_response_result.unwrap().name, bucket);
 
 
     // Read bucket again and make sure the resonse is returned successfully
@@ -163,17 +163,17 @@ fn verify_rpc_handlers() {
 
     // Try to create same bucket again and verify a BucketAlreadyExists error is
     // returned
-    put_bucket_result =
-        bucket::put_handler(msg_id, &put_bucket_args, vec![], &pool, &log);
+    create_bucket_result =
+        bucket::create_handler(msg_id, &create_bucket_args, vec![], &pool, &log);
 
-    assert!(put_bucket_result.is_ok());
-    let put_bucket_response = put_bucket_result.unwrap();
-    assert_eq!(put_bucket_response.len(), 1);
+    assert!(create_bucket_result.is_ok());
+    let create_bucket_response = create_bucket_result.unwrap();
+    assert_eq!(create_bucket_response.len(), 1);
 
-    let put_bucket_response_result: Result<bucket::BucketAlreadyExistsError, _> =
-        serde_json::from_value(put_bucket_response[0].data.d.clone());
-    assert!(put_bucket_response_result.is_ok());
-    assert_eq!(put_bucket_response_result.unwrap(),
+    let create_bucket_response_result: Result<bucket::BucketAlreadyExistsError, _> =
+        serde_json::from_value(create_bucket_response[0].data.d.clone());
+    assert!(create_bucket_response_result.is_ok());
+    assert_eq!(create_bucket_response_result.unwrap(),
                bucket::BucketAlreadyExistsError::new());
 
     // Delete bucket
@@ -255,7 +255,7 @@ fn verify_rpc_handlers() {
         manta_storage_id: "3.stor.us-east.joyent.com".into(),
     };
 
-    let put_object_payload = object::PutObjectPayload {
+    let create_object_payload = object::CreateObjectPayload {
         owner: owner_id,
         bucket_id,
         name: object.clone(),
@@ -268,19 +268,19 @@ fn verify_rpc_handlers() {
         properties: None,
     };
 
-    let put_object_json = serde_json::to_value(put_object_payload).unwrap();
-    let put_object_args = vec![put_object_json];
-    let mut put_object_result =
-        object::put_handler(msg_id, &put_object_args, vec![], &pool, &log);
+    let create_object_json = serde_json::to_value(create_object_payload).unwrap();
+    let create_object_args = vec![create_object_json];
+    let mut create_object_result =
+        object::create_handler(msg_id, &create_object_args, vec![], &pool, &log);
 
-    assert!(put_object_result.is_ok());
-    let put_object_response = put_object_result.unwrap();
-    assert_eq!(put_object_response.len(), 1);
+    assert!(create_object_result.is_ok());
+    let create_object_response = create_object_result.unwrap();
+    assert_eq!(create_object_response.len(), 1);
 
-    let put_object_response_result: Result<object::ObjectResponse, _> =
-        serde_json::from_value(put_object_response[0].data.d[0].clone());
-    assert!(put_object_response_result.is_ok());
-    assert_eq!(put_object_response_result.unwrap().name, object);
+    let create_object_response_result: Result<object::ObjectResponse, _> =
+        serde_json::from_value(create_object_response[0].data.d[0].clone());
+    assert!(create_object_response_result.is_ok());
+    assert_eq!(create_object_response_result.unwrap().name, object);
 
 
     // Read object again and verify a successful response is returned
@@ -361,17 +361,17 @@ fn verify_rpc_handlers() {
     assert_eq!(list_buckets_response.len(), 0);
 
     // Create a bucket and list buckets again
-    put_bucket_result =
-        bucket::put_handler(msg_id, &put_bucket_args, vec![], &pool, &log);
+    create_bucket_result =
+        bucket::create_handler(msg_id, &create_bucket_args, vec![], &pool, &log);
 
-    assert!(put_bucket_result.is_ok());
-    let put_bucket_response = put_bucket_result.unwrap();
-    assert_eq!(put_bucket_response.len(), 1);
+    assert!(create_bucket_result.is_ok());
+    let create_bucket_response = create_bucket_result.unwrap();
+    assert_eq!(create_bucket_response.len(), 1);
 
-    let put_bucket_response_result: Result<bucket::BucketResponse, _> =
-        serde_json::from_value(put_bucket_response[0].data.d[0].clone());
-    assert!(put_bucket_response_result.is_ok());
-    assert_eq!(put_bucket_response_result.unwrap().name, bucket);
+    let create_bucket_response_result: Result<bucket::BucketResponse, _> =
+        serde_json::from_value(create_bucket_response[0].data.d[0].clone());
+    assert!(create_bucket_response_result.is_ok());
+    assert_eq!(create_bucket_response_result.unwrap().name, bucket);
 
     list_buckets_result =
         bucket::list_handler(msg_id, &list_buckets_args, vec![], &pool, &log);
@@ -403,17 +403,17 @@ fn verify_rpc_handlers() {
     assert_eq!(list_objects_response.len(), 0);
 
     // Create an object and list objects again
-    put_object_result =
-        object::put_handler(msg_id, &put_object_args, vec![], &pool, &log);
+    create_object_result =
+        object::create_handler(msg_id, &create_object_args, vec![], &pool, &log);
 
-    assert!(put_object_result.is_ok());
-    let put_object_response = put_object_result.unwrap();
-    assert_eq!(put_object_response.len(), 1);
+    assert!(create_object_result.is_ok());
+    let create_object_response = create_object_result.unwrap();
+    assert_eq!(create_object_response.len(), 1);
 
-    let put_object_response_result: Result<object::ObjectResponse, _> =
-        serde_json::from_value(put_object_response[0].data.d[0].clone());
-    assert!(put_object_response_result.is_ok());
-    assert_eq!(put_object_response_result.unwrap().name, object);
+    let create_object_response_result: Result<object::ObjectResponse, _> =
+        serde_json::from_value(create_object_response[0].data.d[0].clone());
+    assert!(create_object_response_result.is_ok());
+    assert_eq!(create_object_response_result.unwrap().name, object);
 
     list_objects_result =
         object::list_handler(msg_id, &list_objects_args, vec![], &pool, &log);

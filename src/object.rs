@@ -113,7 +113,7 @@ pub struct ObjectResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct PutObjectPayload {
+pub struct CreateObjectPayload {
     pub owner          : Uuid,
     pub bucket_id      : Uuid,
     pub name           : String,
@@ -269,7 +269,7 @@ pub fn list_handler(msg_id: u32,
     Ok(response)
 }
 
-pub fn put_handler(msg_id: u32,
+pub fn create_handler(msg_id: u32,
                    args: &[Value],
                    mut response: Vec<FastMessage>,
                    pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>,
@@ -282,7 +282,7 @@ pub fn put_handler(msg_id: u32,
     };
 
     let data_clone = arg0.clone();
-    let payload_result: Result<PutObjectPayload, _> =
+    let payload_result: Result<CreateObjectPayload, _> =
         serde_json::from_value(data_clone);
 
     let payload = match payload_result {
@@ -434,20 +434,20 @@ fn list_sql(vnode: u64, limit: u64, offset: u64, order_by: &str) -> String {
         vnode, order_by, limit, offset)
 }
 
-fn put(payload: PutObjectPayload,
+fn put(payload: CreateObjectPayload,
        pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>)
        -> Result<Option<ObjectResponse>, IOError>
 {
     let mut conn = pool.claim().unwrap();
     let mut txn = (*conn).transaction().unwrap();
-    let put_sql = put_sql(payload.vnode);
+    let create_sql = create_sql(payload.vnode);
     let move_sql = insert_delete_table_sql(payload.vnode);
     let content_md5_bytes = base64::decode(&payload.content_md5).unwrap();
     txn.execute(move_sql.as_str(), &[&payload.owner,
                                      &payload.bucket_id,
                                      &payload.name])
         .and_then(|_moved_rows| {
-            txn.query(put_sql.as_str(), &[&Uuid::new_v4(),
+            txn.query(create_sql.as_str(), &[&Uuid::new_v4(),
                                           &payload.owner,
                                           &payload.bucket_id,
                                           &payload.name,
@@ -488,7 +488,7 @@ fn insert_delete_table_sql(vnode: u64) -> String {
        AND name = $3"].concat()
 }
 
-fn put_sql(vnode: u64) -> String {
+fn create_sql(vnode: u64) -> String {
     ["INSERT INTO manta_bucket_",
      &vnode.to_string(),
      &".manta_bucket_object ( \

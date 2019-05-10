@@ -38,7 +38,7 @@ pub struct BucketResponse {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct PutBucketPayload {
+pub struct CreateBucketPayload {
     pub owner : Uuid,
     pub name  : String,
     pub vnode : u64
@@ -205,12 +205,12 @@ pub fn list_handler(msg_id: u32,
     Ok(response)
 }
 
-pub fn put_handler(msg_id: u32,
+pub fn create_handler(msg_id: u32,
                    args: &[Value],
                    mut response: Vec<FastMessage>,
                    pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>,
                    log: &Logger) -> Result<Vec<FastMessage>, IOError> {
-    debug!(log, "handling putbucket function request");
+    debug!(log, "handling createbucket function request");
 
     let arg0 = match &args[0] {
         Value::Object(_) => &args[0],
@@ -218,18 +218,18 @@ pub fn put_handler(msg_id: u32,
     };
 
     let data_clone = arg0.clone();
-    let payload_result: Result<PutBucketPayload, _> =
+    let payload_result: Result<CreateBucketPayload, _> =
         serde_json::from_value(data_clone);
 
     let payload = match payload_result {
         Ok(o) => o,
-        Err(_) => return Err(other_error("Failed to parse JSON data as payload for putbucket function"))
+        Err(_) => return Err(other_error("Failed to parse JSON data as payload for createbucket function"))
     };
 
     // Make db request and form response
-    put(payload, pool)
+    create(payload, pool)
         .and_then(|maybe_resp| {
-            let method = String::from("putbucket");
+            let method = String::from("createbucket");
             match maybe_resp {
                 Some(resp) => {
                     let value = array_wrap(serde_json::to_value(resp).unwrap());
@@ -253,7 +253,7 @@ pub fn delete_handler(msg_id: u32,
                       mut response: Vec<FastMessage>,
                       pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>,
                       log: &Logger) -> Result<Vec<FastMessage>, IOError> {
-    debug!(log, "handling putbucket function request");
+    debug!(log, "handling deletebucket function request");
 
     let arg0 = match &args[0] {
         Value::Object(_) => &args[0],
@@ -338,7 +338,7 @@ fn get_sql(vnode: u64) -> String {
        AND name = $2"].concat()
 }
 
-fn put_sql(vnode: u64) -> String {
+fn create_sql(vnode: u64) -> String {
     ["INSERT INTO manta_bucket_",
      &vnode.to_string(),
      &".manta_bucket \
@@ -374,16 +374,16 @@ fn get(payload: GetBucketPayload,
 }
 
 
-fn put(payload: PutBucketPayload,
+fn create(payload: CreateBucketPayload,
        pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>)
        -> Result<Option<BucketResponse>, IOError>
 {
     let mut conn = pool.claim().unwrap();
     let mut txn = (*conn).transaction().unwrap();
-    let put_sql = put_sql(payload.vnode);
+    let create_sql = create_sql(payload.vnode);
 
     let insert_result =
-        txn.query(put_sql.as_str(), &[&Uuid::new_v4(),
+        txn.query(create_sql.as_str(), &[&Uuid::new_v4(),
                                       &payload.owner,
                                       &payload.name])
         .map_err(|e| {

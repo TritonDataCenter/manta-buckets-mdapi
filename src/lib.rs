@@ -43,11 +43,11 @@ pub mod util {
             Value::Array(ref args) => {
                 match msg.data.m.name.as_str() {
                     "getobject"    => object::get_handler(msg.id, &args, response, &pool, &log),
-                    "putobject"    => object::put_handler(msg.id, &args, response, &pool, &log),
+                    "createobject" => object::create_handler(msg.id, &args, response, &pool, &log),
                     "deleteobject" => object::delete_handler(msg.id, &args, response, &pool, &log),
                     "listobjects"  => object::list_handler(msg.id, &args, response, &pool, &log),
                     "getbucket"    => bucket::get_handler(msg.id, &args, response, &pool, &log),
-                    "putbucket"    => bucket::put_handler(msg.id, &args, response, &pool, &log),
+                    "createbucket" => bucket::create_handler(msg.id, &args, response, &pool, &log),
                     "deletebucket" => bucket::delete_handler(msg.id, &args, response, &pool, &log),
                     "listbuckets"  => bucket::list_handler(msg.id, &args, response, &pool, &log),
                     _ => Err(Error::new(ErrorKind::Other, format!("Unsupported functon: {}", msg.data.m.name)))
