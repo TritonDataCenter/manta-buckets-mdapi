@@ -68,8 +68,8 @@ fn main() {
     let pg_config = PostgresConnectionConfig {
         user: Some(user.into()),
         password: None,
-        host: None,
-        port: None,
+        host: Some(pg_ip.to_string()),
+        port: Some(pg_port.into()),
         database: Some(pg_db.into()),
         application_name: Some(application_name.into())
     };
