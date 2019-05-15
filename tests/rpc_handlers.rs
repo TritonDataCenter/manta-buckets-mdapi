@@ -246,6 +246,7 @@ fn verify_rpc_handlers() {
 
 
     // Create an object
+    let object_id = Uuid::new_v4();
     let shark1 = object::StorageNodeIdentifier {
         datacenter: "us-east-1".into(),
         manta_storage_id: "1.stor.us-east.joyent.com".into(),
@@ -259,6 +260,7 @@ fn verify_rpc_handlers() {
         owner: owner_id,
         bucket_id,
         name: object.clone(),
+        id: object_id,
         vnode: 1,
         content_length: 5,
         content_md5: "xzY5jJbR9rcrMRhlcmi/8g==".into(),

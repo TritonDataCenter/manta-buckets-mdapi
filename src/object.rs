@@ -117,6 +117,7 @@ pub struct CreateObjectPayload {
     pub owner          : Uuid,
     pub bucket_id      : Uuid,
     pub name           : String,
+    pub id             : Uuid,
     pub vnode          : u64,
     pub content_length : i64,
     pub content_md5    : String,
@@ -274,7 +275,7 @@ pub fn create_handler(msg_id: u32,
                    mut response: Vec<FastMessage>,
                    pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>,
                    log: &Logger) -> Result<Vec<FastMessage>, IOError> {
-    debug!(log, "handling putobject function request");
+    debug!(log, "handling createobject function request");
 
     let arg0 = match &args[0] {
         Value::Object(_) => &args[0],
@@ -287,13 +288,13 @@ pub fn create_handler(msg_id: u32,
 
     let payload = match payload_result {
         Ok(o) => o,
-        Err(_) => return Err(other_error("Failed to parse JSON data as payload for putobject function"))
+        Err(_) => return Err(other_error("Failed to parse JSON data as payload for createobject function"))
     };
 
     // Make db request and form response
-    put(payload, pool)
+    create(payload, pool)
         .and_then(|resp| {
-            let method = String::from("putobject");
+            let method = String::from("createobject");
             let value = array_wrap(serde_json::to_value(resp).unwrap());
             let msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
             response.push(msg);
@@ -434,7 +435,7 @@ fn list_sql(vnode: u64, limit: u64, offset: u64, order_by: &str) -> String {
         vnode, order_by, limit, offset)
 }
 
-fn put(payload: CreateObjectPayload,
+fn create(payload: CreateObjectPayload,
        pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>)
        -> Result<Option<ObjectResponse>, IOError>
 {
@@ -447,16 +448,16 @@ fn put(payload: CreateObjectPayload,
                                      &payload.bucket_id,
                                      &payload.name])
         .and_then(|_moved_rows| {
-            txn.query(create_sql.as_str(), &[&Uuid::new_v4(),
-                                          &payload.owner,
-                                          &payload.bucket_id,
-                                          &payload.name,
-                                          &payload.content_length,
-                                          &content_md5_bytes,
-                                          &payload.content_type,
-                                          &payload.headers,
-                                          &payload.sharks,
-                                          &payload.properties])
+            txn.query(create_sql.as_str(), &[&payload.id,
+                                             &payload.owner,
+                                             &payload.bucket_id,
+                                             &payload.name,
+                                             &payload.content_length,
+                                             &content_md5_bytes,
+                                             &payload.content_type,
+                                             &payload.headers,
+                                             &payload.sharks,
+                                             &payload.properties])
         })
         .map_err(|e| {
             let pg_err = format!("{}", e);
