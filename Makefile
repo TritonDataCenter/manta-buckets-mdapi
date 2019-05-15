@@ -4,6 +4,8 @@
 
 NAME = manta-boray
 
+RUST_CODE = 1
+
 SMF_MANIFESTS_IN = smf/manifests/boray.xml.in
 
 ENGBLD_USE_BUILDIMAGE =	true
@@ -22,9 +24,6 @@ include ./deps/eng/tools/mk/Makefile.smf.defs
 
 # TODO: Use this to download or verify install of expected rust version
 RUST_PREBUILT_VERSION =		1.33.0
-
-# TODO: Generalize this to the eng repo
-CARGO = $(shell which cargo)
 
 RELEASE_TARBALL :=	$(NAME)-pkg-$(STAMP).tar.gz
 ROOT :=			$(shell pwd)
@@ -81,11 +80,6 @@ publish: release
 .PHONY: build-boray
 build-boray:
 	$(CARGO) build --release
-
-.PHONY: rust-check
-rust-check:
-	cargo check
-
 
 include ./deps/eng/tools/mk/Makefile.deps
 include ./deps/eng/tools/mk/Makefile.agent_prebuilt.targ
