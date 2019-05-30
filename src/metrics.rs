@@ -29,8 +29,8 @@ lazy_static! {
     )).unwrap();
 }
 
-pub fn start_server(address: String, port: u32, log: Logger) {
-    let addr = [address, String::from(":"), port.to_string()]
+pub fn start_server(address: String, port: u16, log: Logger) {
+    let addr = [&address, ":", &port.to_string()]
         .concat()
         .parse::<SocketAddr>()
         .unwrap();

@@ -2,8 +2,11 @@
  * Copyright 2019 Joyent, Inc.
  */
 
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+pub mod config;
+
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Mutex;
+use std::fs;
 use std::thread;
 
 use clap::{crate_version, crate_name, value_t};
@@ -11,36 +14,91 @@ use cueball::connection_pool::ConnectionPool;
 use cueball::connection_pool::types::ConnectionPoolOptions;
 use cueball_static_resolver::StaticIpResolver;
 use cueball_postgres_connection::{PostgresConnection, PostgresConnectionConfig};
-use slog::{Drain, Level, LevelFilter, Logger, o};
+use slog::{Drain, LevelFilter, Logger, o};
 use tokio::net::TcpListener;
 use tokio::prelude::*;
 use rust_fast::server;
 use slog::{error, info};
 
+use config::Config;
+
 fn main() {
     let matches = boray::opts::parse(crate_name!());
 
-    let pg_ip = value_t!(matches, "pg ip", IpAddr)
-        .unwrap_or_else(|_| IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
-    let pg_port = value_t!(matches, "pg port", u16)
-        .unwrap_or(5432);
-    let pg_db = matches.value_of("pg database")
-        .unwrap_or("moray");
-    let listen_address = matches.value_of("address")
-        .unwrap_or("127.0.0.1");
-    let listen_port = value_t!(matches, "port", u32)
-        .unwrap_or(2030);
-    let metrics_address_str = matches.value_of("metrics-address")
-        .unwrap_or("0.0.0.0");
-    let metrics_port = value_t!(matches, "metrics-port", u32)
-        .unwrap_or(3020);
+    /*
+     * Default configuration parameters are set here.  These can first be overridden by a config
+     * file specified with `-c <config>`, and then overridden again by specific command line
+     * arguments.
+     */
+    let mut level: String = "info".to_owned();
+    let mut host: String = "127.0.0.1".to_owned();
+    let mut port: u16 = 2030;
+    let mut pg_host: String = "127.0.0.1".to_owned();
+    let mut pg_port: u16 = 5432;
+    let mut pg_db: String = "moray".to_owned();
+    let mut metrics_host: String = "0.0.0.0".to_owned();
+    let mut metrics_port: u16 = 3020;
 
-    let level = matches.value_of("level").unwrap_or("info");
+    // Optionally read config file
+    match matches.value_of("config") {
+        Some(f) => {
+            let s = match fs::read(f) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("Failed to read config file: {}", e);
+                    std::process::exit(1);
+                }
+            };
 
-    let filter_level = match level.parse::<Level>() {
+            let config: Config = match toml::from_slice(&s) {
+                Ok(config) => config,
+                Err(e) => {
+                    eprintln!("Failed to parse config file: {}", e);
+                    std::process::exit(1);
+                }
+            };
+
+            level = config.log.level;
+
+            host = config.server.host;
+            port = config.server.port;
+
+            pg_host = config.database.host;
+            pg_port = config.database.port;
+            pg_db = config.database.db;
+
+            metrics_host = config.metrics.host;
+            metrics_port = config.metrics.port;
+        },
+        None => {}
+    }
+
+    // Read CLI arguments
+    level = matches.value_of("level").map_or(level, std::borrow::ToOwned::to_owned);
+
+    host = matches.value_of("address").map_or(host, std::borrow::ToOwned::to_owned);
+    port = value_t!(matches, "port", u16).unwrap_or(port);
+
+    pg_host = matches.value_of("pg ip").map_or(pg_host, std::borrow::ToOwned::to_owned);
+    pg_port = value_t!(matches, "pg port", u16).unwrap_or(pg_port);
+    pg_db = matches.value_of("pg database").map_or(pg_db, std::borrow::ToOwned::to_owned);
+
+    metrics_host = matches.value_of("metrics-address").map_or(metrics_host, std::borrow::ToOwned::to_owned);
+    metrics_port = value_t!(matches, "metrics-port", u16).unwrap_or(metrics_port);
+
+    // XXX postgres host must be an IP address currently
+    let pg_ip: IpAddr = match pg_host.parse() {
+        Ok(pg_ip) => pg_ip,
+        Err(e) => {
+            eprintln!("postgres host MUST be an IPv4 address: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    let filter_level = match level.parse() {
         Ok(filter_level) => filter_level,
         Err(_) => {
-            println!("invalid log level: {}", level);
+            eprintln!("invalid log level: {}", level);
             std::process::exit(1);
         }
     };
@@ -57,8 +115,7 @@ fn main() {
 
     // Configure and start metrics server
     let metrics_log = root_log.clone();
-    let metrics_address = metrics_address_str.to_owned();
-    thread::spawn(move || boray::metrics::start_server(metrics_address,
+    thread::spawn(move || boray::metrics::start_server(metrics_host,
                                                        metrics_port,
                                                        metrics_log));
 
@@ -93,7 +150,7 @@ fn main() {
 
     info!(root_log, "established postgres connection pool");
 
-    let addr = [listen_address, &":", &listen_port.to_string()].concat();
+    let addr = [&host, ":", &port.to_string()].concat();
     let addr = addr.parse::<SocketAddr>().unwrap();
 
     let listener = TcpListener::bind(&addr).expect("failed to bind");

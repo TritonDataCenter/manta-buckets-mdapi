@@ -25,6 +25,7 @@ slog = { version = "2.4.1", features = [ "max_level_trace" ] }
 slog-bunyan = { git = "https://github.com/kellymclaughlin/bunyan", branch = "build-on-smartos" }
 tokio = "0.1.14"
 tokio-postgres = "0.4.0-rc.2"
+toml = "0.5"
 uuid = { version = "0.7", features = ["serde", "v4"] }
 
 [patch.crates-io]

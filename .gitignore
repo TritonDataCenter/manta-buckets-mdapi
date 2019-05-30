@@ -17,3 +17,4 @@ cover_html
 smf/manifests/*.xml
 sapi_manifests/registrar/template
 sdc/sapi_manifests/registrar/template
+config.toml
