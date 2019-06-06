@@ -24,6 +24,7 @@ use cueball_postgres_connection::PostgresConnection;
 use rust_fast::protocol::{FastMessage, FastMessageData};
 
 use crate::util::Rows;
+use crate::sql;
 
 type Hstore = HashMap<String, Option<String>>;
 type Timestamptz = chrono::DateTime<chrono::Utc>;
@@ -157,7 +158,7 @@ fn object_not_found() -> Value {
     // The data for this JSON conversion is locally controlled
     // so unwrapping the result is ok here.
     serde_json::to_value(ObjectNotFoundError::new())
-        .expect("failed to encode a BucketNotFound Error")
+        .expect("failed to encode an ObjectNotFound Error")
 }
 
 pub fn get_handler(msg_id: u32,
@@ -244,7 +245,11 @@ pub fn list_handler(msg_id: u32,
     let list_sql = list_sql(payload.vnode, payload.limit, payload.offset,
         &payload.order_by);
 
-    for row in txn.query(list_sql.as_str(), &[&payload.owner, &payload.bucket_id, &prefix]).unwrap().iter() {
+    for row in sql::txn_query(sql::Method::ObjectList, &mut txn, list_sql.as_str(),
+                              &[&payload.owner,
+                              &payload.bucket_id,
+                              &prefix]).unwrap().iter() {
+
         let content_md5_bytes: Vec<u8> = row.get(7);
         let content_md5 = base64::encode(&content_md5_bytes);
         let resp = ObjectResponse {
@@ -373,9 +378,11 @@ fn get(payload: GetObjectPayload,
 {
     let mut conn = pool.claim().unwrap();
     let sql = get_sql(payload.vnode);
-    (*conn).query(sql.as_str(), &[&payload.owner,
-                                  &payload.bucket_id,
-                                  &payload.name])
+
+    sql::query(sql::Method::ObjectGet, &mut conn, sql.as_str(),
+               &[&payload.owner,
+               &payload.bucket_id,
+               &payload.name])
         .map_err(|e| {
             let pg_err = format!("{}", e);
             IOError::new(IOErrorKind::Other, pg_err)
@@ -444,20 +451,23 @@ fn create(payload: CreateObjectPayload,
     let create_sql = create_sql(payload.vnode);
     let move_sql = insert_delete_table_sql(payload.vnode);
     let content_md5_bytes = base64::decode(&payload.content_md5).unwrap();
-    txn.execute(move_sql.as_str(), &[&payload.owner,
-                                     &payload.bucket_id,
-                                     &payload.name])
+
+    sql::txn_execute(sql::Method::ObjectCreateMove, &mut txn, move_sql.as_str(),
+                     &[&payload.owner,
+                     &payload.bucket_id,
+                     &payload.name])
         .and_then(|_moved_rows| {
-            txn.query(create_sql.as_str(), &[&payload.id,
-                                             &payload.owner,
-                                             &payload.bucket_id,
-                                             &payload.name,
-                                             &payload.content_length,
-                                             &content_md5_bytes,
-                                             &payload.content_type,
-                                             &payload.headers,
-                                             &payload.sharks,
-                                             &payload.properties])
+            sql::txn_query(sql::Method::ObjectCreate, &mut txn, create_sql.as_str(),
+                           &[&payload.id,
+                           &payload.owner,
+                           &payload.bucket_id,
+                           &payload.name,
+                           &payload.content_length,
+                           &content_md5_bytes,
+                           &payload.content_type,
+                           &payload.headers,
+                           &payload.sharks,
+                           &payload.properties])
         })
         .map_err(|e| {
             let pg_err = format!("{}", e);
@@ -528,13 +538,16 @@ fn delete(payload: DeleteObjectPayload,
     let mut txn = (*conn).transaction().unwrap();
     let move_sql = insert_delete_table_sql(payload.vnode);
     let delete_sql = delete_sql(payload.vnode);
-    txn.execute(move_sql.as_str(), &[&payload.owner,
-                                     &payload.bucket_id,
-                                     &payload.name])
+
+    sql::txn_execute(sql::Method::ObjectDeleteMove, &mut txn, move_sql.as_str(),
+                     &[&payload.owner,
+                     &payload.bucket_id,
+                     &payload.name])
         .and_then(|_moved_rows| {
-            txn.execute(delete_sql.as_str(), &[&payload.owner,
-                                               &payload.bucket_id,
-                                               &payload.name])
+            sql::txn_execute(sql::Method::ObjectDelete, &mut txn, delete_sql.as_str(),
+                             &[&payload.owner,
+                             &payload.bucket_id,
+                             &payload.name])
         })
         .and_then(|row_count| {
             txn.commit().unwrap();

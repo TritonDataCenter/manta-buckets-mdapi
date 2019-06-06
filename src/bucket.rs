@@ -17,6 +17,7 @@ use slog::{Logger, debug};
 use uuid::Uuid;
 
 use crate::util::Rows;
+use crate::sql;
 
 type Timestamptz = chrono::DateTime<chrono::Utc>;
 
@@ -189,7 +190,10 @@ pub fn list_handler(msg_id: u32,
     let list_sql = list_sql(payload.vnode, payload.limit,
         payload.offset, &payload.order_by);
 
-    for row in txn.query(list_sql.as_str(), &[&payload.owner, &prefix]).unwrap().iter() {
+    for row in sql::txn_query(sql::Method::BucketList, &mut txn, list_sql.as_str(),
+                              &[&payload.owner,
+                              &prefix]).unwrap().iter() {
+
         let resp = BucketResponse {
             id: row.get(0),
             owner: row.get(1),
@@ -364,8 +368,10 @@ fn get(payload: GetBucketPayload,
 {
     let mut conn = pool.claim().unwrap();
     let sql = get_sql(payload.vnode);
-    (*conn).query(sql.as_str(), &[&payload.owner,
-                                  &payload.name])
+
+    sql::query(sql::Method::BucketGet, &mut conn, sql.as_str(),
+               &[&payload.owner,
+               &payload.name])
         .map_err(|e| {
            let pg_err = format!("{}", e);
             IOError::new(IOErrorKind::Other, pg_err)
@@ -383,9 +389,10 @@ fn create(payload: CreateBucketPayload,
     let create_sql = create_sql(payload.vnode);
 
     let insert_result =
-        txn.query(create_sql.as_str(), &[&Uuid::new_v4(),
-                                      &payload.owner,
-                                      &payload.name])
+        sql::txn_query(sql::Method::BucketCreate, &mut txn, create_sql.as_str(),
+                       &[&Uuid::new_v4(),
+                       &payload.owner,
+                       &payload.name])
         .map_err(|e| {
            let pg_err = format!("{}", e);
             IOError::new(IOErrorKind::Other, pg_err)
@@ -427,11 +434,14 @@ fn delete(payload: DeleteBucketPayload,
     let mut txn = (*conn).transaction().unwrap();
     let move_sql = insert_delete_table_sql(payload.vnode);
     let delete_sql = delete_sql(payload.vnode);
-    txn.execute(move_sql.as_str(), &[&payload.owner,
-                                     &payload.name])
+
+    sql::txn_execute(sql::Method::BucketDeleteMove, &mut txn, move_sql.as_str(),
+                     &[&payload.owner,
+                     &payload.name])
         .and_then(|_moved_rows| {
-            txn.execute(delete_sql.as_str(), &[&payload.owner,
-                                               &payload.name])
+            sql::txn_execute(sql::Method::BucketDelete, &mut txn, delete_sql.as_str(),
+                             &[&payload.owner,
+                             &payload.name])
         })
         .and_then(|row_count| {
             txn.commit().unwrap();

@@ -12,7 +12,8 @@ use hyper::server::Server;
 use hyper::service::service_fn_ok;
 use hyper::StatusCode;
 use lazy_static::lazy_static;
-use prometheus::{Counter, Encoder, TextEncoder, labels, opts, register_counter};
+use prometheus::{HistogramVec, Counter, Encoder, TextEncoder, labels, opts, register_counter,
+register_histogram_vec, histogram_opts};
 use slog::{Logger, error, info};
 
 
@@ -27,6 +28,16 @@ lazy_static! {
         "Total number of metrics requests received.",
         labels! {"handler" => "all",}
     )).unwrap();
+    pub static ref FAST_REQUESTS: HistogramVec = register_histogram_vec!(
+        "fast_requests",
+        "Latency of all fast requests processed.",
+        &["method", "success"]
+    ).unwrap();
+    pub static ref POSTGRES_REQUESTS: HistogramVec = register_histogram_vec!(
+        "postgres_requests",
+        "Latency of all postgres requests processed.",
+        &["method", "success"]
+    ).unwrap();
 }
 
 pub fn start_server(address: String, port: u16, log: Logger) {
