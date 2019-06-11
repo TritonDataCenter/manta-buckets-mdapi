@@ -3,6 +3,7 @@
  */
 
 pub mod bucket;
+pub mod error;
 pub mod metrics;
 pub mod object;
 pub mod opts;

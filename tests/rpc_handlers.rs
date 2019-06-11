@@ -17,6 +17,7 @@ use cueball_static_resolver::StaticIpResolver;
 use cueball_postgres_connection::{PostgresConnection, PostgresConnectionConfig};
 
 use boray::bucket;
+use boray::error::{BorayError, BorayErrorType};
 use boray::object;
 
 // This test suite requres PostgreSQL and pg_tmp
@@ -119,11 +120,11 @@ fn verify_rpc_handlers() {
     let get_bucket_response = get_bucket_result.unwrap();
     assert_eq!(get_bucket_response.len(), 1);
 
-    let get_bucket_response_result: Result<bucket::BucketNotFoundError, _> =
-        serde_json::from_value(get_bucket_response[0].data.d.clone());
+    let get_bucket_response_result: Result<BorayError, _> =
+        serde_json::from_value(get_bucket_response[0].data.d[0].clone());
     assert!(get_bucket_response_result.is_ok());
-    assert_eq!(get_bucket_response_result.unwrap(), bucket::BucketNotFoundError::new());
-
+    assert_eq!(get_bucket_response_result.unwrap(),
+               BorayError::new(BorayErrorType::BucketNotFound));
 
     // Create a bucket
     let create_bucket_payload = bucket::CreateBucketPayload {
@@ -170,11 +171,11 @@ fn verify_rpc_handlers() {
     let create_bucket_response = create_bucket_result.unwrap();
     assert_eq!(create_bucket_response.len(), 1);
 
-    let create_bucket_response_result: Result<bucket::BucketAlreadyExistsError, _> =
-        serde_json::from_value(create_bucket_response[0].data.d.clone());
+    let create_bucket_response_result: Result<BorayError, _> =
+        serde_json::from_value(create_bucket_response[0].data.d[0].clone());
     assert!(create_bucket_response_result.is_ok());
     assert_eq!(create_bucket_response_result.unwrap(),
-               bucket::BucketAlreadyExistsError::new());
+               BorayError::new(BorayErrorType::BucketAlreadyExists));
 
     // Delete bucket
 
@@ -200,10 +201,10 @@ fn verify_rpc_handlers() {
     let get_bucket_response = get_bucket_result.unwrap();
     assert_eq!(get_bucket_response.len(), 1);
 
-    let get_bucket_response_result: Result<bucket::BucketNotFoundError, _> =
-        serde_json::from_value(get_bucket_response[0].data.d.clone());
+    let get_bucket_response_result: Result<BorayError, _> =
+        serde_json::from_value(get_bucket_response[0].data.d[0].clone());
     assert!(get_bucket_response_result.is_ok());
-    assert_eq!(get_bucket_response_result.unwrap(), bucket::BucketNotFoundError::new());
+    assert_eq!(get_bucket_response_result.unwrap(), BorayError::new(BorayErrorType::BucketNotFound));
 
 
     // Attempt to delete a nonexistent bucket and verify an error is returned
@@ -214,10 +215,11 @@ fn verify_rpc_handlers() {
     let delete_bucket_response = delete_bucket_result.unwrap();
     assert_eq!(delete_bucket_response.len(), 1);
 
-    let delete_bucket_response_result: Result<bucket::BucketNotFoundError, _> =
-        serde_json::from_value(delete_bucket_response[0].data.d.clone());
+    let delete_bucket_response_result: Result<BorayError, _> =
+        serde_json::from_value(delete_bucket_response[0].data.d[0].clone());
     assert!(delete_bucket_response_result.is_ok());
-    assert_eq!(delete_bucket_response_result.unwrap(), bucket::BucketNotFoundError::new());
+    assert_eq!(delete_bucket_response_result.unwrap(),
+               BorayError::new(BorayErrorType::BucketNotFound));
 
 
     // Try to read an object
@@ -239,10 +241,10 @@ fn verify_rpc_handlers() {
     let get_object_response = get_object_result.unwrap();
     assert_eq!(get_object_response.len(), 1);
 
-    let get_object_response_result: Result<object::ObjectNotFoundError, _> =
-        serde_json::from_value(get_object_response[0].data.d.clone());
+    let get_object_response_result: Result<BorayError, _> =
+        serde_json::from_value(get_object_response[0].data.d[0].clone());
     assert!(get_object_response_result.is_ok());
-    assert_eq!(get_object_response_result.unwrap(), object::ObjectNotFoundError::new());
+    assert_eq!(get_object_response_result.unwrap(), BorayError::new(BorayErrorType::ObjectNotFound));
 
 
     // Create an object
@@ -324,10 +326,11 @@ fn verify_rpc_handlers() {
     let get_object_response = get_object_result.unwrap();
     assert_eq!(get_object_response.len(), 1);
 
-    let get_object_response_result: Result<object::ObjectNotFoundError, _> =
-        serde_json::from_value(get_object_response[0].data.d.clone());
+    let get_object_response_result: Result<BorayError, _> =
+        serde_json::from_value(get_object_response[0].data.d[0].clone());
     assert!(get_object_response_result.is_ok());
-    assert_eq!(get_object_response_result.unwrap(), object::ObjectNotFoundError::new());
+    assert_eq!(get_object_response_result.unwrap(),
+               BorayError::new(BorayErrorType::ObjectNotFound));
 
     // Delete the object again and verify it is not found
     delete_object_result =
@@ -337,10 +340,11 @@ fn verify_rpc_handlers() {
     let delete_object_response = delete_object_result.unwrap();
     assert_eq!(delete_object_response.len(), 1);
 
-    let delete_object_response_result: Result<object::ObjectNotFoundError, _> =
-        serde_json::from_value(delete_object_response[0].data.d.clone());
+    let delete_object_response_result: Result<BorayError, _> =
+        serde_json::from_value(delete_object_response[0].data.d[0].clone());
     assert!(delete_object_response_result.is_ok());
-    assert_eq!(delete_object_response_result.unwrap(), object::ObjectNotFoundError::new());
+    assert_eq!(delete_object_response_result.unwrap(),
+               BorayError::new(BorayErrorType::ObjectNotFound));
 
     // List buckets and confirm none are found
 

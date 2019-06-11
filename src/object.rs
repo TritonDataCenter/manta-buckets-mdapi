@@ -23,6 +23,7 @@ use cueball_static_resolver::StaticIpResolver;
 use cueball_postgres_connection::PostgresConnection;
 use rust_fast::protocol::{FastMessage, FastMessageData};
 
+use crate::error::{BorayError, BorayErrorType};
 use crate::util::Rows;
 use crate::sql;
 
@@ -139,26 +140,11 @@ pub struct ListObjectsPayload {
     pub offset    : u64
 }
 
-#[derive(Debug, Default, Serialize, Deserialize, PartialEq)]
-pub struct ObjectNotFoundError {
-    pub name    : String,
-    pub message : String
-}
-
-impl ObjectNotFoundError {
-    pub fn new() -> Self {
-        ObjectNotFoundError {
-            name: "ObjectNotFoundError".into(),
-            message: "requested object not found".into()
-        }
-    }
-}
-
-fn object_not_found() -> Value {
+pub fn object_not_found() -> Value {
     // The data for this JSON conversion is locally controlled
     // so unwrapping the result is ok here.
-    serde_json::to_value(ObjectNotFoundError::new())
-        .expect("failed to encode an ObjectNotFound Error")
+    serde_json::to_value(BorayError::new(BorayErrorType::ObjectNotFound))
+        .expect("failed to encode a ObjectNotFound error")
 }
 
 pub fn get_handler(msg_id: u32,
@@ -193,7 +179,8 @@ pub fn get_handler(msg_id: u32,
                     Ok(response)
                 },
                 None => {
-                    let err_msg = FastMessage::error(msg_id, FastMessageData::new(method, object_not_found()));
+                    let value = array_wrap(object_not_found());
+                    let err_msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
                     response.push(err_msg);
                     Ok(response)
                 }
@@ -341,7 +328,8 @@ pub fn delete_handler(msg_id: u32,
                 let msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
                 Ok(msg)
             } else {
-                let err_msg = FastMessage::error(msg_id, FastMessageData::new(method, object_not_found()));
+                let value = array_wrap(object_not_found());
+                let err_msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
                 Ok(err_msg)
             }
         })

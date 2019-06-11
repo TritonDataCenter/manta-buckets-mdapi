@@ -16,8 +16,9 @@ use serde_json::{json, Value};
 use slog::{Logger, debug};
 use uuid::Uuid;
 
-use crate::util::Rows;
+use crate::error::{BorayError, BorayErrorType};
 use crate::sql;
+use crate::util::Rows;
 
 type Timestamptz = chrono::DateTime<chrono::Utc>;
 
@@ -55,36 +56,6 @@ pub struct ListBucketsPayload {
     pub offset   : u64
 }
 
-#[derive(Debug, Default, Serialize, Deserialize, PartialEq)]
-pub struct BucketNotFoundError {
-    pub name    : String,
-    pub message : String
-}
-
-impl BucketNotFoundError {
-    pub fn new() -> Self {
-        BucketNotFoundError {
-            name: "BucketNotFoundError".into(),
-            message: "requested bucket not found".into()
-        }
-    }
-}
-
-#[derive(Debug, Default, Serialize, Deserialize, PartialEq)]
-pub struct BucketAlreadyExistsError {
-    pub name    : String,
-    pub message : String
-}
-
-impl BucketAlreadyExistsError {
-    pub fn new() -> Self {
-        BucketAlreadyExistsError {
-            name: "BucketAlreadyExistsError".into(),
-            message: "requested bucket already exists".into()
-        }
-    }
-}
-
 fn array_wrap(v: Value) -> Value {
     Value::Array(vec![v])
 }
@@ -92,15 +63,15 @@ fn array_wrap(v: Value) -> Value {
 pub fn bucket_not_found() -> Value {
     // The data for this JSON conversion is locally controlled
     // so unwrapping the result is ok here.
-    serde_json::to_value(BucketNotFoundError::new())
-        .expect("failed to encode a BucketNotFoundError")
+    serde_json::to_value(BorayError::new(BorayErrorType::BucketNotFound))
+        .expect("failed to encode a BucketNotFound error")
 }
 
 pub fn bucket_already_exists() -> Value {
     // The data for this JSON conversion is locally controlled
     // so unwrapping the result is ok here.
-    serde_json::to_value(BucketAlreadyExistsError::new())
-        .expect("failed to encode a BucketAlreadyExistsError")
+    serde_json::to_value(BorayError::new(BorayErrorType::BucketAlreadyExists))
+        .expect("failed to encode a BucketAlreadyExists error")
 }
 
 pub fn get_handler(msg_id: u32,
@@ -136,8 +107,8 @@ pub fn get_handler(msg_id: u32,
                     Ok(response)
                 },
                 None => {
-
-                    let err_msg = FastMessage::error(msg_id, FastMessageData::new(method, bucket_not_found()));
+                    let value = array_wrap(bucket_not_found());
+                    let err_msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
                     response.push(err_msg);
                     Ok(response)
                 }
@@ -242,7 +213,8 @@ pub fn create_handler(msg_id: u32,
                     Ok(response)
                 },
                 None => {
-                    let err_msg = FastMessage::error(msg_id, FastMessageData::new(method, bucket_already_exists()));
+                    let value = array_wrap(bucket_already_exists());
+                    let err_msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
                     response.push(err_msg);
                     Ok(response)
                 }
@@ -284,7 +256,8 @@ pub fn delete_handler(msg_id: u32,
                 let msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
                 Ok(msg)
             } else {
-                let err_msg = FastMessage::error(msg_id, FastMessageData::new(method, bucket_not_found()));
+                let value = array_wrap(bucket_not_found());
+                let err_msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
                 Ok(err_msg)
             }
         })
