@@ -30,7 +30,6 @@ ROOT :=			$(shell pwd)
 RELSTAGEDIR :=		/tmp/$(NAME)-$(STAMP)
 
 BASE_IMAGE_UUID = cbf116a0-43a5-447c-ad8c-8fa57787351c
-BUILD_PLATFORM  = 20180605T172856Z
 BUILDIMAGE_NAME = manta-boray
 BUILDIMAGE_DESC	= Manta boray proxy
 AGENTS		= amon config registrar
