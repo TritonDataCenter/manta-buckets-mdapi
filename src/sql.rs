@@ -24,7 +24,8 @@ pub enum Method {
     ObjectGet,
     ObjectList,
     ObjectDelete,
-    ObjectDeleteMove
+    ObjectDeleteMove,
+    ObjectUpdate
 }
 
 impl Method {
@@ -40,7 +41,8 @@ impl Method {
             Method::ObjectGet => "ObjectGet",
             Method::ObjectList => "ObjectList",
             Method::ObjectDelete => "ObjectDelete",
-            Method::ObjectDeleteMove => "ObjectDeleteMove"
+            Method::ObjectDeleteMove => "ObjectDeleteMove",
+            Method::ObjectUpdate => "ObjectUpdate"
         }
     }
 }

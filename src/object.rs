@@ -130,6 +130,18 @@ pub struct CreateObjectPayload {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateObjectPayload {
+    pub owner          : Uuid,
+    pub bucket_id      : Uuid,
+    pub name           : String,
+    pub id             : Uuid,
+    pub vnode          : u64,
+    pub content_type   : String,
+    pub headers        : Hstore,
+    pub properties     : Option<Value>
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ListObjectsPayload {
     pub owner     : Uuid,
     pub bucket_id : Uuid,
@@ -296,11 +308,61 @@ pub fn create_handler(msg_id: u32,
         .map_err(|_e| other_error("postgres error"))
 }
 
-pub fn delete_handler(msg_id: u32,
+pub fn update_handler(msg_id: u32,
                       args: &[Value],
                       mut response: Vec<FastMessage>,
                       pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>,
                       log: &Logger) -> Result<Vec<FastMessage>, IOError> {
+    debug!(log, "handling updateobject function request");
+
+    let arg0 = match &args[0] {
+        Value::Object(_) => &args[0],
+        _ => return Err(other_error("Expected JSON object"))
+    };
+
+    let data_clone = arg0.clone();
+    let payload_result: Result<UpdateObjectPayload, _> =
+        serde_json::from_value(data_clone);
+
+    let payload = match payload_result {
+        Ok(o) => o,
+        Err(_) => return Err(other_error("Failed to parse JSON data as payload for updateobject function"))
+    };
+
+    // Make db request and form response
+    // let response_msg: Result<FastMessage, IOError> =
+    update(payload, pool)
+        .and_then(|maybe_resp| {
+            let method = String::from("updateobject");
+            match maybe_resp {
+                Some(resp) => {
+                    let value = array_wrap(serde_json::to_value(resp).unwrap());
+                    let msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
+                    response.push(msg);
+                    Ok(response)
+                },
+                None => {
+                    let value = array_wrap(object_not_found());
+                    let err_msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
+                    response.push(err_msg);
+                    Ok(response)
+                }
+            }
+        })
+        //TODO: Proper error handling
+        .map_err(|e| {
+            println!("Error: {}", e);
+            other_error("postgres error")
+        })
+}
+
+pub fn delete_handler(
+    msg_id: u32,
+    args: &[Value],
+    mut response: Vec<FastMessage>,
+    pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>,
+    log: &Logger
+) -> Result<Vec<FastMessage>, IOError> {
     debug!(log, "handling deleteobject function request");
 
     let arg0 = match &args[0] {
@@ -468,6 +530,33 @@ fn create(payload: CreateObjectPayload,
         })
 }
 
+fn update(payload: UpdateObjectPayload,
+          pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>)
+          -> Result<Option<ObjectResponse>, IOError>
+{
+    let mut conn = pool.claim().unwrap();
+    let mut txn = (*conn).transaction().unwrap();
+    let update_sql = update_sql(payload.vnode);
+
+    sql::txn_query(sql::Method::ObjectUpdate, &mut txn, update_sql.as_str(),
+                     &[&payload.content_type,
+                       &payload.headers,
+                       &payload.properties,
+                       &payload.owner,
+                       &payload.bucket_id,
+                       &payload.name])
+
+        .map_err(|e| {
+            let pg_err = format!("{}", e);
+            IOError::new(IOErrorKind::Other, pg_err)
+        })
+        .and_then(response)
+        .and_then(|response| {
+            txn.commit().unwrap();
+            Ok(response)
+        })
+}
+
 fn insert_delete_table_sql(vnode: u64) -> String {
     let vnode_str = vnode.to_string();
     ["INSERT INTO manta_bucket_",
@@ -504,6 +593,22 @@ fn create_sql(vnode: u64) -> String {
        headers = EXCLUDED.headers, \
        sharks = EXCLUDED.sharks, \
        properties = EXCLUDED.properties \
+       RETURNING id, owner, bucket_id, name, created, modified, \
+       content_length, content_md5, content_type, headers, \
+       sharks, properties"].concat()
+}
+
+fn update_sql(vnode: u64) -> String {
+    ["UPDATE manta_bucket_",
+     &vnode.to_string(),
+     &".manta_bucket_object \
+       SET content_type = $1,
+       headers = $2, \
+       properties = $3, \
+       modified = current_timestamp \
+       WHERE owner = $4 \
+       AND bucket_id = $5 \
+       AND name = $6 \
        RETURNING id, owner, bucket_id, name, created, modified, \
        content_length, content_md5, content_type, headers, \
        sharks, properties"].concat()

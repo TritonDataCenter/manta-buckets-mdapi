@@ -247,8 +247,47 @@ fn verify_rpc_handlers() {
     assert_eq!(get_object_response_result.unwrap(), BorayError::new(BorayErrorType::ObjectNotFound));
 
 
-    // Create an object
+    // Try to update an nonexistent object's metadata
     let object_id = Uuid::new_v4();
+
+    let mut update_headers = HashMap::new();
+    let _ = update_headers.insert(
+        "m-custom-header1".to_string(),
+        Some("customheaderval1".to_string())
+    );
+    let _ = update_headers.insert(
+        "m-custom-header2".to_string(),
+        Some("customheaderval2".to_string())
+    );
+
+    let update_object_payload = object::UpdateObjectPayload {
+        owner: owner_id,
+        bucket_id,
+        name: object.clone(),
+        id: object_id,
+        vnode: 1,
+        content_type: "text/html".into(),
+        headers: update_headers,
+        properties: None,
+    };
+
+    let update_object_json = serde_json::to_value(update_object_payload).unwrap();
+    let update_object_args = vec![update_object_json];
+    let mut update_object_result =
+        object::update_handler(msg_id, &update_object_args, vec![], &pool, &log);
+
+    assert!(update_object_result.is_ok());
+    let mut update_object_response = update_object_result.unwrap();
+    assert_eq!(update_object_response.len(), 1);
+
+    let update_object_response_result: Result<BorayError, _> =
+        serde_json::from_value(update_object_response[0].data.d[0].clone());
+    assert!(update_object_response_result.is_ok());
+    assert_eq!(update_object_response_result.unwrap(),
+               BorayError::new(BorayErrorType::ObjectNotFound));
+
+
+    // Create an object
     let shark1 = object::StorageNodeIdentifier {
         datacenter: "us-east-1".into(),
         manta_storage_id: "1.stor.us-east.joyent.com".into(),
@@ -298,7 +337,41 @@ fn verify_rpc_handlers() {
     let get_object_response_result: Result<object::ObjectResponse, _> =
         serde_json::from_value(get_object_response[0].data.d[0].clone());
     assert!(get_object_response_result.is_ok());
-    assert_eq!(get_object_response_result.unwrap().name, object);
+    let mut get_object_unwrapped_result = get_object_response_result.unwrap();
+    assert_eq!(get_object_unwrapped_result.name, object);
+    assert_eq!(&get_object_unwrapped_result.content_type, "text/plain");
+
+
+    // Update the object's metadata and verify it is successful
+    update_object_result =
+        object::update_handler(msg_id, &update_object_args, vec![], &pool, &log);
+
+    assert!(update_object_result.is_ok());
+    update_object_response = update_object_result.unwrap();
+    assert_eq!(update_object_response.len(), 1);
+
+    let update_object_response_result: Result<object::ObjectResponse, _> =
+        serde_json::from_value(update_object_response[0].data.d[0].clone());
+    assert!(update_object_response_result.is_ok());
+    let update_object_unwrapped_result = update_object_response_result.unwrap();
+    assert_eq!(update_object_unwrapped_result.name, object);
+    assert_eq!(&update_object_unwrapped_result.content_type, "text/html");
+
+
+    // Read object again and verify the metadata update
+    get_object_result =
+        object::get_handler(msg_id, &get_object_args, vec![], &pool, &log);
+
+    assert!(get_object_result.is_ok());
+    let get_object_response = get_object_result.unwrap();
+    assert_eq!(get_object_response.len(), 1);
+
+    let get_object_response_result: Result<object::ObjectResponse, _> =
+        serde_json::from_value(get_object_response[0].data.d[0].clone());
+    assert!(get_object_response_result.is_ok());
+    get_object_unwrapped_result = get_object_response_result.unwrap();
+    assert_eq!(get_object_unwrapped_result.name, object);
+    assert_eq!(&get_object_unwrapped_result.content_type, "text/html");
 
 
     // Delete object

@@ -57,15 +57,29 @@ pub mod util {
 
         let method = msg.data.m.name.as_str();
         let ret = match method {
-            "getobject"    => object::get_handler(msg.id, &args, response, &pool, &log),
-            "createobject" => object::create_handler(msg.id, &args, response, &pool, &log),
-            "deleteobject" => object::delete_handler(msg.id, &args, response, &pool, &log),
-            "listobjects"  => object::list_handler(msg.id, &args, response, &pool, &log),
-            "getbucket"    => bucket::get_handler(msg.id, &args, response, &pool, &log),
-            "createbucket" => bucket::create_handler(msg.id, &args, response, &pool, &log),
-            "deletebucket" => bucket::delete_handler(msg.id, &args, response, &pool, &log),
-            "listbuckets"  => bucket::list_handler(msg.id, &args, response, &pool, &log),
-            _ => return Err(Error::new(ErrorKind::Other, format!("Unsupported functon: {}", method)))
+            "getobject"    =>
+                object::get_handler(msg.id, &args, response, &pool, &log),
+            "createobject" =>
+                object::create_handler(msg.id, &args, response, &pool, &log),
+            "updateobject" =>
+                object::update_handler(msg.id, &args, response, &pool, &log),
+            "deleteobject" =>
+                object::delete_handler(msg.id, &args, response, &pool, &log),
+
+            "listobjects"  =>
+                object::list_handler(msg.id, &args, response, &pool, &log),
+            "getbucket"    =>
+                bucket::get_handler(msg.id, &args, response, &pool, &log),
+            "createbucket" =>
+                bucket::create_handler(msg.id, &args, response, &pool, &log),
+            "deletebucket" =>
+                bucket::delete_handler(msg.id, &args, response, &pool, &log),
+            "listbuckets"  =>
+                bucket::list_handler(msg.id, &args, response, &pool, &log),
+            _ => {
+                let err_msg = format!("Unsupported functon: {}", method);
+                return Err(Error::new(ErrorKind::Other, err_msg))
+            }
         };
 
         // If we are here, then the method name was valid, and the request may or
