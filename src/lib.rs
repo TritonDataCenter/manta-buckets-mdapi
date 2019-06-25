@@ -10,18 +10,20 @@ pub mod opts;
 pub mod sql;
 
 pub mod util {
+    use std::collections::HashMap;
     use std::io::{Error, ErrorKind};
     use std::time::{Duration, Instant};
+
+    use postgres::error::Error as PGError;
+    use postgres::row::Row;
+    use serde_json::Value;
+    use slog::Logger;
 
     use cueball::connection_pool::ConnectionPool;
     use cueball::backend::Backend;
     use cueball_postgres_connection::PostgresConnection;
     use cueball_static_resolver::StaticIpResolver;
-    use postgres::error::Error as PGError;
-    use postgres::row::Row;
     use rust_fast::protocol::FastMessage;
-    use serde_json::Value;
-    use slog::Logger;
 
     use crate::bucket;
     use crate::metrics;
@@ -29,15 +31,8 @@ pub mod util {
 
     pub type Rows = Vec<Row>;
     pub type PostgresResult<T> = Result<T, PGError>;
-
-    pub fn other_error(msg: &str) -> Error {
-        Error::new(ErrorKind::Other, String::from(msg))
-    }
-
-    pub fn duration_to_seconds(d: Duration) -> f64 {
-        let nanos = f64::from(d.subsec_nanos()) / 1e9;
-        d.as_secs() as f64 + nanos
-    }
+    pub type Hstore = HashMap<String, Option<String>>;
+    pub type Timestamptz = chrono::DateTime<chrono::Utc>;
 
     pub fn msg_handler(msg: &FastMessage,
                        pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>,
@@ -58,24 +53,23 @@ pub mod util {
         let method = msg.data.m.name.as_str();
         let ret = match method {
             "getobject"    =>
-                object::get_handler(msg.id, &args, response, &pool, &log),
+                object::get::handler(msg.id, &args, response, &pool, &log),
             "createobject" =>
-                object::create_handler(msg.id, &args, response, &pool, &log),
+                object::create::handler(msg.id, &args, response, &pool, &log),
             "updateobject" =>
-                object::update_handler(msg.id, &args, response, &pool, &log),
+                object::update::handler(msg.id, &args, response, &pool, &log),
             "deleteobject" =>
-                object::delete_handler(msg.id, &args, response, &pool, &log),
-
+                object::delete::handler(msg.id, &args, response, &pool, &log),
             "listobjects"  =>
-                object::list_handler(msg.id, &args, response, &pool, &log),
+                object::list::handler(msg.id, &args, response, &pool, &log),
             "getbucket"    =>
-                bucket::get_handler(msg.id, &args, response, &pool, &log),
+                bucket::get::handler(msg.id, &args, response, &pool, &log),
             "createbucket" =>
-                bucket::create_handler(msg.id, &args, response, &pool, &log),
+                bucket::create::handler(msg.id, &args, response, &pool, &log),
             "deletebucket" =>
-                bucket::delete_handler(msg.id, &args, response, &pool, &log),
+                bucket::delete::handler(msg.id, &args, response, &pool, &log),
             "listbuckets"  =>
-                bucket::list_handler(msg.id, &args, response, &pool, &log),
+                bucket::list::handler(msg.id, &args, response, &pool, &log),
             _ => {
                 let err_msg = format!("Unsupported functon: {}", method);
                 return Err(Error::new(ErrorKind::Other, err_msg))
@@ -97,5 +91,18 @@ pub mod util {
         metrics::FAST_REQUESTS.with_label_values(&[&method, success]).observe(t);
 
         ret
+    }
+
+    pub(crate) fn duration_to_seconds(d: Duration) -> f64 {
+        let nanos = f64::from(d.subsec_nanos()) / 1e9;
+        d.as_secs() as f64 + nanos
+    }
+
+    pub(crate) fn array_wrap(v: Value) -> Value {
+        Value::Array(vec![v])
+    }
+
+    pub(crate) fn other_error(msg: &str) -> Error {
+        Error::new(ErrorKind::Other, String::from(msg))
     }
 }

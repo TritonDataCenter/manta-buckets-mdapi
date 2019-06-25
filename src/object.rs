@@ -2,34 +2,41 @@
  * Copyright 2019 Joyent, Inc.
  */
 
-use std::collections::HashMap;
 use std::error::Error;
 use std::io::Error as IOError;
 use std::io::ErrorKind as IOErrorKind;
 use std::vec::Vec;
 
 use base64;
-use chrono;
 use postgres::types::{FromSql, IsNull, ToSql, Type};
 use tokio_postgres::{accepts, to_sql_checked};
 use serde_derive::{Deserialize, Serialize};
-use serde_json::{Value, json};
-use slog::{Logger, debug};
+use serde_json::Value;
 use uuid::Uuid;
 
-use cueball::connection_pool::ConnectionPool;
-use cueball::backend::Backend;
-use cueball_static_resolver::StaticIpResolver;
-use cueball_postgres_connection::PostgresConnection;
-use rust_fast::protocol::{FastMessage, FastMessageData};
-
 use crate::error::{BorayError, BorayErrorType};
-use crate::util::Rows;
-use crate::sql;
+use crate::util::{
+    Hstore,
+    Rows,
+    Timestamptz
+};
 
-type Hstore = HashMap<String, Option<String>>;
-type Timestamptz = chrono::DateTime<chrono::Utc>;
+pub mod create;
+pub mod delete;
+pub mod get;
+pub mod list;
+pub mod update;
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GetObjectPayload {
+    pub owner      : Uuid,
+    pub bucket_id  : Uuid,
+    pub name       : String,
+    pub vnode      : u64,
+    pub request_id : Uuid
+}
+
+type DeleteObjectPayload = GetObjectPayload;
 
 /// A type that represents the information about the datacenter and storage node
 /// id of a copy of an object's data.
@@ -89,16 +96,6 @@ impl<'a> FromSql<'a> for StorageNodeIdentifier {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct GetObjectPayload {
-    pub owner     : Uuid,
-    pub bucket_id : Uuid,
-    pub name      : String,
-    pub vnode     : u64
-}
-
-type DeleteObjectPayload = GetObjectPayload;
-
-#[derive(Debug, Serialize, Deserialize)]
 pub struct ObjectResponse {
     pub id             : Uuid,
     pub owner          : Uuid,
@@ -114,333 +111,14 @@ pub struct ObjectResponse {
     pub properties     : Option<Value>
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CreateObjectPayload {
-    pub owner          : Uuid,
-    pub bucket_id      : Uuid,
-    pub name           : String,
-    pub id             : Uuid,
-    pub vnode          : u64,
-    pub content_length : i64,
-    pub content_md5    : String,
-    pub content_type   : String,
-    pub headers        : Hstore,
-    pub sharks         : Vec<StorageNodeIdentifier>,
-    pub properties     : Option<Value>
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct UpdateObjectPayload {
-    pub owner          : Uuid,
-    pub bucket_id      : Uuid,
-    pub name           : String,
-    pub id             : Uuid,
-    pub vnode          : u64,
-    pub content_type   : String,
-    pub headers        : Hstore,
-    pub properties     : Option<Value>
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ListObjectsPayload {
-    pub owner     : Uuid,
-    pub bucket_id : Uuid,
-    pub vnode     : u64,
-    pub prefix    : String,
-    pub order_by  : String,
-    pub limit     : u64,
-    pub offset    : u64
-}
-
-pub fn object_not_found() -> Value {
+pub(self) fn object_not_found() -> Value {
     // The data for this JSON conversion is locally controlled
     // so unwrapping the result is ok here.
     serde_json::to_value(BorayError::new(BorayErrorType::ObjectNotFound))
         .expect("failed to encode a ObjectNotFound error")
 }
 
-pub fn get_handler(msg_id: u32,
-                   args: &[Value],
-                   mut response: Vec<FastMessage>,
-                   pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>,
-                      log: &Logger) -> Result<Vec<FastMessage>, IOError> {
-    debug!(log, "handling getobject function request");
-
-    let arg0 = match &args[0] {
-        Value::Object(_) => &args[0],
-        _ => return Err(other_error("Expected JSON object"))
-    };
-
-    let data_clone = arg0.clone();
-    let payload_result: Result<GetObjectPayload, _> =
-        serde_json::from_value(data_clone);
-
-    let payload = match payload_result {
-        Ok(o) => o,
-        Err(_) => return Err(other_error("Failed to parse JSON data as payload for getobject function"))
-    };
-
-    get(payload, pool)
-        .and_then(|maybe_resp| {
-            let method = String::from("getobject");
-            match maybe_resp {
-                Some(resp) => {
-                    let value = array_wrap(serde_json::to_value(resp).unwrap());
-                    let msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
-                    response.push(msg);
-                    Ok(response)
-                },
-                None => {
-                    let value = array_wrap(object_not_found());
-                    let err_msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
-                    response.push(err_msg);
-                    Ok(response)
-                }
-            }
-        })
-        //TODO: Proper error handling
-        .map_err(|e| {
-            println!("Error: {}", e);
-            other_error("postgres error")
-        })
-}
-
-pub fn list_handler(msg_id: u32,
-                    args: &[Value],
-                    mut response: Vec<FastMessage>,
-                    pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>,
-                    log: &Logger) -> Result<Vec<FastMessage>, IOError> {
-    debug!(log, "handling listobjects function request");
-
-    let arg0 = match &args[0] {
-        Value::Object(_) => &args[0],
-        _ => return Err(other_error("Expected JSON object"))
-    };
-
-    let data_clone = arg0.clone();
-    let payload_result: Result<ListObjectsPayload, _> =
-        serde_json::from_value(data_clone);
-
-    let payload = match payload_result {
-        Ok(o) => o,
-        Err(_) => return Err(other_error("Failed to parse JSON data as payload for listobjects function"))
-    };
-
-    // TODO catch these as errors and return to the caller
-    assert!(payload.limit > 0);
-    assert!(payload.limit <= 1000);
-
-    match payload.order_by.as_ref() {
-        "created" | "name" => {},
-        _ => return Err(other_error("Unexpected value for payload.order_by"))
-    }
-
-    let prefix = format!("{}%", &payload.prefix);
-
-    // Make db request and form response
-    // TODO: make this call safe
-    let mut conn = pool.claim().unwrap();
-    let mut txn = (*conn).transaction().unwrap();
-    let list_sql = list_sql(payload.vnode, payload.limit, payload.offset,
-        &payload.order_by);
-
-    for row in sql::txn_query(sql::Method::ObjectList, &mut txn, list_sql.as_str(),
-                              &[&payload.owner,
-                              &payload.bucket_id,
-                              &prefix]).unwrap().iter() {
-
-        let content_md5_bytes: Vec<u8> = row.get(7);
-        let content_md5 = base64::encode(&content_md5_bytes);
-        let resp = ObjectResponse {
-            id             : row.get(0),
-            owner          : row.get(1),
-            bucket_id      : row.get(2),
-            name           : row.get(3),
-            created        : row.get(4),
-            modified       : row.get(5),
-            content_length : row.get(6),
-            content_md5,
-            content_type   : row.get(8),
-            headers        : row.get(9),
-            sharks         : row.get(10),
-            properties     : row.get(11),
-        };
-
-        let value = array_wrap(serde_json::to_value(resp).unwrap());
-        let msg = FastMessage::data(msg_id, FastMessageData::new(String::from("listobjects"), value));
-        response.push(msg);
-    }
-
-    Ok(response)
-}
-
-pub fn create_handler(msg_id: u32,
-                   args: &[Value],
-                   mut response: Vec<FastMessage>,
-                   pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>,
-                   log: &Logger) -> Result<Vec<FastMessage>, IOError> {
-    debug!(log, "handling createobject function request");
-
-    let arg0 = match &args[0] {
-        Value::Object(_) => &args[0],
-        _ => return Err(other_error("Expected JSON object"))
-    };
-
-    let data_clone = arg0.clone();
-    let payload_result: Result<CreateObjectPayload, _> =
-        serde_json::from_value(data_clone);
-
-    let payload = match payload_result {
-        Ok(o) => o,
-        Err(_) => return Err(other_error("Failed to parse JSON data as payload for createobject function"))
-    };
-
-    // Make db request and form response
-    create(payload, pool)
-        .and_then(|resp| {
-            let method = String::from("createobject");
-            let value = array_wrap(serde_json::to_value(resp).unwrap());
-            let msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
-            response.push(msg);
-            Ok(response)
-        })
-        //TODO: Proper error handling
-        .map_err(|_e| other_error("postgres error"))
-}
-
-pub fn update_handler(msg_id: u32,
-                      args: &[Value],
-                      mut response: Vec<FastMessage>,
-                      pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>,
-                      log: &Logger) -> Result<Vec<FastMessage>, IOError> {
-    debug!(log, "handling updateobject function request");
-
-    let arg0 = match &args[0] {
-        Value::Object(_) => &args[0],
-        _ => return Err(other_error("Expected JSON object"))
-    };
-
-    let data_clone = arg0.clone();
-    let payload_result: Result<UpdateObjectPayload, _> =
-        serde_json::from_value(data_clone);
-
-    let payload = match payload_result {
-        Ok(o) => o,
-        Err(_) => return Err(other_error("Failed to parse JSON data as payload for updateobject function"))
-    };
-
-    // Make db request and form response
-    // let response_msg: Result<FastMessage, IOError> =
-    update(payload, pool)
-        .and_then(|maybe_resp| {
-            let method = String::from("updateobject");
-            match maybe_resp {
-                Some(resp) => {
-                    let value = array_wrap(serde_json::to_value(resp).unwrap());
-                    let msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
-                    response.push(msg);
-                    Ok(response)
-                },
-                None => {
-                    let value = array_wrap(object_not_found());
-                    let err_msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
-                    response.push(err_msg);
-                    Ok(response)
-                }
-            }
-        })
-        //TODO: Proper error handling
-        .map_err(|e| {
-            println!("Error: {}", e);
-            other_error("postgres error")
-        })
-}
-
-pub fn delete_handler(
-    msg_id: u32,
-    args: &[Value],
-    mut response: Vec<FastMessage>,
-    pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>,
-    log: &Logger
-) -> Result<Vec<FastMessage>, IOError> {
-    debug!(log, "handling deleteobject function request");
-
-    let arg0 = match &args[0] {
-        Value::Object(_) => &args[0],
-        _ => return Err(other_error("Expected JSON object"))
-    };
-
-    let data_clone = arg0.clone();
-    let payload_result: Result<DeleteObjectPayload, _> =
-        serde_json::from_value(data_clone);
-
-    let payload = match payload_result {
-        Ok(o) => o,
-        Err(_) => return Err(other_error("Failed to parse JSON data as payload \
-                                          for deleteobject function"))
-    };
-
-    // Make db request and form response
-    let response_msg: Result<FastMessage, IOError> =
-        delete(payload, pool)
-        .and_then(|affected_rows| {
-            let method = String::from("deleteobject");
-            if affected_rows > 0 {
-                let value = array_wrap(serde_json::to_value(affected_rows).unwrap());
-                let msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
-                Ok(msg)
-            } else {
-                let value = array_wrap(object_not_found());
-                let err_msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
-                Ok(err_msg)
-            }
-        })
-        .or_else(|e| {
-            // TODO: Write a helper function to deconstruct the postgres::Error
-            // and populate meaningful name and message fields for the error
-            // dependent on the details of the postgres error.
-            let err_str = format!("{}", e);
-            let value = array_wrap(json!({
-                "name": "PostgresError",
-                "message": err_str
-            }));
-            let method = String::from("deleteobject");
-            let err_msg_data = FastMessageData::new(method, value);
-            let err_msg = FastMessage::error(msg_id, err_msg_data);
-            Ok(err_msg)
-        });
-
-    response.push(response_msg.unwrap());
-    Ok(response)
-}
-
-fn array_wrap(v: Value) -> Value {
-    Value::Array(vec![v])
-}
-
-fn other_error(msg: &str) -> IOError {
-    IOError::new(IOErrorKind::Other, String::from(msg))
-}
-
-fn get(payload: GetObjectPayload,
-       pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>)
-       -> Result<Option<ObjectResponse>, IOError>
-{
-    let mut conn = pool.claim().unwrap();
-    let sql = get_sql(payload.vnode);
-
-    sql::query(sql::Method::ObjectGet, &mut conn, sql.as_str(),
-               &[&payload.owner,
-               &payload.bucket_id,
-               &payload.name])
-        .map_err(|e| {
-            let pg_err = format!("{}", e);
-            IOError::new(IOErrorKind::Other, pg_err)
-        })
-        .and_then(response)
-}
-
-fn response(rows: Rows) -> Result<Option<ObjectResponse>, IOError> {
+pub(self) fn response(rows: Rows) -> Result<Option<ObjectResponse>, IOError> {
     if rows.is_empty() {
         Ok(None)
     } else if rows.len() == 1 {
@@ -470,94 +148,7 @@ fn response(rows: Rows) -> Result<Option<ObjectResponse>, IOError> {
     }
 }
 
-fn get_sql(vnode: u64) -> String {
-    ["SELECT id, owner, bucket_id, name, created, modified, content_length, \
-      content_md5, content_type, headers, sharks, properties \
-      FROM manta_bucket_",
-     &vnode.to_string(),
-     &".manta_bucket_object WHERE owner = $1 \
-       AND bucket_id = $2 \
-       AND name = $3"].concat()
-}
-
-fn list_sql(vnode: u64, limit: u64, offset: u64, order_by: &str) -> String {
-    format!("SELECT id, owner, bucket_id, name, created, modified, \
-        content_length, content_md5, content_type, headers, sharks, \
-        properties \
-        FROM manta_bucket_{}.manta_bucket_object
-        WHERE owner = $1 AND bucket_id = $2 AND name like $3
-        ORDER BY {} ASC
-        LIMIT {}
-        OFFSET {}",
-        vnode, order_by, limit, offset)
-}
-
-fn create(payload: CreateObjectPayload,
-       pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>)
-       -> Result<Option<ObjectResponse>, IOError>
-{
-    let mut conn = pool.claim().unwrap();
-    let mut txn = (*conn).transaction().unwrap();
-    let create_sql = create_sql(payload.vnode);
-    let move_sql = insert_delete_table_sql(payload.vnode);
-    let content_md5_bytes = base64::decode(&payload.content_md5).unwrap();
-
-    sql::txn_execute(sql::Method::ObjectCreateMove, &mut txn, move_sql.as_str(),
-                     &[&payload.owner,
-                     &payload.bucket_id,
-                     &payload.name])
-        .and_then(|_moved_rows| {
-            sql::txn_query(sql::Method::ObjectCreate, &mut txn, create_sql.as_str(),
-                           &[&payload.id,
-                           &payload.owner,
-                           &payload.bucket_id,
-                           &payload.name,
-                           &payload.content_length,
-                           &content_md5_bytes,
-                           &payload.content_type,
-                           &payload.headers,
-                           &payload.sharks,
-                           &payload.properties])
-        })
-        .map_err(|e| {
-            let pg_err = format!("{}", e);
-            IOError::new(IOErrorKind::Other, pg_err)
-        })
-        .and_then(response)
-        .and_then(|response| {
-            txn.commit().unwrap();
-            Ok(response)
-        })
-}
-
-fn update(payload: UpdateObjectPayload,
-          pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>)
-          -> Result<Option<ObjectResponse>, IOError>
-{
-    let mut conn = pool.claim().unwrap();
-    let mut txn = (*conn).transaction().unwrap();
-    let update_sql = update_sql(payload.vnode);
-
-    sql::txn_query(sql::Method::ObjectUpdate, &mut txn, update_sql.as_str(),
-                     &[&payload.content_type,
-                       &payload.headers,
-                       &payload.properties,
-                       &payload.owner,
-                       &payload.bucket_id,
-                       &payload.name])
-
-        .map_err(|e| {
-            let pg_err = format!("{}", e);
-            IOError::new(IOErrorKind::Other, pg_err)
-        })
-        .and_then(response)
-        .and_then(|response| {
-            txn.commit().unwrap();
-            Ok(response)
-        })
-}
-
-fn insert_delete_table_sql(vnode: u64) -> String {
+pub(self) fn insert_delete_table_sql(vnode: u64) -> String {
     let vnode_str = vnode.to_string();
     ["INSERT INTO manta_bucket_",
      &vnode_str,
@@ -574,80 +165,4 @@ fn insert_delete_table_sql(vnode: u64) -> String {
        WHERE owner = $1 \
        AND bucket_id = $2 \
        AND name = $3"].concat()
-}
-
-fn create_sql(vnode: u64) -> String {
-    ["INSERT INTO manta_bucket_",
-     &vnode.to_string(),
-     &".manta_bucket_object ( \
-       id, owner, bucket_id, name, content_length, content_md5, \
-       content_type, headers, sharks, properties) \
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) \
-       ON CONFLICT (owner, bucket_id, name) DO UPDATE \
-       SET id = EXCLUDED.id, \
-       created = current_timestamp, \
-       modified = current_timestamp, \
-       content_length = EXCLUDED.content_length, \
-       content_md5 = EXCLUDED.content_md5, \
-       content_type = EXCLUDED.content_type, \
-       headers = EXCLUDED.headers, \
-       sharks = EXCLUDED.sharks, \
-       properties = EXCLUDED.properties \
-       RETURNING id, owner, bucket_id, name, created, modified, \
-       content_length, content_md5, content_type, headers, \
-       sharks, properties"].concat()
-}
-
-fn update_sql(vnode: u64) -> String {
-    ["UPDATE manta_bucket_",
-     &vnode.to_string(),
-     &".manta_bucket_object \
-       SET content_type = $1,
-       headers = $2, \
-       properties = $3, \
-       modified = current_timestamp \
-       WHERE owner = $4 \
-       AND bucket_id = $5 \
-       AND name = $6 \
-       RETURNING id, owner, bucket_id, name, created, modified, \
-       content_length, content_md5, content_type, headers, \
-       sharks, properties"].concat()
-}
-
-fn delete_sql(vnode: u64) -> String {
-    ["DELETE FROM manta_bucket_",
-     &vnode.to_string(),
-     &".manta_bucket_object \
-       WHERE owner = $1 \
-       AND bucket_id = $2 \
-       AND name = $3"].concat()
-}
-
-fn delete(payload: DeleteObjectPayload,
-          pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>)
-          -> Result<u64, IOError>
-{
-    let mut conn = pool.claim().unwrap();
-    let mut txn = (*conn).transaction().unwrap();
-    let move_sql = insert_delete_table_sql(payload.vnode);
-    let delete_sql = delete_sql(payload.vnode);
-
-    sql::txn_execute(sql::Method::ObjectDeleteMove, &mut txn, move_sql.as_str(),
-                     &[&payload.owner,
-                     &payload.bucket_id,
-                     &payload.name])
-        .and_then(|_moved_rows| {
-            sql::txn_execute(sql::Method::ObjectDelete, &mut txn, delete_sql.as_str(),
-                             &[&payload.owner,
-                             &payload.bucket_id,
-                             &payload.name])
-        })
-        .and_then(|row_count| {
-            txn.commit().unwrap();
-            Ok(row_count)
-        })
-        .map_err(|e| {
-            let pg_err = format!("{}", e);
-            IOError::new(IOErrorKind::Other, pg_err)
-        })
 }
