@@ -14,7 +14,11 @@ use uuid::Uuid;
 use cueball::connection_pool::ConnectionPool;
 use cueball::connection_pool::types::ConnectionPoolOptions;
 use cueball_static_resolver::StaticIpResolver;
-use cueball_postgres_connection::{PostgresConnection, PostgresConnectionConfig};
+use cueball_postgres_connection::{
+    PostgresConnection,
+    PostgresConnectionConfig,
+    TlsConfig
+};
 
 use boray::bucket;
 use boray::error::{BorayError, BorayErrorType};
@@ -76,7 +80,8 @@ fn verify_rpc_handlers() {
         host: None,
         port: Some(pg_port),
         database: Some(pg_db.into()),
-        application_name: Some(application_name.into())
+        application_name: Some(application_name.into()),
+        tls_config: TlsConfig::disable()
     };
 
     let connection_creator = PostgresConnection::connection_creator(pg_config);

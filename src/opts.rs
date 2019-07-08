@@ -46,6 +46,8 @@ pub fn parse<'a>(app: &str) -> ArgMatches<'a> {
              .short("l")
              .long("level")
              .takes_value(true)
+             .possible_values(&["trace", "debug", "info",
+                                "warning", "error", "critical"])
              .required(false))
         .arg(Arg::with_name("metrics address")
              .help("Address to listen for metrics queries")

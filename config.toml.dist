@@ -10,6 +10,25 @@ host = "0.0.0.0"
 port = 3020
 
 [database]
+user = "postgres"
 host = "127.0.0.1"
 port = 5432
-db = "moray"
+database = "boray"
+application_name = "boray"
+tls_mode = "disable"
+
+[cueball]
+max_connections = 5
+claim_timeout = 500 # milliseconds
+# Time to delay when an action that would trigger a rebalancing of the pool
+# connections is received. The purpose of the delay is to avoid minimize to work
+# needed for connection pool rebalancing when multiple actionable events occur
+# in rapid succession.
+rebalancer_action_delay = 100 # milliseconds
+
+[tokio]
+core_threads = 4
+blocking_threads = 200
+thread_keep_alive = 60
+thread_stack_size = 2097152
+thread_name_prefix = "boray-worker-"
