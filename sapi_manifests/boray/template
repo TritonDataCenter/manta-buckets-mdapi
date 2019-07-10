@@ -17,6 +17,10 @@ host = "0.0.0.0"
 port = {{BORAY_SERVER_PORT}}
 {{/BORAY_SERVER_PORT}}
 {{^BORAY_SERVER_PORT}}
+#
+# This default value should be kept in sync with the default value in
+# boot/setup.sh and the Makefile.
+#
 port = 2030
 {{/BORAY_SERVER_PORT}}
 

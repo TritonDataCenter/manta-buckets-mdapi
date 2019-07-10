@@ -1,0 +1,31 @@
+{
+  "registration": {
+    "domain": "{{SERVICE_NAME}}",
+    "type": "moray_host",
+    "service": {
+      "type": "service",
+      "service": {
+        "srvce": "_boray",
+        "proto": "_tcp",
+        "port": 2020
+      },
+      "ttl": 60
+    },
+    "ttl": 60,
+    "ports": [@@PORTS@@]
+  },
+
+  "zookeeper": {
+    "servers": [
+      {{#ZK_SERVERS}}
+        {
+          "host": "{{host}}",
+          "port": {{port}}
+        }{{^last}}, {{/last}}
+      {{/ZK_SERVERS}}
+    ],
+    "timeout": 60000
+  },
+
+  "adminIp": "{{auto.MANTA_IP}}"
+}

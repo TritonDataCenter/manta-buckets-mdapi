@@ -70,6 +70,20 @@ release: all deps docs $(SMF_MANIFESTS)
 	cd $(RELSTAGEDIR) && $(TAR) -I pigz -cf $(ROOT)/$(RELEASE_TARBALL) root site
 	@rm -rf $(RELSTAGEDIR)
 
+#
+# We include a pre-substituted copy of the template in our built image so that
+# registrar doesn't go into maintenance on first boot. Then we ship both the
+# .in file and this "bootstrap" substituted version. The boot/setup.sh script
+# will perform this replacement again during the first boot, replacing @@PORTS@@
+# with the real port.
+#
+# This default value should be kept in sync with the default value in
+# boot/setup.sh and sapi_manifests/boray/template
+#
+#
+sapi_manifests/registrar/template: sapi_manifests/registrar/template.in
+	sed -e 's/@@PORTS@@/2030/g' $< > $@
+
 .PHONY: publish
 publish: release
 	mkdir -p $(ENGBLD_BITS_DIR)/$(NAME)
