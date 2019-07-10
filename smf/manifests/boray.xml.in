@@ -7,7 +7,7 @@
 -->
 
 <!--
-    Copyright (c) 2019, Joyent, Inc.
+    Copyright 2019 Joyent, Inc.
 -->
 
 <service_bundle type="manifest" name="boray">
@@ -43,8 +43,11 @@
         </dependency>
 
         <exec_method type="method" name="start" timeout_seconds="10"
-          exec="/opt/smartdc/boray/bin/boray &amp;">
-            <method_context>
+          exec="./bin/boray -c ./etc/config.toml &amp;">
+          <method_context working_directory="/opt/smartdc/boray">
+                  <method_credential user="nobody"
+                                   group="nobody"
+                                   privileges="basic,net_privaddr"/>
             </method_context>
         </exec_method>
 

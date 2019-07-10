@@ -7,7 +7,7 @@
 #
 
 #
-# Copyright (c) 2019, Joyent, Inc.
+# Copyright 2019 Joyent, Inc.
 #
 
 export PS4='[\D{%FT%TZ}] ${BASH_SOURCE}:${LINENO}: ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
@@ -27,10 +27,13 @@ ZONE_UUID=`/usr/bin/zonename`
 export PATH=$SVC_ROOT/bin:$SVC_ROOT/build/node/bin:/opt/local/bin:/usr/sbin/:/usr/bin:$PATH
 
 function manta_setup_boray {
-    svccfg import /opt/smartdc/muppet/smf/manifests/boray.xml
+    svccfg import /opt/smartdc/boray/smf/manifests/boray.xml
     svcadm enable boray
-    [[ $? -eq 0 ]] || fatal "Unable to start boray"
+    [[ $? -eq 0 ]] || fatal "unable to start boray"
 }
+
+source ${DIR}/scripts/util.sh
+source ${DIR}/scripts/services.sh
 
 echo "Running common setup scripts"
 manta_common_presetup
@@ -43,7 +46,7 @@ manta_common_setup "boray" 0
 manta_ensure_zk
 
 echo "Setting up Boray"
-manta_setup_boray_config
+manta_setup_boray
 
 manta_common_setup_end
 

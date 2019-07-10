@@ -1,5 +1,5 @@
 {
     "name": "boray",
-    "path": "/opt/smartdc/boray/etc/config.json",
+    "path": "/opt/smartdc/boray/etc/config.toml",
     "master": true
 }
