@@ -51,9 +51,8 @@ fn main() {
 
     let root_log = Logger::root(
         Mutex::new(LevelFilter::new(
-            slog_bunyan::default(
-                std::io::stdout()
-            ),
+            slog_bunyan::with_name(crate_name!(), std::io::stdout())
+                .build(),
             config.log.level.into()
         )).fuse(),
         o!("build-id" => crate_version!())
