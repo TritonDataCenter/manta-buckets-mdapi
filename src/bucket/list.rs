@@ -15,6 +15,9 @@ use cueball_postgres_connection::PostgresConnection;
 use cueball_static_resolver::StaticIpResolver;
 use rust_fast::protocol::{FastMessage, FastMessageData};
 
+use tokio_postgres::Error as PGError;
+use tokio_postgres::Row as PGRow;
+
 use crate::bucket::BucketResponse;
 use crate::sql;
 use crate::util::{
@@ -26,10 +29,9 @@ use crate::util::{
 pub struct ListBucketsPayload {
     pub owner      : Uuid,
     pub vnode      : u64,
-    pub prefix     : String,
-    pub order_by   : String,
+    pub prefix     : Option<String>,
     pub limit      : u64,
-    pub offset     : u64,
+    pub marker     : Option<String>,
     pub request_id : Uuid
 }
 
@@ -60,25 +62,38 @@ pub fn handler(msg_id: u32,
     assert!(payload.limit > 0);
     assert!(payload.limit <= 1000);
 
-    match payload.order_by.as_ref() {
-        "created" | "name" => {},
-        _ => return Err(other_error("Unexpected value for payload.order_by"))
-    }
-
-    let prefix = format!("{}%", &payload.prefix);
-
     // Make db request and form response
     // TODO: make this call safe
     let mut conn = pool.claim().unwrap();
-
     let mut txn = (*conn).transaction().unwrap();
-    let list_sql = list_sql(payload.vnode, payload.limit,
-        payload.offset, &payload.order_by);
+    let query: Result<Vec<PGRow>, PGError>;
 
-    for row in sql::txn_query(sql::Method::BucketList, &mut txn, list_sql.as_str(),
-                              &[&payload.owner,
-                              &prefix]).unwrap().iter() {
+    match (payload.marker, payload.prefix) {
+        (Some(marker), Some(prefix)) => {
+            let sql = list_sql_prefix_marker(payload.vnode, payload.limit);
+            let prefix = format!("{}%", prefix);
+            query = sql::txn_query(sql::Method::BucketList, &mut txn, sql.as_str(),
+                &[&payload.owner, &prefix, &marker]);
+        }
+        (Some(marker), None) => {
+            let sql = list_sql_marker(payload.vnode, payload.limit);
+            query = sql::txn_query(sql::Method::BucketList, &mut txn, sql.as_str(),
+                &[&payload.owner, &marker]);
+        }
+        (None, Some(prefix)) => {
+            let sql = list_sql_prefix(payload.vnode, payload.limit);
+            let prefix = format!("{}%", prefix);
+            query = sql::txn_query(sql::Method::BucketList, &mut txn, sql.as_str(),
+                &[&payload.owner, &prefix]);
+        }
+        (None, None) => {
+            let sql = list_sql(payload.vnode, payload.limit);
+            query = sql::txn_query(sql::Method::BucketList, &mut txn, sql.as_str(),
+                &[&payload.owner]);
+        }
+    }
 
+    for row in query.unwrap().iter() {
         let resp = BucketResponse {
             id: row.get(0),
             owner: row.get(1),
@@ -94,12 +109,37 @@ pub fn handler(msg_id: u32,
     Ok(response)
 }
 
-fn list_sql(vnode: u64, limit: u64, offset: u64, order_by: &str) -> String {
+fn list_sql_prefix_marker(vnode: u64, limit: u64) -> String {
+    format!("SELECT id, owner, name, created
+        FROM manta_bucket_{}.manta_bucket
+        WHERE owner = $1 AND name like $2 AND name > $3
+        ORDER BY name ASC
+        LIMIT {}",
+        vnode, limit)
+}
+
+fn list_sql_prefix(vnode: u64, limit: u64) -> String {
     format!("SELECT id, owner, name, created
         FROM manta_bucket_{}.manta_bucket
         WHERE owner = $1 AND name like $2
-        ORDER BY {} ASC
-        LIMIT {}
-        OFFSET {}",
-        vnode, order_by, limit, offset)
+        ORDER BY name ASC
+        LIMIT {}",
+        vnode, limit)
+}
+fn list_sql_marker(vnode: u64, limit: u64) -> String {
+    format!("SELECT id, owner, name, created
+        FROM manta_bucket_{}.manta_bucket
+        WHERE owner = $1 AND name > $2
+        ORDER BY name ASC
+        LIMIT {}",
+        vnode, limit)
+}
+
+fn list_sql(vnode: u64, limit: u64) -> String {
+    format!("SELECT id, owner, name, created
+        FROM manta_bucket_{}.manta_bucket
+        WHERE owner = $1
+        ORDER BY name ASC
+        LIMIT {}",
+        vnode, limit)
 }

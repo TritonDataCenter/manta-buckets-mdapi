@@ -17,6 +17,9 @@ use cueball_static_resolver::StaticIpResolver;
 use cueball_postgres_connection::PostgresConnection;
 use rust_fast::protocol::{FastMessage, FastMessageData};
 
+use tokio_postgres::Error as PGError;
+use tokio_postgres::Row as PGRow;
+
 use crate::object::{
     ObjectResponse
 };
@@ -31,10 +34,9 @@ pub struct ListObjectsPayload {
     pub owner      : Uuid,
     pub bucket_id  : Uuid,
     pub vnode      : u64,
-    pub prefix     : String,
-    pub order_by   : String,
+    pub prefix     : Option<String>,
     pub limit      : u64,
-    pub offset     : u64,
+    pub marker     : Option<String>,
     pub request_id : Uuid
 }
 
@@ -65,25 +67,38 @@ pub fn handler(msg_id: u32,
     assert!(payload.limit > 0);
     assert!(payload.limit <= 1000);
 
-    match payload.order_by.as_ref() {
-        "created" | "name" => {},
-        _ => return Err(other_error("Unexpected value for payload.order_by"))
-    }
-
-    let prefix = format!("{}%", &payload.prefix);
-
     // Make db request and form response
     // TODO: make this call safe
     let mut conn = pool.claim().unwrap();
     let mut txn = (*conn).transaction().unwrap();
-    let list_sql = list_sql(payload.vnode, payload.limit, payload.offset,
-        &payload.order_by);
+    let query: Result<Vec<PGRow>, PGError>;
 
-    for row in sql::txn_query(sql::Method::ObjectList, &mut txn, list_sql.as_str(),
-                              &[&payload.owner,
-                              &payload.bucket_id,
-                              &prefix]).unwrap().iter() {
+    match (payload.marker, payload.prefix) {
+        (Some(marker), Some(prefix)) => {
+            let sql = list_sql_prefix_marker(payload.vnode, payload.limit);
+            let prefix = format!("{}%", prefix);
+            query = sql::txn_query(sql::Method::ObjectList, &mut txn, sql.as_str(),
+                &[&payload.owner, &payload.bucket_id, &prefix, &marker]);
+        }
+        (Some(marker), None) => {
+            let sql = list_sql_marker(payload.vnode, payload.limit);
+            query = sql::txn_query(sql::Method::ObjectList, &mut txn, sql.as_str(),
+                &[&payload.owner, &payload.bucket_id, &marker]);
+        }
+        (None, Some(prefix)) => {
+            let sql = list_sql_prefix(payload.vnode, payload.limit);
+            let prefix = format!("{}%", prefix);
+            query = sql::txn_query(sql::Method::ObjectList, &mut txn, sql.as_str(),
+                &[&payload.owner, &payload.bucket_id, &prefix]);
+        }
+        (None, None) => {
+            let sql = list_sql(payload.vnode, payload.limit);
+            query = sql::txn_query(sql::Method::ObjectList, &mut txn, sql.as_str(),
+                &[&payload.owner, &payload.bucket_id]);
+        }
+    }
 
+    for row in query.unwrap().iter() {
         let content_md5_bytes: Vec<u8> = row.get(7);
         let content_md5 = base64::encode(&content_md5_bytes);
         let resp = ObjectResponse {
@@ -109,14 +124,46 @@ pub fn handler(msg_id: u32,
     Ok(response)
 }
 
-fn list_sql(vnode: u64, limit: u64, offset: u64, order_by: &str) -> String {
+fn list_sql_prefix_marker(vnode: u64, limit: u64) -> String {
+    format!("SELECT id, owner, bucket_id, name, created, modified, \
+        content_length, content_md5, content_type, headers, sharks, \
+        properties \
+        FROM manta_bucket_{}.manta_bucket_object
+        WHERE owner = $1 AND bucket_id = $2 AND name like $3 AND name > $4
+        ORDER BY name ASC
+        LIMIT {}",
+        vnode, limit)
+}
+
+fn list_sql_prefix(vnode: u64, limit: u64) -> String {
     format!("SELECT id, owner, bucket_id, name, created, modified, \
         content_length, content_md5, content_type, headers, sharks, \
         properties \
         FROM manta_bucket_{}.manta_bucket_object
         WHERE owner = $1 AND bucket_id = $2 AND name like $3
-        ORDER BY {} ASC
-        LIMIT {}
-        OFFSET {}",
-        vnode, order_by, limit, offset)
+        ORDER BY name ASC
+        LIMIT {}",
+        vnode, limit)
+}
+
+fn list_sql_marker(vnode: u64, limit: u64) -> String {
+    format!("SELECT id, owner, bucket_id, name, created, modified, \
+        content_length, content_md5, content_type, headers, sharks, \
+        properties \
+        FROM manta_bucket_{}.manta_bucket_object
+        WHERE owner = $1 AND bucket_id = $2 AND name > $3
+        ORDER BY name ASC
+        LIMIT {}",
+        vnode, limit)
+}
+
+fn list_sql(vnode: u64, limit: u64) -> String {
+    format!("SELECT id, owner, bucket_id, name, created, modified, \
+        content_length, content_md5, content_type, headers, sharks, \
+        properties \
+        FROM manta_bucket_{}.manta_bucket_object
+        WHERE owner = $1 AND bucket_id = $2
+        ORDER BY name ASC
+        LIMIT {}",
+        vnode, limit)
 }
