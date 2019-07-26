@@ -1,17 +1,10 @@
-/*
- * Copyright 2019 Joyent, Inc.
- */
+// Copyright 2019 Joyent, Inc.
 
-use std::io::Error as IOError;
-use std::io::ErrorKind as IOErrorKind;
 use std::vec::Vec;
 
 use serde_json::{Value, json};
-use slog::{Logger, debug};
+use slog::{Logger, debug, error, warn};
 
-use cueball::connection_pool::ConnectionPool;
-use cueball::backend::Backend;
-use cueball_static_resolver::StaticIpResolver;
 use cueball_postgres_connection::PostgresConnection;
 use rust_fast::protocol::{FastMessage, FastMessageData};
 
@@ -22,76 +15,90 @@ use crate::object::{
 };
 use crate::sql;
 use crate::util::{
+    HandlerError,
+    HandlerResponse,
     array_wrap,
     other_error
 };
 
-pub fn handler(
+const METHOD: &str = "deleteobject";
+
+pub(crate) fn handler(
     msg_id: u32,
-    args: &[Value],
-    mut response: Vec<FastMessage>,
-    pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>,
+    data: &Value,
+    mut conn: &mut PostgresConnection,
     log: &Logger
-) -> Result<Vec<FastMessage>, IOError> {
-    debug!(log, "handling deleteobject function request");
+) -> Result<HandlerResponse, HandlerError>
+{
+    debug!(log, "handling {} function request", &METHOD);
 
-    let arg0 = match &args[0] {
-        Value::Object(_) => &args[0],
-        _ => return Err(other_error("Expected JSON object"))
-    };
-
-    let data_clone = arg0.clone();
-    let payload_result: Result<DeleteObjectPayload, _> =
-        serde_json::from_value(data_clone);
-
-    let payload = match payload_result {
-        Ok(o) => o,
-        Err(_) => return Err(other_error("Failed to parse JSON data as payload \
-                                          for deleteobject function"))
-    };
-
-    debug!(log, "parsed DeleteObjectPayload, req_id: {}", payload.request_id);
-
-    // Make db request and form response
-    let response_msg: Result<FastMessage, IOError> =
-        delete(payload, pool)
-        .and_then(|affected_rows| {
-            let method = String::from("deleteobject");
-            if affected_rows > 0 {
-                let value = array_wrap(serde_json::to_value(affected_rows).unwrap());
-                let msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
-                Ok(msg)
+    serde_json::from_value::<Vec<DeleteObjectPayload>>(data.clone())
+        .map_err(|e| e.to_string())
+        .and_then(|mut arr| {
+            // Remove outer JSON array required by Fast
+            if !arr.is_empty() {
+                Ok(arr.remove(0))
             } else {
-                let value = array_wrap(object_not_found());
-                let err_msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
-                Ok(err_msg)
+                let err_msg = "Failed to parse JSON data as payload for \
+                               deleteobject function";
+                warn!(log, "{}: {}", err_msg, data);
+                Err(err_msg.to_string())
             }
         })
-        .or_else(|e| {
-            // TODO: Write a helper function to deconstruct the postgres::Error
-            // and populate meaningful name and message fields for the error
-            // dependent on the details of the postgres error.
-            let err_str = format!("{}", e);
-            let value = array_wrap(json!({
-                "name": "PostgresError",
-                "message": err_str
-            }));
-            let method = String::from("deleteobject");
-            let err_msg_data = FastMessageData::new(method, value);
-            let err_msg = FastMessage::error(msg_id, err_msg_data);
-            Ok(err_msg)
-        });
+        .and_then(|payload| {
+            // Make database request
+            let req_id = payload.request_id;
+            debug!(log, "parsed DeleteObjectPayload, req_id: {}", &req_id);
 
-    response.push(response_msg.unwrap());
-    Ok(response)
+            delete(payload, &mut conn)
+                .and_then(|affected_rows| {
+                    // Handle the successful database response
+                    debug!(log, "{} operation was successful, req_id: {}", &METHOD, &req_id);
+                    let value =
+                        if affected_rows > 0 {
+                            // This conversion can fail if the implementation of
+                            // Serialize decides to fail, or if the type
+                            // contains a map with non-string keys. There is no
+                            // reason for the former to occur and the latter
+                            // reason for failure is not a concern here since
+                            // the type of `affected_rows` is u64.
+                            serde_json::to_value(affected_rows).unwrap()
+                        } else {
+                            object_not_found()
+                        };
+
+                    let msg_data =
+                        FastMessageData::new(METHOD.into(), array_wrap(value));
+                    let msg: HandlerResponse =
+                        FastMessage::data(msg_id, msg_data).into();
+                    Ok(msg)
+                })
+                .or_else(|e| {
+                    // Handle database error response
+                    error!(log, "{} operation failed: {}, req_id: {}", &METHOD, &e, &req_id);
+
+                    // Database errors are returned to as regular Fast messages
+                    // to be handled by the calling application
+                    let value = array_wrap(json!({
+                        "name": "PostgresError",
+                        "message": e
+                    }));
+
+                    let msg_data = FastMessageData::new(METHOD.into(), value);
+                    let msg: HandlerResponse =
+                        FastMessage::data(msg_id, msg_data).into();
+                    Ok(msg)
+                })
+        })
+        .map_err(|e| HandlerError::IO(other_error(&e)))
 }
 
-fn delete(payload: DeleteObjectPayload,
-          pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>)
-          -> Result<u64, IOError>
+fn delete(
+    payload: DeleteObjectPayload,
+    conn: &mut PostgresConnection
+) -> Result<u64, String>
 {
-    let mut conn = pool.claim().unwrap();
-    let mut txn = (*conn).transaction().unwrap();
+    let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
     let move_sql = insert_delete_table_sql(payload.vnode);
     let delete_sql = delete_sql(payload.vnode);
 
@@ -106,17 +113,17 @@ fn delete(payload: DeleteObjectPayload,
                              &payload.name])
         })
         .and_then(|row_count| {
-            txn.commit().unwrap();
+            txn.commit()?;
             Ok(row_count)
         })
-        .map_err(|e| {
-            let pg_err = format!("{}", e);
-            IOError::new(IOErrorKind::Other, pg_err)
-        })
+        .map_err(|e| e.to_string())
 }
 
 
-fn delete_sql(vnode: u64) -> String {
+fn delete_sql(
+    vnode: u64
+) -> String
+{
     ["DELETE FROM manta_bucket_",
      &vnode.to_string(),
      &".manta_bucket_object \

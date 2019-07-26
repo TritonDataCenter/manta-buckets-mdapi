@@ -9,7 +9,7 @@
 /// file specified with `-c <config>`, and then overridden again by specific
 /// command line arguments.
 
-
+use std::convert::Into;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -231,24 +231,32 @@ pub fn read_file<F: AsRef<OsStr> + ?Sized>(f: &F) -> Config
 
 pub fn read_cli_args(matches: &ArgMatches, config: &mut Config) {
     value_t!(matches, "level", LogLevel)
-        .map(|l| config.log.level = l.into())
+        .map(|l| config.log.level = l)
         .unwrap_or_else(|_| ());
 
-    matches.value_of("address").map(|a| config.server.host = a.into());
+    if let Some(a) = matches.value_of("address") {
+        config.server.host = a.into();
+    }
 
     value_t!(matches, "port", u16)
         .map(|p| config.server.port = p)
         .unwrap_or_else(|_| ());
 
-    matches.value_of("pg ip").map(|h| config.database.host = h.into());
+    if let Some(h) = matches.value_of("pg ip") {
+        config.database.host = h.into();
+    }
 
     value_t!(matches, "pg port", u16)
         .map(|p| config.database.port = p)
         .unwrap_or_else(|_| ());
 
-    matches.value_of("pg database").map(|db| config.database.database = db.into());
+    if let Some(db) = matches.value_of("pg database") {
+        config.database.database = db.into();
+    }
 
-    matches.value_of("metrics-address").map(|h| config.metrics.host = h.into());
+    if let Some(h) = matches.value_of("metrics-address") {
+        config.metrics.host = h.into();
+    }
 
     value_t!(matches, "metrics-port", u16)
         .map(|p| config.metrics.port = p)
@@ -347,13 +355,13 @@ pub mod tls {
 
         o_p.ok_or(TlsError::NoCertificate)
             .and_then(|p| {
-                File::open(p).map_err(|e| e.into())
+                File::open(p).map_err(Into::into)
             })
             .and_then(|mut f| {
-                f.read_to_end(&mut buf).map_err(|e| e.into())
+                f.read_to_end(&mut buf).map_err(Into::into)
             })
             .and_then(|_| {
-                read_certificate(&buf).map_err(|e| e.into())
+                read_certificate(&buf).map_err(Into::into)
             })
     }
 

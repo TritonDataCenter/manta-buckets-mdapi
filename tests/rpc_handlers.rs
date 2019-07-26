@@ -1,6 +1,4 @@
-/*
- * Copyright 2019 Joyent, Inc.
- */
+// Copyright 2019 Joyent, Inc.
 
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr};
@@ -19,8 +17,10 @@ use cueball_postgres_connection::{
     PostgresConnectionConfig,
     TlsConfig
 };
+use rust_fast::protocol::{FastMessage, FastMessageData};
 
 use boray::bucket;
+use boray::util;
 use boray::error::{BorayError, BorayErrorType};
 use boray::object;
 
@@ -117,10 +117,13 @@ fn verify_rpc_handlers() {
         request_id
     };
 
-    let get_bucket_json = serde_json::to_value(get_bucket_payload).unwrap();
-    let get_bucket_args = vec![get_bucket_json];
+    let get_bucket_json = serde_json::to_value(vec![get_bucket_payload]).unwrap();
+    let get_bucket_fast_msg_data =
+        FastMessageData::new("getbucket".into(), get_bucket_json);
+    let get_bucket_fast_msg =
+        FastMessage::data(msg_id, get_bucket_fast_msg_data);
     let mut get_bucket_result =
-        bucket::get::handler(msg_id, &get_bucket_args, vec![], &pool, &log);
+        util::msg_handler(&get_bucket_fast_msg, &pool, &log);
 
     assert!(get_bucket_result.is_ok());
     let get_bucket_response = get_bucket_result.unwrap();
@@ -140,10 +143,13 @@ fn verify_rpc_handlers() {
         request_id
     };
 
-    let create_bucket_json = serde_json::to_value(create_bucket_payload).unwrap();
-    let create_bucket_args = vec![create_bucket_json];
+    let create_bucket_json = serde_json::to_value(vec![create_bucket_payload]).unwrap();
+    let create_bucket_fast_msg_data =
+        FastMessageData::new("createbucket".into(), create_bucket_json);
+    let create_bucket_fast_msg =
+        FastMessage::data(msg_id, create_bucket_fast_msg_data);
     let mut create_bucket_result =
-        bucket::create::handler(msg_id, &create_bucket_args, vec![], &pool, &log);
+        util::msg_handler(&create_bucket_fast_msg, &pool, &log);
 
     assert!(create_bucket_result.is_ok());
     let create_bucket_response = create_bucket_result.unwrap();
@@ -157,7 +163,7 @@ fn verify_rpc_handlers() {
 
     // Read bucket again and make sure the resonse is returned successfully
     get_bucket_result =
-        bucket::get::handler(msg_id, &get_bucket_args, vec![], &pool, &log);
+        util::msg_handler(&get_bucket_fast_msg, &pool, &log);
 
     assert!(get_bucket_result.is_ok());
     let get_bucket_response = get_bucket_result.unwrap();
@@ -172,7 +178,7 @@ fn verify_rpc_handlers() {
     // Try to create same bucket again and verify a BucketAlreadyExists error is
     // returned
     create_bucket_result =
-        bucket::create::handler(msg_id, &create_bucket_args, vec![], &pool, &log);
+        util::msg_handler(&create_bucket_fast_msg, &pool, &log);
 
     assert!(create_bucket_result.is_ok());
     let create_bucket_response = create_bucket_result.unwrap();
@@ -186,10 +192,19 @@ fn verify_rpc_handlers() {
 
     // Delete bucket
 
-    // The get and delete bucket args are the same so we can reuse
-    // get_bucket_args here.
+    let delete_bucket_payload = bucket::DeleteBucketPayload {
+        owner: owner_id,
+        name: bucket.clone(),
+        vnode: 0,
+        request_id
+    };
+    let delete_bucket_json = serde_json::to_value(vec![delete_bucket_payload]).unwrap();
+    let delete_bucket_fast_msg_data =
+        FastMessageData::new("deletebucket".into(), delete_bucket_json);
+    let delete_bucket_fast_msg =
+        FastMessage::data(msg_id, delete_bucket_fast_msg_data);
     let mut delete_bucket_result =
-        bucket::delete::handler(msg_id, &get_bucket_args, vec![], &pool, &log);
+        util::msg_handler(&delete_bucket_fast_msg, &pool, &log);
 
     assert!(delete_bucket_result.is_ok());
     let delete_bucket_response = delete_bucket_result.unwrap();
@@ -202,7 +217,7 @@ fn verify_rpc_handlers() {
 
     // Read bucket again and verify it's gone
     get_bucket_result =
-        bucket::get::handler(msg_id, &get_bucket_args, vec![], &pool, &log);
+        util::msg_handler(&get_bucket_fast_msg, &pool, &log);
 
     assert!(get_bucket_result.is_ok());
     let get_bucket_response = get_bucket_result.unwrap();
@@ -216,7 +231,7 @@ fn verify_rpc_handlers() {
 
     // Attempt to delete a nonexistent bucket and verify an error is returned
     delete_bucket_result =
-        bucket::delete::handler(msg_id, &get_bucket_args, vec![], &pool, &log);
+        util::msg_handler(&delete_bucket_fast_msg, &pool, &log);
 
     assert!(delete_bucket_result.is_ok());
     let delete_bucket_response = delete_bucket_result.unwrap();
@@ -240,10 +255,13 @@ fn verify_rpc_handlers() {
         request_id
     };
 
-    let get_object_json = serde_json::to_value(get_object_payload).unwrap();
-    let get_object_args = vec![get_object_json];
+    let get_object_json = serde_json::to_value(vec![&get_object_payload]).unwrap();
+    let get_object_fast_msg_data =
+        FastMessageData::new("getobject".into(), get_object_json);
+    let get_object_fast_msg =
+        FastMessage::data(msg_id, get_object_fast_msg_data);
     let mut get_object_result =
-        object::get::handler(msg_id, &get_object_args, vec![], &pool, &log);
+        util::msg_handler(&get_object_fast_msg, &pool, &log);
 
     assert!(get_object_result.is_ok());
     let get_object_response = get_object_result.unwrap();
@@ -280,10 +298,13 @@ fn verify_rpc_handlers() {
         request_id
     };
 
-    let update_object_json = serde_json::to_value(update_object_payload).unwrap();
-    let update_object_args = vec![update_object_json];
+    let update_object_json = serde_json::to_value(vec![update_object_payload]).unwrap();
+    let update_object_fast_msg_data =
+        FastMessageData::new("updateobject".into(), update_object_json);
+    let update_object_fast_msg =
+        FastMessage::data(msg_id, update_object_fast_msg_data);
     let mut update_object_result =
-        object::update::handler(msg_id, &update_object_args, vec![], &pool, &log);
+        util::msg_handler(&update_object_fast_msg, &pool, &log);
 
     assert!(update_object_result.is_ok());
     let mut update_object_response = update_object_result.unwrap();
@@ -321,10 +342,13 @@ fn verify_rpc_handlers() {
         request_id
     };
 
-    let create_object_json = serde_json::to_value(create_object_payload).unwrap();
-    let create_object_args = vec![create_object_json];
+    let create_object_json = serde_json::to_value(vec![create_object_payload]).unwrap();
+    let create_object_fast_msg_data =
+        FastMessageData::new("createobject".into(), create_object_json);
+    let create_object_fast_msg =
+        FastMessage::data(msg_id, create_object_fast_msg_data);
     let mut create_object_result =
-        object::create::handler(msg_id, &create_object_args, vec![], &pool, &log);
+        util::msg_handler(&create_object_fast_msg, &pool, &log);
 
     assert!(create_object_result.is_ok());
     let create_object_response = create_object_result.unwrap();
@@ -338,7 +362,7 @@ fn verify_rpc_handlers() {
 
     // Read object again and verify a successful response is returned
     get_object_result =
-        object::get::handler(msg_id, &get_object_args, vec![], &pool, &log);
+        util::msg_handler(&get_object_fast_msg, &pool, &log);
 
     assert!(get_object_result.is_ok());
     let get_object_response = get_object_result.unwrap();
@@ -354,7 +378,7 @@ fn verify_rpc_handlers() {
 
     // Update the object's metadata and verify it is successful
     update_object_result =
-        object::update::handler(msg_id, &update_object_args, vec![], &pool, &log);
+        util::msg_handler(&update_object_fast_msg, &pool, &log);
 
     assert!(update_object_result.is_ok());
     update_object_response = update_object_result.unwrap();
@@ -370,8 +394,7 @@ fn verify_rpc_handlers() {
 
     // Read object again and verify the metadata update
     get_object_result =
-        object::get::handler(msg_id, &get_object_args, vec![], &pool, &log);
-
+        util::msg_handler(&get_object_fast_msg, &pool, &log);
     assert!(get_object_result.is_ok());
     let get_object_response = get_object_result.unwrap();
     assert_eq!(get_object_response.len(), 1);
@@ -387,9 +410,14 @@ fn verify_rpc_handlers() {
     // Delete object
 
     // The get and delete object args are the same so we can reuse
-    // get_object_args here.
+    // get_object_json here.
+    let delete_object_json = serde_json::to_value(vec![get_object_payload]).unwrap();
+    let delete_object_fast_msg_data =
+        FastMessageData::new("deleteobject".into(), delete_object_json);
+    let delete_object_fast_msg =
+        FastMessage::data(msg_id, delete_object_fast_msg_data);
     let mut delete_object_result =
-        object::delete::handler(msg_id, &get_object_args, vec![], &pool, &log);
+        util::msg_handler(&delete_object_fast_msg, &pool, &log);
 
     assert!(delete_object_result.is_ok());
     let delete_object_response = delete_object_result.unwrap();
@@ -403,7 +431,7 @@ fn verify_rpc_handlers() {
 
     // Read object again and verify it is not found
     get_object_result =
-        object::get::handler(msg_id, &get_object_args, vec![], &pool, &log);
+        util::msg_handler(&get_object_fast_msg, &pool, &log);
 
     assert!(get_object_result.is_ok());
     let get_object_response = get_object_result.unwrap();
@@ -417,7 +445,7 @@ fn verify_rpc_handlers() {
 
     // Delete the object again and verify it is not found
     delete_object_result =
-        object::delete::handler(msg_id, &get_object_args, vec![], &pool, &log);
+        util::msg_handler(&delete_object_fast_msg, &pool, &log);
 
     assert!(delete_object_result.is_ok());
     let delete_object_response = delete_object_result.unwrap();
@@ -434,17 +462,19 @@ fn verify_rpc_handlers() {
     let list_buckets_payload = bucket::list::ListBucketsPayload {
         owner: owner_id,
         vnode: 0,
-        prefix: "testbucket".into(),
-        order_by: "created".into(),
+        prefix: Some("testbucket".into()),
         limit: 1000,
-        offset: 0,
+        marker: None,
         request_id
     };
 
-    let list_buckets_json = serde_json::to_value(list_buckets_payload).unwrap();
-    let list_buckets_args = vec![list_buckets_json];
+    let list_buckets_json = serde_json::to_value(vec![list_buckets_payload]).unwrap();
+    let list_buckets_fast_msg_data =
+        FastMessageData::new("listbuckets".into(), list_buckets_json);
+    let list_buckets_fast_msg =
+        FastMessage::data(msg_id, list_buckets_fast_msg_data);
     let mut list_buckets_result =
-        bucket::list::handler(msg_id, &list_buckets_args, vec![], &pool, &log);
+        util::msg_handler(&list_buckets_fast_msg, &pool, &log);
 
     assert!(list_buckets_result.is_ok());
     let list_buckets_response = list_buckets_result.unwrap();
@@ -452,7 +482,7 @@ fn verify_rpc_handlers() {
 
     // Create a bucket and list buckets again
     create_bucket_result =
-        bucket::create::handler(msg_id, &create_bucket_args, vec![], &pool, &log);
+        util::msg_handler(&create_bucket_fast_msg, &pool, &log);
 
     assert!(create_bucket_result.is_ok());
     let create_bucket_response = create_bucket_result.unwrap();
@@ -464,7 +494,7 @@ fn verify_rpc_handlers() {
     assert_eq!(create_bucket_response_result.unwrap().name, bucket);
 
     list_buckets_result =
-        bucket::list::handler(msg_id, &list_buckets_args, vec![], &pool, &log);
+        util::msg_handler(&list_buckets_fast_msg, &pool, &log);
 
     assert!(list_buckets_result.is_ok());
     let list_buckets_response = list_buckets_result.unwrap();
@@ -477,17 +507,19 @@ fn verify_rpc_handlers() {
         owner: owner_id,
         bucket_id,
         vnode: 1,
-        prefix: "testobject".into(),
-        order_by: "created".into(),
+        prefix: Some("testobject".into()),
         limit: 1000,
-        offset: 0,
+        marker: None,
         request_id
     };
 
-    let list_objects_json = serde_json::to_value(list_objects_payload).unwrap();
-    let list_objects_args = vec![list_objects_json];
+    let list_objects_json = serde_json::to_value(vec![list_objects_payload]).unwrap();
+    let list_objects_fast_msg_data =
+        FastMessageData::new("listobjects".into(), list_objects_json);
+    let list_objects_fast_msg =
+        FastMessage::data(msg_id, list_objects_fast_msg_data);
     let mut list_objects_result =
-        object::list::handler(msg_id, &list_objects_args, vec![], &pool, &log);
+        util::msg_handler(&list_objects_fast_msg, &pool, &log);
 
     assert!(list_objects_result.is_ok());
     let list_objects_response = list_objects_result.unwrap();
@@ -495,7 +527,7 @@ fn verify_rpc_handlers() {
 
     // Create an object and list objects again
     create_object_result =
-        object::create::handler(msg_id, &create_object_args, vec![], &pool, &log);
+        util::msg_handler(&create_object_fast_msg, &pool, &log);
 
     assert!(create_object_result.is_ok());
     let create_object_response = create_object_result.unwrap();
@@ -507,10 +539,9 @@ fn verify_rpc_handlers() {
     assert_eq!(create_object_response_result.unwrap().name, object);
 
     list_objects_result =
-        object::list::handler(msg_id, &list_objects_args, vec![], &pool, &log);
+        util::msg_handler(&list_objects_fast_msg, &pool, &log);
 
     assert!(list_objects_result.is_ok());
     let list_objects_response = list_objects_result.unwrap();
     assert_eq!(list_objects_response.len(), 1);
-
 }

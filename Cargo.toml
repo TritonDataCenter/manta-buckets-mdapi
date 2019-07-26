@@ -22,7 +22,7 @@ serde = "1.0.84"
 serde_derive = "1.0.84"
 serde_json = "1.0.36"
 slog = { version = "2.4.1", features = [ "max_level_trace" ] }
-slog-bunyan = { git = "https://github.com/slog-rs/bunyan", commmit = "f47d8d77b2017900cc186db0edd07e0be3b8797c" }
+slog-bunyan = { git = "https://github.com/slog-rs/bunyan" }
 tokio = "0.1.14"
 tokio-postgres = "0.4.0-rc.2"
 toml = "0.5"
@@ -32,5 +32,7 @@ uuid = { version = "0.7", features = ["serde", "v4"] }
 rand = { git = 'https://github.com/rust-random/rand' }
 
 [dev-dependencies]
+quickcheck = "0.8.5"
+quickcheck_helpers = { git = "https://github.com/joyent/rust-quickcheck-helpers" }
 slog-term = "2.4.0"
 url = "1.7.2"
