@@ -1,35 +1,33 @@
-/*
- * Copyright 2019 Joyent, Inc.
- */
+// Copyright 2019 Joyent, Inc.
 
-use std::io::Error as IOError;
-use std::io::ErrorKind as IOErrorKind;
 use std::vec::Vec;
 
 use serde_derive::{Deserialize, Serialize};
-use serde_json::Value;
-use slog::{Logger, debug};
+use serde_json::{Value, json};
+use slog::{Logger, debug, error, warn};
 use uuid::Uuid;
 
-use cueball::connection_pool::ConnectionPool;
-use cueball::backend::Backend;
-use cueball_static_resolver::StaticIpResolver;
 use cueball_postgres_connection::PostgresConnection;
 use rust_fast::protocol::{FastMessage, FastMessageData};
 
 use crate::object::{
     ObjectResponse,
     object_not_found,
-    response
+    response,
+    to_json
 };
 use crate::sql;
 use crate::util::{
+    HandlerError,
+    HandlerResponse,
     Hstore,
     array_wrap,
     other_error
 };
 
-#[derive(Debug, Serialize, Deserialize)]
+const METHOD: &str = "updateobject";
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct UpdateObjectPayload {
     pub owner          : Uuid,
     pub bucket_id      : Uuid,
@@ -42,62 +40,74 @@ pub struct UpdateObjectPayload {
     pub request_id     : Uuid
 }
 
-pub fn handler(msg_id: u32,
-                      args: &[Value],
-                      mut response: Vec<FastMessage>,
-                      pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>,
-                      log: &Logger) -> Result<Vec<FastMessage>, IOError> {
-    debug!(log, "handling updateobject function request");
+pub(crate) fn handler(
+    msg_id: u32,
+    data: &Value,
+    mut conn: &mut PostgresConnection,
+    log: &Logger
+) -> Result<HandlerResponse, HandlerError>
+{
+    debug!(log, "handling {} function request", &METHOD);
 
-    let arg0 = match &args[0] {
-        Value::Object(_) => &args[0],
-        _ => return Err(other_error("Expected JSON object"))
-    };
-
-    let data_clone = arg0.clone();
-    let payload_result: Result<UpdateObjectPayload, _> =
-        serde_json::from_value(data_clone);
-
-    let payload = match payload_result {
-        Ok(o) => o,
-        Err(_) => return Err(other_error("Failed to parse JSON data as payload for updateobject function"))
-    };
-
-    debug!(log, "parsed UpdateObjectPayload, req_id: {}", payload.request_id);
-
-    // Make db request and form response
-    // let response_msg: Result<FastMessage, IOError> =
-    update(payload, pool)
-        .and_then(|maybe_resp| {
-            let method = String::from("updateobject");
-            match maybe_resp {
-                Some(resp) => {
-                    let value = array_wrap(serde_json::to_value(resp).unwrap());
-                    let msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
-                    response.push(msg);
-                    Ok(response)
-                },
-                None => {
-                    let value = array_wrap(object_not_found());
-                    let err_msg = FastMessage::data(msg_id, FastMessageData::new(method, value));
-                    response.push(err_msg);
-                    Ok(response)
-                }
+    serde_json::from_value::<Vec<UpdateObjectPayload>>(data.clone())
+        .map_err(|e| e.to_string())
+        .and_then(|mut arr| {
+            // Remove outer JSON array required by Fast
+            if !arr.is_empty() {
+                Ok(arr.remove(0))
+            } else {
+                let err_msg = "Failed to parse JSON data as payload for \
+                               updateobject function";
+                warn!(log, "{}: {}", err_msg, data);
+                Err(err_msg.to_string())
             }
         })
-        //TODO: Proper error handling
-        .map_err(|e| {
-            println!("Error: {}", e);
-            other_error("postgres error")
+        .and_then(|payload| {
+            // Make database request
+            let req_id = payload.request_id;
+            debug!(log, "parsed UpdateObjectPayload, req_id: {}", &req_id);
+
+            update(payload, &mut conn)
+                .and_then(|maybe_resp| {
+                    // Handle the successful database response
+                    debug!(log, "{} operation was successful, req_id: {}", &METHOD, &req_id);
+                    let value =
+                        match maybe_resp {
+                            Some(resp) => to_json(resp),
+                            None => object_not_found()
+                        };
+                    let msg_data =
+                        FastMessageData::new(METHOD.into(), array_wrap(value));
+                    let msg: HandlerResponse =
+                        FastMessage::data(msg_id, msg_data).into();
+                    Ok(msg)
+                })
+                .or_else(|e| {
+                    // Handle database error response
+                    error!(log, "{} operation failed: {}, req_id: {}", &METHOD, &e, &req_id);
+
+                    // Database errors are returned to as regular Fast messages
+                    // to be handled by the calling application
+                    let value = array_wrap(json!({
+                        "name": "PostgresError",
+                        "message": e
+                    }));
+
+                    let msg_data = FastMessageData::new(METHOD.into(), value);
+                    let msg: HandlerResponse =
+                        FastMessage::data(msg_id, msg_data).into();
+                    Ok(msg)
+                })
         })
+        .map_err(|e| HandlerError::IO(other_error(&e)))
 }
 
-fn update(payload: UpdateObjectPayload,
-          pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>)
-          -> Result<Option<ObjectResponse>, IOError>
+fn update(
+    payload: UpdateObjectPayload,
+    conn: &mut PostgresConnection
+)  -> Result<Option<ObjectResponse>, String>
 {
-    let mut conn = pool.claim().unwrap();
-    let mut txn = (*conn).transaction().unwrap();
+    let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
     let update_sql = update_sql(payload.vnode);
 
     sql::txn_query(sql::Method::ObjectUpdate, &mut txn, update_sql.as_str(),
@@ -107,19 +117,20 @@ fn update(payload: UpdateObjectPayload,
                        &payload.owner,
                        &payload.bucket_id,
                        &payload.name])
-
-        .map_err(|e| {
-            let pg_err = format!("{}", e);
-            IOError::new(IOErrorKind::Other, pg_err)
+        .and_then(|rows| {
+            txn.commit()?;
+            Ok(rows)
         })
-        .and_then(response)
-        .and_then(|response| {
-            txn.commit().unwrap();
-            Ok(response)
+        .map_err(|e| e.to_string())
+        .and_then(|rows| {
+            response(METHOD, rows)
         })
 }
 
-fn update_sql(vnode: u64) -> String {
+fn update_sql(
+    vnode: u64
+) -> String
+{
     ["UPDATE manta_bucket_",
      &vnode.to_string(),
      &".manta_bucket_object \
@@ -133,4 +144,125 @@ fn update_sql(vnode: u64) -> String {
        RETURNING id, owner, bucket_id, name, created, modified, \
        content_length, content_md5, content_type, headers, \
        sharks, properties"].concat()
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    use std::collections::HashMap;
+
+    use quickcheck::{quickcheck, Arbitrary, Gen};
+    use quickcheck_helpers::random;
+    use serde_json;
+    use serde_json::Map;
+
+    #[derive(Clone, Debug)]
+    struct UpdateObjectJson(Value);
+
+    impl Arbitrary for UpdateObjectJson {
+        fn arbitrary<G: Gen>(g: &mut G) -> Self {
+            let owner = serde_json::to_value(Uuid::new_v4())
+                .expect("failed to convert owner field to Value");
+            let name = serde_json::to_value(random::string(g, 63))
+                .expect("failed to convert name field to Value");
+            let bucket_id = serde_json::to_value(Uuid::new_v4())
+                .expect("failed to convert bucket_id field to Value");
+            let id = serde_json::to_value(Uuid::new_v4())
+                .expect("failed to convert id field to Value");
+            let vnode = serde_json::to_value(u64::arbitrary(g))
+                .expect("failed to convert vnode field to Value");
+            let content_type = serde_json::to_value(random::string(g, 32))
+                .expect("failed to convert content_type field to Value");
+            let mut headers = HashMap::new();
+            let _ = headers.insert(
+                random::string(g, 32),
+                Some(random::string(g, 32))
+            );
+            let _ = headers.insert(
+                random::string(g, 32),
+                Some(random::string(g, 32))
+            );
+            let headers = serde_json::to_value(headers)
+                .expect("failed to convert headers field to Value");
+            let request_id = serde_json::to_value(Uuid::new_v4())
+                .expect("failed to convert request_id field to Value");
+
+            let mut obj = Map::new();
+            obj.insert("owner".into(), owner);
+            obj.insert("name".into(), name);
+            obj.insert("bucket_id".into(), bucket_id);
+            obj.insert("id".into(), id);
+            obj.insert("vnode".into(), vnode);
+            obj.insert("content_type".into(), content_type);
+            obj.insert("headers".into(), headers);
+            obj.insert("request_id".into(), request_id);
+            UpdateObjectJson(Value::Object(obj))
+        }
+    }
+
+    impl Arbitrary for UpdateObjectPayload {
+        fn arbitrary<G: Gen>(g: &mut G) -> Self {
+            let owner = Uuid::new_v4();
+            let bucket_id = Uuid::new_v4();
+            let name = random::string(g, 32);
+            let id = Uuid::new_v4();
+            let vnode = u64::arbitrary(g);
+            let content_type = random::string(g, 32);
+            let mut headers = HashMap::new();
+            let _ = headers.insert(
+                random::string(g, 32),
+                Some(random::string(g, 32))
+            );
+            let _ = headers.insert(
+                random::string(g, 32),
+                Some(random::string(g, 32))
+            );
+
+            let properties = None;
+            let request_id = Uuid::new_v4();
+
+            UpdateObjectPayload {
+                owner,
+                bucket_id,
+                name,
+                id,
+                vnode,
+                content_type,
+                headers,
+                properties,
+                request_id
+            }
+        }
+    }
+
+    quickcheck! {
+        fn prop_update_object_payload_roundtrip(msg: UpdateObjectPayload) -> bool {
+            match serde_json::to_string(&msg) {
+                Ok(update_str) => {
+                    let decode_result: Result<UpdateObjectPayload, _> =
+                        serde_json::from_str(&update_str);
+                    match decode_result {
+                        Ok(decoded_msg) => decoded_msg == msg,
+                        Err(_) => false
+                    }
+                },
+                Err(_) => false
+            }
+        }
+    }
+
+    quickcheck! {
+        fn prop_updateobject_payload_from_json(json: UpdateObjectJson) -> bool {
+            let decode_result1: Result<UpdateObjectPayload, _> =
+                serde_json::from_value(json.0.clone());
+            let res1 = decode_result1.is_ok();
+
+            let decode_result2: Result<Vec<UpdateObjectPayload>, _> =
+                serde_json::from_value(Value::Array(vec![json.0]));
+            let res2 = decode_result2.is_ok();
+
+            res1 && res2
+        }
+    }
 }

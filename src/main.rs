@@ -1,6 +1,4 @@
-/*
- * Copyright 2019 Joyent, Inc.
- */
+// Copyright 2019 Joyent, Inc.
 
 pub mod config;
 
@@ -61,7 +59,7 @@ fn main() {
     // Configure and start metrics server
     let metrics_log = root_log.clone();
     let metrics_host = config.metrics.host.clone();
-    let metrics_port = config.metrics.port.clone();
+    let metrics_port = config.metrics.port;
     thread::spawn(move || boray::metrics::start_server(metrics_host,
                                                        metrics_port,
                                                        metrics_log));
@@ -72,7 +70,7 @@ fn main() {
         config::tls::tls_config(config.database.tls_mode,
                                 config.database.certificate)
         .unwrap_or_else(|e| {
-            eprintln!("TLS configuration error: {}", e);
+            error!(root_log, "TLS configuration error: {}", e);
             std::process::exit(1);
         });
 
@@ -83,7 +81,7 @@ fn main() {
         port: Some(config.database.port),
         database: Some(config.database.database),
         application_name: Some(config.database.application_name),
-        tls_config: tls_config
+        tls_config
     };
 
     let connection_creator = PostgresConnection::connection_creator(pg_config);

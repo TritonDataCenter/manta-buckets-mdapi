@@ -1,10 +1,6 @@
-/*
- * Copyright 2019 Joyent, Inc.
- */
+// Copyright 2019 Joyent, Inc.
 
 use std::error::Error;
-use std::io::Error as IOError;
-use std::io::ErrorKind as IOErrorKind;
 use std::vec::Vec;
 
 use base64;
@@ -27,7 +23,7 @@ pub mod get;
 pub mod list;
 pub mod update;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct GetObjectPayload {
     pub owner      : Uuid,
     pub bucket_id  : Uuid,
@@ -50,7 +46,7 @@ type DeleteObjectPayload = GetObjectPayload;
 /// Likewise, the custom FromSql instance for the type converts the members of
 /// the text array format stored in the database back into an instance of
 /// StorageNodeIdentifier.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct StorageNodeIdentifier {
     pub datacenter: String,
     pub manta_storage_id: String
@@ -95,7 +91,7 @@ impl<'a> FromSql<'a> for StorageNodeIdentifier {
     accepts!(TEXT);
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ObjectResponse {
     pub id             : Uuid,
     pub owner          : Uuid,
@@ -111,6 +107,15 @@ pub struct ObjectResponse {
     pub properties     : Option<Value>
 }
 
+pub(self) fn to_json(objr: ObjectResponse) -> Value {
+    // This conversion can fail if the implementation of Serialize decides to
+    // fail, or if the type contains a map with non-string keys. There is no
+    // reason for the former to occur and we have JSON roundtrip quickcheck
+    // testing to verify this. The ObjectResponse type does not contain any maps
+    // so the latter reason for failure is not a concern either.
+    serde_json::to_value(objr).expect("failed to serialize ObjectResponse")
+}
+
 pub(self) fn object_not_found() -> Value {
     // The data for this JSON conversion is locally controlled
     // so unwrapping the result is ok here.
@@ -118,33 +123,44 @@ pub(self) fn object_not_found() -> Value {
         .expect("failed to encode a ObjectNotFound error")
 }
 
-pub(self) fn response(rows: Rows) -> Result<Option<ObjectResponse>, IOError> {
+pub(self) fn response(
+    method: &str,
+    rows: Rows
+) -> Result<Option<ObjectResponse>, String>
+{
     if rows.is_empty() {
         Ok(None)
     } else if rows.len() == 1 {
         let row = &rows[0];
-        let content_md5_bytes: Vec<u8> = row.get(7);
-        let content_md5 = base64::encode(&content_md5_bytes);
-        //TODO: Valdate # of cols
-        let resp = ObjectResponse {
-            id             : row.get(0),
-            owner          : row.get(1),
-            bucket_id      : row.get(2),
-            name           : row.get(3),
-            created        : row.get(4),
-            modified       : row.get(5),
-            content_length : row.get(6),
-            content_md5,
-            content_type   : row.get(8),
-            headers        : row.get(9),
-            sharks         : row.get(10),
-            properties     : row.get(11),
-        };
-        Ok(Some(resp))
+        let cols = row.len();
+
+        if cols >= 12 {
+            let content_md5_bytes: Vec<u8> = row.get("content_md5");
+            let content_md5 = base64::encode(&content_md5_bytes);
+            let resp = ObjectResponse {
+                id             : row.get("id"),
+                owner          : row.get("owner"),
+                bucket_id      : row.get("bucket_id"),
+                name           : row.get("name"),
+                created        : row.get("created"),
+                modified       : row.get("modified"),
+                content_length : row.get("content_length"),
+                content_md5,
+                content_type   : row.get("content_type"),
+                headers        : row.get("headers"),
+                sharks         : row.get("sharks"),
+                properties     : row.get("properties")
+            };
+            Ok(Some(resp))
+        } else {
+            let err = format!("{} query returned a row with only {} columns, \
+                               but 12 were expected .", method, cols);
+            Err(err.to_string())
+        }
     } else {
-        let err = format!("Get query found {} results, but expected only 1.",
-                          rows.len());
-        Err(IOError::new(IOErrorKind::Other, err))
+        let err = format!("{} query found {} results, but expected only 1.",
+                          method, rows.len());
+        Err(err.to_string())
     }
 }
 
@@ -165,4 +181,168 @@ pub(self) fn insert_delete_table_sql(vnode: u64) -> String {
        WHERE owner = $1 \
        AND bucket_id = $2 \
        AND name = $3"].concat()
+}
+
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    use std::collections::HashMap;
+
+    use chrono::prelude::*;
+    use quickcheck::{quickcheck, Arbitrary, Gen};
+    use quickcheck_helpers::random;
+    use serde_json;
+    use serde_json::Map;
+
+    #[derive(Clone, Debug)]
+    struct GetObjectJson(Value);
+    #[derive(Clone, Debug)]
+    struct ObjectJson(Value);
+
+    impl Arbitrary for GetObjectJson {
+        fn arbitrary<G: Gen>(g: &mut G) -> Self {
+            let owner = serde_json::to_value(Uuid::new_v4())
+                .expect("failed to convert owner field to Value");
+            let bucket_id = serde_json::to_value(Uuid::new_v4())
+                .expect("failed to convert bucket_id field to Value");
+            let name = serde_json::to_value(random::string(g, 1024))
+                .expect("failed to convert name field to Value");
+            let vnode = serde_json::to_value(u64::arbitrary(g))
+                .expect("failed to convert vnode field to Value");
+            let request_id = serde_json::to_value(Uuid::new_v4())
+                .expect("failed to convert request_id field to Value");
+
+            let mut obj = Map::new();
+            obj.insert("owner".into(), owner);
+            obj.insert("bucket_id".into(), bucket_id);
+            obj.insert("name".into(), name);
+            obj.insert("vnode".into(), vnode);
+            obj.insert("request_id".into(), request_id);
+            GetObjectJson(Value::Object(obj))
+        }
+    }
+
+    impl Arbitrary for GetObjectPayload {
+        fn arbitrary<G: Gen>(g: &mut G) -> Self {
+            let owner = Uuid::new_v4();
+            let bucket_id = Uuid::new_v4();
+            let name = random::string(g, 32);
+            let vnode = u64::arbitrary(g);
+            let request_id = Uuid::new_v4();
+
+            GetObjectPayload {
+                owner,
+                bucket_id,
+                name,
+                vnode,
+                request_id
+            }
+        }
+    }
+
+    impl Arbitrary for ObjectResponse {
+        fn arbitrary<G: Gen>(g: &mut G) -> Self {
+            let id = Uuid::new_v4();
+            let owner = Uuid::new_v4();
+            let bucket_id = Uuid::new_v4();
+            let name = random::string(g, 32);
+            let created = Utc::now();
+            let modified = Utc::now();
+            let content_length = i64::arbitrary(g);
+            let content_md5 = random::string(g, 32);
+            let content_type = random::string(g, 32);
+            let mut headers = HashMap::new();
+            let _ = headers.insert(
+                random::string(g, 32),
+                Some(random::string(g, 32))
+            );
+            let _ = headers.insert(
+                random::string(g, 32),
+                Some(random::string(g, 32))
+            );
+
+            let shark1 = StorageNodeIdentifier {
+                datacenter: random::string(g, 32),
+                manta_storage_id: random::string(g, 32)
+            };
+            let shark2 = StorageNodeIdentifier {
+                datacenter: random::string(g, 32),
+                manta_storage_id: random::string(g, 32)
+            };
+            let sharks = vec![shark1, shark2];
+            let properties = None;
+
+            ObjectResponse {
+                id,
+                owner,
+                bucket_id,
+                name,
+                created,
+                modified,
+                content_length,
+                content_md5,
+                content_type,
+                headers,
+                sharks,
+                properties
+            }
+        }
+    }
+
+    quickcheck! {
+        fn prop_get_object_payload_roundtrip(msg: GetObjectPayload) -> bool {
+            match serde_json::to_string(&msg) {
+                Ok(get_str) => {
+                    let decode_result: Result<GetObjectPayload, _> =
+                        serde_json::from_str(&get_str);
+                    match decode_result {
+                        Ok(decoded_msg) => decoded_msg == msg,
+                        Err(_) => false
+                    }
+                },
+                Err(_) => false
+            }
+        }
+    }
+
+    quickcheck! {
+        fn prop_object_response_roundtrip(msg: ObjectResponse) -> bool {
+            match serde_json::to_string(&msg) {
+                Ok(response_str) => {
+                    let decode_result: Result<ObjectResponse, _> =
+                        serde_json::from_str(&response_str);
+                    match decode_result {
+                        Ok(decoded_msg) => decoded_msg == msg,
+                        Err(_) => false
+                    }
+                },
+                Err(_) => false
+            }
+        }
+    }
+
+    quickcheck! {
+        fn prop_getobject_payload_from_json(json: GetObjectJson) -> bool {
+            let decode_result1: Result<GetObjectPayload, _> =
+                serde_json::from_value(json.0.clone());
+            let res1 = decode_result1.is_ok();
+
+            let decode_result2: Result<Vec<GetObjectPayload>, _> =
+                serde_json::from_value(Value::Array(vec![json.0]));
+            let res2 = decode_result2.is_ok();
+
+            res1 && res2
+        }
+    }
+
+    quickcheck! {
+        fn prop_object_response_to_json(objr: ObjectResponse) -> bool {
+            // Test the conversion to JSON. A lack of a panic in the call the
+            // `to_json` indicates success.
+            let _ = to_json(objr);
+            true
+        }
+    }
 }
