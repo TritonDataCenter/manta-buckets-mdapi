@@ -4,54 +4,43 @@ use std::vec::Vec;
 
 use base64;
 use serde_derive::{Deserialize, Serialize};
-use serde_json::{Value, json};
-use slog::{Logger, debug, error, warn};
+use serde_json::{json, Value};
+use slog::{debug, error, warn, Logger};
 use uuid::Uuid;
 
 use cueball_postgres_connection::PostgresConnection;
 use rust_fast::protocol::{FastMessage, FastMessageData};
 
 use crate::object::{
-    ObjectResponse,
-    StorageNodeIdentifier,
-    insert_delete_table_sql,
-    response,
-    to_json
+    insert_delete_table_sql, response, to_json, ObjectResponse, StorageNodeIdentifier,
 };
 use crate::sql;
-use crate::util::{
-    HandlerError,
-    HandlerResponse,
-    Hstore,
-    array_wrap,
-    other_error
-};
+use crate::util::{array_wrap, other_error, HandlerError, HandlerResponse, Hstore};
 
 const METHOD: &str = "createobject";
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct CreateObjectPayload {
-    pub owner          : Uuid,
-    pub bucket_id      : Uuid,
-    pub name           : String,
-    pub id             : Uuid,
-    pub vnode          : u64,
-    pub content_length : i64,
-    pub content_md5    : String,
-    pub content_type   : String,
-    pub headers        : Hstore,
-    pub sharks         : Vec<StorageNodeIdentifier>,
-    pub properties     : Option<Value>,
-    pub request_id     : Uuid
+    pub owner: Uuid,
+    pub bucket_id: Uuid,
+    pub name: String,
+    pub id: Uuid,
+    pub vnode: u64,
+    pub content_length: i64,
+    pub content_md5: String,
+    pub content_type: String,
+    pub headers: Hstore,
+    pub sharks: Vec<StorageNodeIdentifier>,
+    pub properties: Option<Value>,
+    pub request_id: Uuid,
 }
 
 pub(crate) fn handler(
     msg_id: u32,
     data: &Value,
     mut conn: &mut PostgresConnection,
-    log: &Logger
-) -> Result<HandlerResponse, HandlerError>
-{
+    log: &Logger,
+) -> Result<HandlerResponse, HandlerError> {
     debug!(log, "handling {} function request", &METHOD);
 
     serde_json::from_value::<Vec<CreateObjectPayload>>(data.clone())
@@ -75,7 +64,10 @@ pub(crate) fn handler(
             create(payload, &mut conn)
                 .and_then(|maybe_resp| {
                     // Handle the successful database response
-                    debug!(log, "{} operation was successful, req_id: {}", &METHOD, &req_id);
+                    debug!(
+                        log,
+                        "{} operation was successful, req_id: {}", &METHOD, &req_id
+                    );
                     // The `None` branch of the following match statement should
                     // never be reached. If `maybe_resp` was `None` this would
                     // mean that the SQL INSERT for the object was successful
@@ -83,20 +75,20 @@ pub(crate) fn handler(
                     // returned from the RETURNING clause. This should not be
                     // possible, but for completeleness we include a check for
                     // the condition.
-                    let value =
-                        match maybe_resp {
-                            Some(resp) => to_json(resp),
-                            None => object_create_failed()
-                        };
-                    let msg_data =
-                        FastMessageData::new(METHOD.into(), array_wrap(value));
-                    let msg: HandlerResponse =
-                        FastMessage::data(msg_id, msg_data).into();
+                    let value = match maybe_resp {
+                        Some(resp) => to_json(resp),
+                        None => object_create_failed(),
+                    };
+                    let msg_data = FastMessageData::new(METHOD.into(), array_wrap(value));
+                    let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
                     Ok(msg)
                 })
                 .or_else(|e| {
                     // Handle database error response
-                    error!(log, "{} operation failed: {}, req_id: {}", &METHOD, &e, &req_id);
+                    error!(
+                        log,
+                        "{} operation failed: {}, req_id: {}", &METHOD, &e, &req_id
+                    );
 
                     // Database errors are returned to as regular Fast messages
                     // to be handled by the calling application
@@ -106,8 +98,7 @@ pub(crate) fn handler(
                     }));
 
                     let msg_data = FastMessageData::new(METHOD.into(), value);
-                    let msg: HandlerResponse =
-                        FastMessage::data(msg_id, msg_data).into();
+                    let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
                     Ok(msg)
                 })
         })
@@ -116,67 +107,74 @@ pub(crate) fn handler(
 
 fn create(
     payload: CreateObjectPayload,
-    conn: &mut PostgresConnection
-) -> Result<Option<ObjectResponse>, String>
-{
+    conn: &mut PostgresConnection,
+) -> Result<Option<ObjectResponse>, String> {
     let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
     let create_sql = create_sql(payload.vnode);
     let move_sql = insert_delete_table_sql(payload.vnode);
-    let content_md5_bytes =
-        base64::decode(&payload.content_md5)
-        .map_err(|e| format!("content_md5 is not valid base64 encoded data: {}",
-                             e.to_string()))?;
+    let content_md5_bytes = base64::decode(&payload.content_md5).map_err(|e| {
+        format!(
+            "content_md5 is not valid base64 encoded data: {}",
+            e.to_string()
+        )
+    })?;
 
-    sql::txn_execute(sql::Method::ObjectCreateMove, &mut txn, move_sql.as_str(),
-                     &[&payload.owner,
-                       &payload.bucket_id,
-                       &payload.name])
-        .and_then(|_moved_rows| {
-            sql::txn_query(sql::Method::ObjectCreate, &mut txn, create_sql.as_str(),
-                           &[&payload.id,
-                           &payload.owner,
-                           &payload.bucket_id,
-                           &payload.name,
-                           &payload.content_length,
-                           &content_md5_bytes,
-                           &payload.content_type,
-                           &payload.headers,
-                           &payload.sharks,
-                           &payload.properties])
-        })
-        .and_then(|rows| {
-            txn.commit()?;
-            Ok(rows)
-        })
-        .map_err(|e| e.to_string())
-        .and_then(|rows| {
-            response(METHOD, rows)
-        })
+    sql::txn_execute(
+        sql::Method::ObjectCreateMove,
+        &mut txn,
+        move_sql.as_str(),
+        &[&payload.owner, &payload.bucket_id, &payload.name],
+    )
+    .and_then(|_moved_rows| {
+        sql::txn_query(
+            sql::Method::ObjectCreate,
+            &mut txn,
+            create_sql.as_str(),
+            &[
+                &payload.id,
+                &payload.owner,
+                &payload.bucket_id,
+                &payload.name,
+                &payload.content_length,
+                &content_md5_bytes,
+                &payload.content_type,
+                &payload.headers,
+                &payload.sharks,
+                &payload.properties,
+            ],
+        )
+    })
+    .and_then(|rows| {
+        txn.commit()?;
+        Ok(rows)
+    })
+    .map_err(|e| e.to_string())
+    .and_then(|rows| response(METHOD, rows))
 }
 
-fn create_sql(
-    vnode: u64
-) -> String
-{
-    ["INSERT INTO manta_bucket_",
-     &vnode.to_string(),
-     &".manta_bucket_object ( \
-       id, owner, bucket_id, name, content_length, content_md5, \
-       content_type, headers, sharks, properties) \
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) \
-       ON CONFLICT (owner, bucket_id, name) DO UPDATE \
-       SET id = EXCLUDED.id, \
-       created = current_timestamp, \
-       modified = current_timestamp, \
-       content_length = EXCLUDED.content_length, \
-       content_md5 = EXCLUDED.content_md5, \
-       content_type = EXCLUDED.content_type, \
-       headers = EXCLUDED.headers, \
-       sharks = EXCLUDED.sharks, \
-       properties = EXCLUDED.properties \
-       RETURNING id, owner, bucket_id, name, created, modified, \
-       content_length, content_md5, content_type, headers, \
-       sharks, properties"].concat()
+fn create_sql(vnode: u64) -> String {
+    [
+        "INSERT INTO manta_bucket_",
+        &vnode.to_string(),
+        &".manta_bucket_object ( \
+          id, owner, bucket_id, name, content_length, content_md5, \
+          content_type, headers, sharks, properties) \
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) \
+          ON CONFLICT (owner, bucket_id, name) DO UPDATE \
+          SET id = EXCLUDED.id, \
+          created = current_timestamp, \
+          modified = current_timestamp, \
+          content_length = EXCLUDED.content_length, \
+          content_md5 = EXCLUDED.content_md5, \
+          content_type = EXCLUDED.content_type, \
+          headers = EXCLUDED.headers, \
+          sharks = EXCLUDED.sharks, \
+          properties = EXCLUDED.properties \
+          RETURNING id, owner, bucket_id, name, created, modified, \
+          content_length, content_md5, content_type, headers, \
+          sharks, properties",
+    ]
+    .concat()
 }
 
 // This error is only here for completeness. In practice it should never
@@ -187,7 +185,6 @@ fn object_create_failed() -> Value {
         "message": "Create statement failed to return any results"
     })
 }
-
 
 #[cfg(test)]
 mod test {
@@ -213,8 +210,8 @@ mod test {
                 .expect("failed to convert name field to Value");
             let bucket_id = serde_json::to_value(Uuid::new_v4())
                 .expect("failed to convert bucket_id field to Value");
-            let id = serde_json::to_value(Uuid::new_v4())
-                .expect("failed to convert id field to Value");
+            let id =
+                serde_json::to_value(Uuid::new_v4()).expect("failed to convert id field to Value");
             let vnode = serde_json::to_value(u64::arbitrary(g))
                 .expect("failed to convert vnode field to Value");
             let content_length = serde_json::to_value(i64::arbitrary(g))
@@ -224,23 +221,17 @@ mod test {
             let content_type = serde_json::to_value(random::string(g, 32))
                 .expect("failed to convert content_type field to Value");
             let mut headers = HashMap::new();
-            let _ = headers.insert(
-                random::string(g, 32),
-                Some(random::string(g, 32))
-            );
-            let _ = headers.insert(
-                random::string(g, 32),
-                Some(random::string(g, 32))
-            );
-            let headers = serde_json::to_value(headers)
-                .expect("failed to convert headers field to Value");
+            let _ = headers.insert(random::string(g, 32), Some(random::string(g, 32)));
+            let _ = headers.insert(random::string(g, 32), Some(random::string(g, 32)));
+            let headers =
+                serde_json::to_value(headers).expect("failed to convert headers field to Value");
             let shark1 = object::StorageNodeIdentifier {
                 datacenter: random::string(g, 32),
-                manta_storage_id: random::string(g, 32)
+                manta_storage_id: random::string(g, 32),
             };
             let shark2 = object::StorageNodeIdentifier {
                 datacenter: random::string(g, 32),
-                manta_storage_id: random::string(g, 32)
+                manta_storage_id: random::string(g, 32),
             };
             let sharks = serde_json::to_value(vec![shark1, shark2])
                 .expect("failed to convert sharks field to Value");
@@ -274,22 +265,16 @@ mod test {
             let content_type = random::string(g, 32);
             let content_md5 = random::string(g, 32);
             let mut headers = HashMap::new();
-            let _ = headers.insert(
-                random::string(g, 32),
-                Some(random::string(g, 32))
-            );
-            let _ = headers.insert(
-                random::string(g, 32),
-                Some(random::string(g, 32))
-            );
+            let _ = headers.insert(random::string(g, 32), Some(random::string(g, 32)));
+            let _ = headers.insert(random::string(g, 32), Some(random::string(g, 32)));
 
             let shark1 = StorageNodeIdentifier {
                 datacenter: random::string(g, 32),
-                manta_storage_id: random::string(g, 32)
+                manta_storage_id: random::string(g, 32),
             };
             let shark2 = StorageNodeIdentifier {
                 datacenter: random::string(g, 32),
-                manta_storage_id: random::string(g, 32)
+                manta_storage_id: random::string(g, 32),
             };
             let sharks = vec![shark1, shark2];
             let properties = None;
@@ -307,7 +292,7 @@ mod test {
                 headers,
                 sharks,
                 properties,
-                request_id
+                request_id,
             }
         }
     }

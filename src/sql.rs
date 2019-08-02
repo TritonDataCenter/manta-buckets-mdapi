@@ -5,8 +5,8 @@
 use std::time::Instant;
 use std::vec::Vec;
 
-use postgres::{Transaction, Client, ToStatement};
 use postgres::types::ToSql;
+use postgres::{Client, ToStatement, Transaction};
 use tokio_postgres::Error as PGError;
 use tokio_postgres::Row as PGRow;
 
@@ -25,7 +25,7 @@ pub enum Method {
     ObjectList,
     ObjectDelete,
     ObjectDeleteMove,
-    ObjectUpdate
+    ObjectUpdate,
 }
 
 impl Method {
@@ -42,59 +42,66 @@ impl Method {
             Method::ObjectList => "ObjectList",
             Method::ObjectDelete => "ObjectDelete",
             Method::ObjectDeleteMove => "ObjectDeleteMove",
-            Method::ObjectUpdate => "ObjectUpdate"
+            Method::ObjectUpdate => "ObjectUpdate",
         }
     }
 }
 
 // conn.execute wrapper that posts metrics
-pub fn execute<T>(method: Method,
-       conn: &mut Client,
-       sql: &T,
-       items: &[&dyn ToSql])
-       -> Result<u64, PGError>
-       where T: ?Sized + ToStatement,
+pub fn execute<T>(
+    method: Method,
+    conn: &mut Client,
+    sql: &T,
+    items: &[&dyn ToSql],
+) -> Result<u64, PGError>
+where
+    T: ?Sized + ToStatement,
 {
     sql_with_metrics(method, || conn.execute(sql, items))
 }
 
 // txn.execute wrapper that posts metrics
-pub fn txn_execute<T>(method: Method,
-       txn: &mut Transaction,
-       sql: &T,
-       items: &[&dyn ToSql])
-       -> Result<u64, PGError>
-       where T: ?Sized + ToStatement,
+pub fn txn_execute<T>(
+    method: Method,
+    txn: &mut Transaction,
+    sql: &T,
+    items: &[&dyn ToSql],
+) -> Result<u64, PGError>
+where
+    T: ?Sized + ToStatement,
 {
     sql_with_metrics(method, || txn.execute(sql, items))
 }
 
 // conn.query wrapper that posts metrics
-pub fn query<T>(method: Method,
-       conn: &mut Client,
-       sql: &T,
-       items: &[&dyn ToSql])
-       -> Result<Vec<PGRow>, PGError>
-       where T: ?Sized + ToStatement,
+pub fn query<T>(
+    method: Method,
+    conn: &mut Client,
+    sql: &T,
+    items: &[&dyn ToSql],
+) -> Result<Vec<PGRow>, PGError>
+where
+    T: ?Sized + ToStatement,
 {
     sql_with_metrics(method, || conn.query(sql, items))
 }
 
 // txn.query wrapper that posts metrics
-pub fn txn_query<T>(method: Method,
-       txn: &mut Transaction,
-       sql: &T,
-       items: &[&dyn ToSql])
-       -> Result<Vec<PGRow>, PGError>
-       where T: ?Sized + ToStatement,
+pub fn txn_query<T>(
+    method: Method,
+    txn: &mut Transaction,
+    sql: &T,
+    items: &[&dyn ToSql],
+) -> Result<Vec<PGRow>, PGError>
+where
+    T: ?Sized + ToStatement,
 {
     sql_with_metrics(method, || txn.query(sql, items))
 }
 
-fn sql_with_metrics<F, T>(method: Method,
-    f: F)
-    -> Result<T, PGError>
-    where F: FnOnce() -> Result<T, PGError>,
+fn sql_with_metrics<F, T>(method: Method, f: F) -> Result<T, PGError>
+where
+    F: FnOnce() -> Result<T, PGError>,
 {
     let now = Instant::now();
 
@@ -105,16 +112,17 @@ fn sql_with_metrics<F, T>(method: Method,
     res
 }
 
-fn post_timer_metrics(method: Method, now: Instant, success: bool)
-{
+fn post_timer_metrics(method: Method, now: Instant, success: bool) {
     // Generate metrics for the request
     let duration = now.elapsed();
     let t = util::duration_to_seconds(duration);
 
     let success = match success {
         true => "true",
-        false => "false"
+        false => "false",
     };
 
-    metrics::POSTGRES_REQUESTS.with_label_values(&[&method.as_str(), success]).observe(t);
+    metrics::POSTGRES_REQUESTS
+        .with_label_values(&[&method.as_str(), success])
+        .observe(t);
 }

@@ -17,20 +17,20 @@ type Timestamptz = chrono::DateTime<chrono::Utc>;
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct GetBucketPayload {
-    pub owner      : Uuid,
-    pub name       : String,
-    pub vnode      : u64,
-    pub request_id : Uuid
+    pub owner: Uuid,
+    pub name: String,
+    pub vnode: u64,
+    pub request_id: Uuid,
 }
 
 pub type DeleteBucketPayload = GetBucketPayload;
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct BucketResponse {
-    pub id         : Uuid,
-    pub owner      : Uuid,
-    pub name       : String ,
-    pub created    : Timestamptz
+    pub id: Uuid,
+    pub owner: Uuid,
+    pub name: String,
+    pub created: Timestamptz,
 }
 
 pub(self) fn to_json(br: BucketResponse) -> Value {
@@ -56,11 +56,7 @@ pub(self) fn bucket_already_exists() -> Value {
         .expect("failed to encode a BucketAlreadyExists error")
 }
 
-pub(self) fn response(
-    method: &str,
-    rows: Rows
-) -> Result<Option<BucketResponse>, String>
-{
+pub(self) fn response(method: &str, rows: Rows) -> Result<Option<BucketResponse>, String> {
     if rows.is_empty() {
         Ok(None)
     } else if rows.len() == 1 {
@@ -69,25 +65,30 @@ pub(self) fn response(
 
         if cols >= 4 {
             let resp = BucketResponse {
-                id             : row.get("id"),
-                owner          : row.get("owner"),
-                name           : row.get("name"),
-                created        : row.get("created")
+                id: row.get("id"),
+                owner: row.get("owner"),
+                name: row.get("name"),
+                created: row.get("created"),
             };
             Ok(Some(resp))
         } else {
-            let err = format!("{} query returned a row with only {} columns, \
-                               but 4 were expected .", method, cols);
+            let err = format!(
+                "{} query returned a row with only {} columns, \
+                 but 4 were expected .",
+                method, cols
+            );
             Err(err.to_string())
         }
     } else {
         // The schema should prevent there ever being multiple rows in the query result
-        let err = format!("{} query found {} results, but expected only 1.",
-                          method, rows.len());
+        let err = format!(
+            "{} query found {} results, but expected only 1.",
+            method,
+            rows.len()
+        );
         Err(err.to_string())
     }
 }
-
 
 #[cfg(test)]
 mod test {
@@ -135,7 +136,7 @@ mod test {
                 owner,
                 name,
                 vnode,
-                request_id
+                request_id,
             }
         }
     }
@@ -151,7 +152,7 @@ mod test {
                 id,
                 owner,
                 name,
-                created
+                created,
             }
         }
     }

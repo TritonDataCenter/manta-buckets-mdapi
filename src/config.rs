@@ -8,14 +8,13 @@
 /// implementations in this module.  These can first be overridden by a config
 /// file specified with `-c <config>`, and then overridden again by specific
 /// command line arguments.
-
 use std::convert::Into;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use clap::{ArgMatches, value_t};
+use clap::{value_t, ArgMatches};
 use serde_derive::Deserialize;
 use slog::Level;
 
@@ -44,7 +43,7 @@ pub enum LogLevel {
     Debug,
     /// Log everything
     #[serde(alias = "trace")]
-    Trace
+    Trace,
 }
 
 impl FromStr for LogLevel {
@@ -53,12 +52,12 @@ impl FromStr for LogLevel {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "critical" => Ok(LogLevel::Critical),
-            "error"    => Ok(LogLevel::Error),
-            "warning"  => Ok(LogLevel::Warning),
-            "info"     => Ok(LogLevel::Info),
-            "debug"    => Ok(LogLevel::Debug),
-            "trace"    => Ok(LogLevel::Trace),
-            _          => Err("invalid log level")
+            "error" => Ok(LogLevel::Error),
+            "warning" => Ok(LogLevel::Warning),
+            "info" => Ok(LogLevel::Info),
+            "debug" => Ok(LogLevel::Debug),
+            "trace" => Ok(LogLevel::Trace),
+            _ => Err("invalid log level"),
         }
     }
 }
@@ -73,11 +72,11 @@ impl ToString for LogLevel {
     fn to_string(&self) -> String {
         match self {
             LogLevel::Critical => "critical".into(),
-            LogLevel::Error    => "error".into(),
-            LogLevel::Warning  => "warning".into(),
-            LogLevel::Info     => "info".into(),
-            LogLevel::Debug    => "debug".into(),
-            LogLevel::Trace    => "trace".into()
+            LogLevel::Error => "error".into(),
+            LogLevel::Warning => "warning".into(),
+            LogLevel::Info => "info".into(),
+            LogLevel::Debug => "debug".into(),
+            LogLevel::Trace => "trace".into(),
         }
     }
 }
@@ -86,11 +85,11 @@ impl From<LogLevel> for slog::Level {
     fn from(lvl: LogLevel) -> Self {
         match lvl {
             LogLevel::Critical => Level::Critical,
-            LogLevel::Error    => Level::Error,
-            LogLevel::Warning  => Level::Warning,
-            LogLevel::Info     => Level::Info,
-            LogLevel::Debug    => Level::Debug,
-            LogLevel::Trace    => Level::Trace
+            LogLevel::Error => Level::Error,
+            LogLevel::Warning => Level::Warning,
+            LogLevel::Info => Level::Info,
+            LogLevel::Debug => Level::Debug,
+            LogLevel::Trace => Level::Trace,
         }
     }
 }
@@ -102,18 +101,18 @@ pub struct Config {
     pub metrics: ConfigMetrics,
     pub database: ConfigDatabase,
     pub cueball: ConfigCueball,
-    pub tokio: ConfigTokio
+    pub tokio: ConfigTokio,
 }
 
 #[derive(Clone, Deserialize)]
 pub struct ConfigLog {
-    pub level: LogLevel
+    pub level: LogLevel,
 }
 
 impl Default for ConfigLog {
     fn default() -> Self {
         ConfigLog {
-            level: LogLevel::Debug
+            level: LogLevel::Debug,
         }
     }
 }
@@ -121,14 +120,14 @@ impl Default for ConfigLog {
 #[derive(Clone, Deserialize)]
 pub struct ConfigServer {
     pub host: String,
-    pub port: u16
+    pub port: u16,
 }
 
 impl Default for ConfigServer {
     fn default() -> Self {
         ConfigServer {
             host: "127.0.0.1".into(),
-            port: 2030
+            port: 2030,
         }
     }
 }
@@ -136,14 +135,14 @@ impl Default for ConfigServer {
 #[derive(Clone, Deserialize)]
 pub struct ConfigMetrics {
     pub host: String,
-    pub port: u16
+    pub port: u16,
 }
 
 impl Default for ConfigMetrics {
     fn default() -> Self {
         ConfigMetrics {
             host: "127.0.0.1".into(),
-            port: 3020
+            port: 3020,
         }
     }
 }
@@ -156,7 +155,7 @@ pub struct ConfigDatabase {
     pub database: String,
     pub application_name: String,
     pub tls_mode: TlsConnectMode,
-    pub certificate: Option<PathBuf>
+    pub certificate: Option<PathBuf>,
 }
 
 impl Default for ConfigDatabase {
@@ -168,7 +167,7 @@ impl Default for ConfigDatabase {
             database: "boray".to_owned(),
             application_name: "boray".into(),
             tls_mode: TlsConnectMode::Disable,
-            certificate: None
+            certificate: None,
         }
     }
 }
@@ -177,7 +176,7 @@ impl Default for ConfigDatabase {
 pub struct ConfigCueball {
     pub max_connections: u32,
     pub claim_timeout: Option<u64>,
-    pub rebalancer_action_delay: Option<u64>
+    pub rebalancer_action_delay: Option<u64>,
 }
 
 impl Default for ConfigCueball {
@@ -185,11 +184,10 @@ impl Default for ConfigCueball {
         ConfigCueball {
             max_connections: 10,
             claim_timeout: Some(500),
-            rebalancer_action_delay: Some(100)
+            rebalancer_action_delay: Some(100),
         }
     }
 }
-
 
 #[derive(Clone, Deserialize)]
 pub struct ConfigTokio {
@@ -197,7 +195,7 @@ pub struct ConfigTokio {
     pub blocking_threads: usize,
     pub thread_keep_alive: u64,
     pub thread_stack_size: usize,
-    pub thread_name_prefix: String
+    pub thread_name_prefix: String,
 }
 
 impl Default for ConfigTokio {
@@ -207,13 +205,12 @@ impl Default for ConfigTokio {
             blocking_threads: 200,
             thread_keep_alive: 60,
             thread_stack_size: 2 * 1024 * 1024,
-            thread_name_prefix: "boray-worker-".into()
+            thread_name_prefix: "boray-worker-".into(),
         }
     }
 }
 
-pub fn read_file<F: AsRef<OsStr> + ?Sized>(f: &F) -> Config
-{
+pub fn read_file<F: AsRef<OsStr> + ?Sized>(f: &F) -> Config {
     let s = match fs::read(Path::new(&f)) {
         Ok(s) => s,
         Err(e) => {
@@ -222,11 +219,10 @@ pub fn read_file<F: AsRef<OsStr> + ?Sized>(f: &F) -> Config
         }
     };
 
-    toml::from_slice(&s)
-        .unwrap_or_else(|e| {
-            eprintln!("Failed to parse config file: {}", e);
-            std::process::exit(1);
-        })
+    toml::from_slice(&s).unwrap_or_else(|e| {
+        eprintln!("Failed to parse config file: {}", e);
+        std::process::exit(1);
+    })
 }
 
 pub fn read_cli_args(matches: &ArgMatches, config: &mut Config) {
@@ -277,7 +273,7 @@ pub mod tls {
     pub(crate) enum TlsError {
         NoCertificate,
         CertError(CertificateError),
-        IOError(io::Error)
+        IOError(io::Error),
     }
 
     impl From<io::Error> for TlsError {
@@ -295,18 +291,17 @@ pub mod tls {
     impl fmt::Display for TlsError {
         fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
             match self {
-                TlsError::NoCertificate => {
-                    write!(fmt, "no TLS certificate file given")
-                },
+                TlsError::NoCertificate => write!(fmt, "no TLS certificate file given"),
                 TlsError::CertError(ref e) => e.fmt(fmt),
-                TlsError::IOError(ref e) => e.fmt(fmt)
+                TlsError::IOError(ref e) => e.fmt(fmt),
             }
         }
     }
 
-    pub(crate) fn tls_config(mode: TlsConnectMode, o_p: Option<PathBuf>) ->
-        Result<TlsConfig, TlsError>
-    {
+    pub(crate) fn tls_config(
+        mode: TlsConnectMode,
+        o_p: Option<PathBuf>,
+    ) -> Result<TlsConfig, TlsError> {
         let cert_result = maybe_read_certificate(o_p);
         let cert_ok = cert_result.is_ok();
 
@@ -315,26 +310,26 @@ pub mod tls {
             TlsConnectMode::Allow => {
                 let cert_option = cert_result.ok();
                 Ok(TlsConfig::allow(cert_option))
-            },
+            }
             TlsConnectMode::Prefer => {
                 let cert_option = cert_result.ok();
                 Ok(TlsConfig::prefer(cert_option))
-            },
+            }
             TlsConnectMode::Require if cert_ok => {
                 // Unwrapping the result since we've verifed the Result is Ok in
                 // the guard
                 Ok(TlsConfig::require(cert_result.unwrap()))
-            },
+            }
             TlsConnectMode::VerifyCa if cert_ok => {
                 // Unwrapping the result since we've verifed the Result is Ok in
                 // the guard
                 Ok(TlsConfig::verify_ca(cert_result.unwrap()))
-            },
-            TlsConnectMode::VerifyFull if cert_ok  => {
+            }
+            TlsConnectMode::VerifyFull if cert_ok => {
                 // Unwrapping the result since we've verifed the Result is Ok in
                 // the guard
                 Ok(TlsConfig::verify_full(cert_result.unwrap()))
-            },
+            }
             _ => {
                 // If we arrive here we know that `cert_result` is an error of the
                 // type to be returned, but the compiler does not know this and
@@ -348,26 +343,16 @@ pub mod tls {
     /// If a certificate file path is present then open the file, read the
     /// bytes into a buffer, and attempt to interpret the bytes as a
     /// Certificate while handling errors along the way.
-    fn maybe_read_certificate(o_p: Option<PathBuf>) ->
-        Result<Certificate, TlsError>
-    {
+    fn maybe_read_certificate(o_p: Option<PathBuf>) -> Result<Certificate, TlsError> {
         let mut buf = vec![];
 
         o_p.ok_or(TlsError::NoCertificate)
-            .and_then(|p| {
-                File::open(p).map_err(Into::into)
-            })
-            .and_then(|mut f| {
-                f.read_to_end(&mut buf).map_err(Into::into)
-            })
-            .and_then(|_| {
-                read_certificate(&buf).map_err(Into::into)
-            })
+            .and_then(|p| File::open(p).map_err(Into::into))
+            .and_then(|mut f| f.read_to_end(&mut buf).map_err(Into::into))
+            .and_then(|_| read_certificate(&buf).map_err(Into::into))
     }
 
-    fn read_certificate(buf: &[u8]) ->
-        Result<Certificate, CertificateError>
-    {
+    fn read_certificate(buf: &[u8]) -> Result<Certificate, CertificateError> {
         Certificate::from_der(buf)?;
         Certificate::from_pem(buf)
     }

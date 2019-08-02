@@ -1,44 +1,33 @@
 // Copyright 2019 Joyent, Inc.
 
 use serde_derive::{Deserialize, Serialize};
-use serde_json::{Value, json};
-use slog::{Logger, debug, error, warn};
+use serde_json::{json, Value};
+use slog::{debug, error, warn, Logger};
 use uuid::Uuid;
 
 use cueball_postgres_connection::PostgresConnection;
 use rust_fast::protocol::{FastMessage, FastMessageData};
 
-use crate::bucket::{
-    BucketResponse,
-    bucket_already_exists,
-    response,
-    to_json
-};
+use crate::bucket::{bucket_already_exists, response, to_json, BucketResponse};
 use crate::sql;
-use crate::util::{
-    HandlerError,
-    HandlerResponse,
-    array_wrap,
-    other_error
-};
+use crate::util::{array_wrap, other_error, HandlerError, HandlerResponse};
 
 const METHOD: &str = "createbucket";
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct CreateBucketPayload {
-    pub owner      : Uuid,
-    pub name       : String,
-    pub vnode      : u64,
-    pub request_id : Uuid
+    pub owner: Uuid,
+    pub name: String,
+    pub vnode: u64,
+    pub request_id: Uuid,
 }
 
 pub(crate) fn handler(
     msg_id: u32,
     data: &Value,
     mut conn: &mut PostgresConnection,
-    log: &Logger)
-    -> Result<HandlerResponse, HandlerError>
-{
+    log: &Logger,
+) -> Result<HandlerResponse, HandlerError> {
     debug!(log, "handling {} function request", &METHOD);
 
     serde_json::from_value::<Vec<CreateBucketPayload>>(data.clone())
@@ -62,21 +51,24 @@ pub(crate) fn handler(
             create(payload, &mut conn)
                 .and_then(|maybe_resp| {
                     // Handle the successful database response
-                    debug!(log, "{} operation was successful, req_id: {}", &METHOD, &req_id);
-                    let value =
-                        match maybe_resp {
-                            Some(resp) => to_json(resp),
-                            None => bucket_already_exists()
-                        };
-                    let msg_data =
-                        FastMessageData::new(METHOD.into(), array_wrap(value));
-                    let msg: HandlerResponse =
-                        FastMessage::data(msg_id, msg_data).into();
+                    debug!(
+                        log,
+                        "{} operation was successful, req_id: {}", &METHOD, &req_id
+                    );
+                    let value = match maybe_resp {
+                        Some(resp) => to_json(resp),
+                        None => bucket_already_exists(),
+                    };
+                    let msg_data = FastMessageData::new(METHOD.into(), array_wrap(value));
+                    let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
                     Ok(msg)
                 })
                 .or_else(|e| {
                     // Handle database error response
-                    error!(log, "{} operation failed: {}, req_id: {}", &METHOD, &e, &req_id);
+                    error!(
+                        log,
+                        "{} operation failed: {}, req_id: {}", &METHOD, &e, &req_id
+                    );
 
                     // Database errors are returned to as regular Fast messages
                     // to be handled by the calling application
@@ -86,8 +78,7 @@ pub(crate) fn handler(
                     }));
 
                     let msg_data = FastMessageData::new(METHOD.into(), value);
-                    let msg: HandlerResponse =
-                        FastMessage::data(msg_id, msg_data).into();
+                    let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
                     Ok(msg)
                 })
         })
@@ -96,39 +87,37 @@ pub(crate) fn handler(
 
 fn create(
     payload: CreateBucketPayload,
-    conn: &mut PostgresConnection
-) -> Result<Option<BucketResponse>, String>
-{
+    conn: &mut PostgresConnection,
+) -> Result<Option<BucketResponse>, String> {
     let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
     let create_sql = create_sql(payload.vnode);
 
-    sql::txn_query(sql::Method::BucketCreate, &mut txn, create_sql.as_str(),
-                   &[&Uuid::new_v4(),
-                     &payload.owner,
-                     &payload.name])
-        .and_then(|rows| {
-            txn.commit()?;
-            Ok(rows)
-        })
-        .map_err(|e| e.to_string())
-        .and_then(|rows| {
-            response(METHOD, rows)
-        })
+    sql::txn_query(
+        sql::Method::BucketCreate,
+        &mut txn,
+        create_sql.as_str(),
+        &[&Uuid::new_v4(), &payload.owner, &payload.name],
+    )
+    .and_then(|rows| {
+        txn.commit()?;
+        Ok(rows)
+    })
+    .map_err(|e| e.to_string())
+    .and_then(|rows| response(METHOD, rows))
 }
 
-fn create_sql(
-    vnode: u64
-) -> String
-{
-    ["INSERT INTO manta_bucket_",
-     &vnode.to_string(),
-     &".manta_bucket \
-       (id, owner, name) \
-       VALUES ($1, $2, $3) \
-       ON CONFLICT DO NOTHING \
-       RETURNING id, owner, name, created"].concat()
+fn create_sql(vnode: u64) -> String {
+    [
+        "INSERT INTO manta_bucket_",
+        &vnode.to_string(),
+        &".manta_bucket \
+          (id, owner, name) \
+          VALUES ($1, $2, $3) \
+          ON CONFLICT DO NOTHING \
+          RETURNING id, owner, name, created",
+    ]
+    .concat()
 }
-
 
 #[cfg(test)]
 mod test {
@@ -173,7 +162,7 @@ mod test {
                 owner,
                 name,
                 vnode,
-                request_id
+                request_id,
             }
         }
     }

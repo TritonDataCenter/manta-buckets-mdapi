@@ -2,26 +2,15 @@
 
 use std::vec::Vec;
 
-use serde_json::{Value, json};
-use slog::{Logger, debug, error, warn};
+use serde_json::{json, Value};
+use slog::{debug, error, warn, Logger};
 
 use cueball_postgres_connection::PostgresConnection;
 use rust_fast::protocol::{FastMessage, FastMessageData};
 
-use crate::object::{
-    GetObjectPayload,
-    ObjectResponse,
-    object_not_found,
-    response,
-    to_json
-};
+use crate::object::{object_not_found, response, to_json, GetObjectPayload, ObjectResponse};
 use crate::sql;
-use crate::util::{
-    HandlerError,
-    HandlerResponse,
-    array_wrap,
-    other_error
-};
+use crate::util::{array_wrap, other_error, HandlerError, HandlerResponse};
 
 const METHOD: &str = "getobject";
 
@@ -29,9 +18,8 @@ pub(crate) fn handler(
     msg_id: u32,
     data: &Value,
     mut conn: &mut PostgresConnection,
-    log: &Logger
-) -> Result<HandlerResponse, HandlerError>
-{
+    log: &Logger,
+) -> Result<HandlerResponse, HandlerError> {
     debug!(log, "handling getobject function request");
 
     serde_json::from_value::<Vec<GetObjectPayload>>(data.clone())
@@ -55,19 +43,24 @@ pub(crate) fn handler(
             get(payload, &mut conn)
                 .and_then(|maybe_resp| {
                     // Handle the successful database response
-                    debug!(log, "getobject operation was successful, req_id: {}", &req_id);
-                    let value =
-                        match maybe_resp {
-                            Some(resp) => array_wrap(to_json(resp)),
-                            None => array_wrap(object_not_found())
-                        };
+                    debug!(
+                        log,
+                        "getobject operation was successful, req_id: {}", &req_id
+                    );
+                    let value = match maybe_resp {
+                        Some(resp) => array_wrap(to_json(resp)),
+                        None => array_wrap(object_not_found()),
+                    };
                     let msg_data = FastMessageData::new(METHOD.into(), value);
                     let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
                     Ok(msg)
                 })
                 .or_else(|e| {
                     // Handle database error response
-                    error!(log, "getobject operation failed: {}, req_id: {}", &e, &req_id);
+                    error!(
+                        log,
+                        "getobject operation failed: {}, req_id: {}", &e, &req_id
+                    );
 
                     // Database errors are returned to as regular Fast messages
                     // to be handled by the calling application
@@ -77,8 +70,7 @@ pub(crate) fn handler(
                     }));
 
                     let msg_data = FastMessageData::new(METHOD.into(), value);
-                    let msg: HandlerResponse =
-                        FastMessage::data(msg_id, msg_data).into();
+                    let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
                     Ok(msg)
                 })
         })
@@ -87,30 +79,29 @@ pub(crate) fn handler(
 
 fn get(
     payload: GetObjectPayload,
-    mut conn: &mut PostgresConnection
-) -> Result<Option<ObjectResponse>, String>
-{
+    mut conn: &mut PostgresConnection,
+) -> Result<Option<ObjectResponse>, String> {
     let sql = get_sql(payload.vnode);
 
-    sql::query(sql::Method::ObjectGet, &mut conn, sql.as_str(),
-               &[&payload.owner,
-               &payload.bucket_id,
-                 &payload.name])
-        .map_err(|e| e.to_string())
-        .and_then(|rows| {
-            response(METHOD, rows)
-        })
+    sql::query(
+        sql::Method::ObjectGet,
+        &mut conn,
+        sql.as_str(),
+        &[&payload.owner, &payload.bucket_id, &payload.name],
+    )
+    .map_err(|e| e.to_string())
+    .and_then(|rows| response(METHOD, rows))
 }
 
-fn get_sql(
-    vnode: u64
-) -> String
-{
-    ["SELECT id, owner, bucket_id, name, created, modified, content_length, \
-      content_md5, content_type, headers, sharks, properties \
-      FROM manta_bucket_",
-     &vnode.to_string(),
-     &".manta_bucket_object WHERE owner = $1 \
-       AND bucket_id = $2 \
-       AND name = $3"].concat()
+fn get_sql(vnode: u64) -> String {
+    [
+        "SELECT id, owner, bucket_id, name, created, modified, content_length, \
+         content_md5, content_type, headers, sharks, properties \
+         FROM manta_bucket_",
+        &vnode.to_string(),
+        &".manta_bucket_object WHERE owner = $1 \
+          AND bucket_id = $2 \
+          AND name = $3",
+    ]
+    .concat()
 }

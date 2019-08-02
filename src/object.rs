@@ -5,17 +5,13 @@ use std::vec::Vec;
 
 use base64;
 use postgres::types::{FromSql, IsNull, ToSql, Type};
-use tokio_postgres::{accepts, to_sql_checked};
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
+use tokio_postgres::{accepts, to_sql_checked};
 use uuid::Uuid;
 
 use crate::error::{BorayError, BorayErrorType};
-use crate::util::{
-    Hstore,
-    Rows,
-    Timestamptz
-};
+use crate::util::{Hstore, Rows, Timestamptz};
 
 pub mod create;
 pub mod delete;
@@ -25,11 +21,11 @@ pub mod update;
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct GetObjectPayload {
-    pub owner      : Uuid,
-    pub bucket_id  : Uuid,
-    pub name       : String,
-    pub vnode      : u64,
-    pub request_id : Uuid
+    pub owner: Uuid,
+    pub bucket_id: Uuid,
+    pub name: String,
+    pub vnode: u64,
+    pub request_id: Uuid,
 }
 
 type DeleteObjectPayload = GetObjectPayload;
@@ -49,7 +45,7 @@ type DeleteObjectPayload = GetObjectPayload;
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct StorageNodeIdentifier {
     pub datacenter: String,
-    pub manta_storage_id: String
+    pub manta_storage_id: String,
 }
 
 impl ToString for StorageNodeIdentifier {
@@ -63,15 +59,14 @@ impl From<String> for StorageNodeIdentifier {
         let v: Vec<&str> = s.split(':').collect();
         StorageNodeIdentifier {
             datacenter: String::from(v[0]),
-            manta_storage_id: String::from(v[1])
+            manta_storage_id: String::from(v[1]),
         }
     }
 }
 
 impl ToSql for StorageNodeIdentifier {
-    fn to_sql(&self, ty: &Type, w: &mut Vec<u8>) ->
-        Result<IsNull, Box<dyn Error + Sync + Send>> {
-            <String as ToSql>::to_sql(&self.to_string(), ty, w)
+    fn to_sql(&self, ty: &Type, w: &mut Vec<u8>) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
+        <String as ToSql>::to_sql(&self.to_string(), ty, w)
     }
 
     accepts!(TEXT);
@@ -80,12 +75,11 @@ impl ToSql for StorageNodeIdentifier {
 }
 
 impl<'a> FromSql<'a> for StorageNodeIdentifier {
-    fn from_sql(ty: &Type, raw: &'a [u8]) ->
-        Result<StorageNodeIdentifier, Box<dyn Error + Sync + Send>> {
-            String::from_sql(ty, raw)
-                .and_then(|s| {
-                    Ok(StorageNodeIdentifier::from(s))
-                })
+    fn from_sql(
+        ty: &Type,
+        raw: &'a [u8],
+    ) -> Result<StorageNodeIdentifier, Box<dyn Error + Sync + Send>> {
+        String::from_sql(ty, raw).and_then(|s| Ok(StorageNodeIdentifier::from(s)))
     }
 
     accepts!(TEXT);
@@ -93,18 +87,18 @@ impl<'a> FromSql<'a> for StorageNodeIdentifier {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ObjectResponse {
-    pub id             : Uuid,
-    pub owner          : Uuid,
-    pub bucket_id      : Uuid,
-    pub name           : String,
-    pub created        : Timestamptz,
-    pub modified       : Timestamptz,
-    pub content_length : i64,
-    pub content_md5    : String,
-    pub content_type   : String,
-    pub headers        : Hstore,
-    pub sharks         : Vec<StorageNodeIdentifier>,
-    pub properties     : Option<Value>
+    pub id: Uuid,
+    pub owner: Uuid,
+    pub bucket_id: Uuid,
+    pub name: String,
+    pub created: Timestamptz,
+    pub modified: Timestamptz,
+    pub content_length: i64,
+    pub content_md5: String,
+    pub content_type: String,
+    pub headers: Hstore,
+    pub sharks: Vec<StorageNodeIdentifier>,
+    pub properties: Option<Value>,
 }
 
 pub(self) fn to_json(objr: ObjectResponse) -> Value {
@@ -123,11 +117,7 @@ pub(self) fn object_not_found() -> Value {
         .expect("failed to encode a ObjectNotFound error")
 }
 
-pub(self) fn response(
-    method: &str,
-    rows: Rows
-) -> Result<Option<ObjectResponse>, String>
-{
+pub(self) fn response(method: &str, rows: Rows) -> Result<Option<ObjectResponse>, String> {
     if rows.is_empty() {
         Ok(None)
     } else if rows.len() == 1 {
@@ -138,51 +128,59 @@ pub(self) fn response(
             let content_md5_bytes: Vec<u8> = row.get("content_md5");
             let content_md5 = base64::encode(&content_md5_bytes);
             let resp = ObjectResponse {
-                id             : row.get("id"),
-                owner          : row.get("owner"),
-                bucket_id      : row.get("bucket_id"),
-                name           : row.get("name"),
-                created        : row.get("created"),
-                modified       : row.get("modified"),
-                content_length : row.get("content_length"),
+                id: row.get("id"),
+                owner: row.get("owner"),
+                bucket_id: row.get("bucket_id"),
+                name: row.get("name"),
+                created: row.get("created"),
+                modified: row.get("modified"),
+                content_length: row.get("content_length"),
                 content_md5,
-                content_type   : row.get("content_type"),
-                headers        : row.get("headers"),
-                sharks         : row.get("sharks"),
-                properties     : row.get("properties")
+                content_type: row.get("content_type"),
+                headers: row.get("headers"),
+                sharks: row.get("sharks"),
+                properties: row.get("properties"),
             };
             Ok(Some(resp))
         } else {
-            let err = format!("{} query returned a row with only {} columns, \
-                               but 12 were expected .", method, cols);
+            let err = format!(
+                "{} query returned a row with only {} columns, \
+                 but 12 were expected .",
+                method, cols
+            );
             Err(err.to_string())
         }
     } else {
-        let err = format!("{} query found {} results, but expected only 1.",
-                          method, rows.len());
+        let err = format!(
+            "{} query found {} results, but expected only 1.",
+            method,
+            rows.len()
+        );
         Err(err.to_string())
     }
 }
 
 pub(self) fn insert_delete_table_sql(vnode: u64) -> String {
     let vnode_str = vnode.to_string();
-    ["INSERT INTO manta_bucket_",
-     &vnode_str,
-     &".manta_bucket_deleted_object ( \
-      id, owner, bucket_id, name, created, modified, \
-      creator, content_length, content_md5, \
-      content_type, headers, sharks, properties) \
-      SELECT id, owner, bucket_id, name, created, \
-      modified, creator, content_length, \
-      content_md5, content_type, headers, sharks, \
-      properties FROM manta_bucket_",
-     &vnode_str,
-     &".manta_bucket_object \
-       WHERE owner = $1 \
-       AND bucket_id = $2 \
-       AND name = $3"].concat()
+    [
+        "INSERT INTO manta_bucket_",
+        &vnode_str,
+        &".manta_bucket_deleted_object ( \
+          id, owner, bucket_id, name, created, modified, \
+          creator, content_length, content_md5, \
+          content_type, headers, sharks, properties) \
+          SELECT id, owner, bucket_id, name, created, \
+          modified, creator, content_length, \
+          content_md5, content_type, headers, sharks, \
+          properties FROM manta_bucket_",
+        &vnode_str,
+        &".manta_bucket_object \
+          WHERE owner = $1 \
+          AND bucket_id = $2 \
+          AND name = $3",
+    ]
+    .concat()
 }
-
 
 #[cfg(test)]
 mod test {
@@ -237,7 +235,7 @@ mod test {
                 bucket_id,
                 name,
                 vnode,
-                request_id
+                request_id,
             }
         }
     }
@@ -254,22 +252,16 @@ mod test {
             let content_md5 = random::string(g, 32);
             let content_type = random::string(g, 32);
             let mut headers = HashMap::new();
-            let _ = headers.insert(
-                random::string(g, 32),
-                Some(random::string(g, 32))
-            );
-            let _ = headers.insert(
-                random::string(g, 32),
-                Some(random::string(g, 32))
-            );
+            let _ = headers.insert(random::string(g, 32), Some(random::string(g, 32)));
+            let _ = headers.insert(random::string(g, 32), Some(random::string(g, 32)));
 
             let shark1 = StorageNodeIdentifier {
                 datacenter: random::string(g, 32),
-                manta_storage_id: random::string(g, 32)
+                manta_storage_id: random::string(g, 32),
             };
             let shark2 = StorageNodeIdentifier {
                 datacenter: random::string(g, 32),
-                manta_storage_id: random::string(g, 32)
+                manta_storage_id: random::string(g, 32),
             };
             let sharks = vec![shark1, shark2];
             let properties = None;
@@ -286,7 +278,7 @@ mod test {
                 content_type,
                 headers,
                 sharks,
-                properties
+                properties,
             }
         }
     }

@@ -15,8 +15,8 @@ pub mod util {
 
     use postgres::error::Error as PGError;
     use postgres::row::Row;
-    use serde_json::{Value, json};
-    use slog::{Logger, error, warn};
+    use serde_json::{json, Value};
+    use slog::{error, warn, Logger};
 
     use cueball::backend::Backend;
     use cueball::connection_pool::ConnectionPool;
@@ -36,12 +36,12 @@ pub mod util {
 
     pub(crate) enum HandlerError {
         Cueball(CueballError),
-        IO(IOError)
+        IO(IOError),
     }
 
     pub(crate) enum HandlerResponse {
         Message(FastMessage),
-        Messages(Vec<FastMessage>)
+        Messages(Vec<FastMessage>),
     }
 
     impl From<FastMessage> for HandlerResponse {
@@ -58,10 +58,13 @@ pub mod util {
 
     pub fn msg_handler(
         msg: &FastMessage,
-        pool: &ConnectionPool<PostgresConnection, StaticIpResolver, impl FnMut(&Backend) -> PostgresConnection + Send + 'static>,
-        log: &Logger
-    ) -> Result<Vec<FastMessage>, IOError>
-    {
+        pool: &ConnectionPool<
+            PostgresConnection,
+            StaticIpResolver,
+            impl FnMut(&Backend) -> PostgresConnection + Send + 'static,
+        >,
+        log: &Logger,
+    ) -> Result<Vec<FastMessage>, IOError> {
         let now = Instant::now();
         let mut response: Vec<FastMessage> = vec![];
 
@@ -75,24 +78,15 @@ pub mod util {
             .and_then(|mut conn| {
                 // Dispatch the request to the proper handler
                 match method {
-                    "getobject"    =>
-                        object::get::handler(msg.id, &msg.data.d, &mut conn, &log),
-                    "createobject" =>
-                        object::create::handler(msg.id, &msg.data.d, &mut conn, &log),
-                    "updateobject" =>
-                        object::update::handler(msg.id, &msg.data.d, &mut conn, &log),
-                    "deleteobject" =>
-                        object::delete::handler(msg.id, &msg.data.d, &mut conn, &log),
-                    "listobjects"  =>
-                        object::list::handler(msg.id, &msg.data.d, &mut conn, &log),
-                    "getbucket"    =>
-                        bucket::get::handler(msg.id, &msg.data.d, &mut conn, &log),
-                    "createbucket" =>
-                        bucket::create::handler(msg.id, &msg.data.d, &mut conn, &log),
-                    "deletebucket" =>
-                        bucket::delete::handler(msg.id, &msg.data.d, &mut conn, &log),
-                    "listbuckets"  =>
-                        bucket::list::handler(msg.id, &msg.data.d, &mut conn, &log),
+                    "getobject" => object::get::handler(msg.id, &msg.data.d, &mut conn, &log),
+                    "createobject" => object::create::handler(msg.id, &msg.data.d, &mut conn, &log),
+                    "updateobject" => object::update::handler(msg.id, &msg.data.d, &mut conn, &log),
+                    "deleteobject" => object::delete::handler(msg.id, &msg.data.d, &mut conn, &log),
+                    "listobjects" => object::list::handler(msg.id, &msg.data.d, &mut conn, &log),
+                    "getbucket" => bucket::get::handler(msg.id, &msg.data.d, &mut conn, &log),
+                    "createbucket" => bucket::create::handler(msg.id, &msg.data.d, &mut conn, &log),
+                    "deletebucket" => bucket::delete::handler(msg.id, &msg.data.d, &mut conn, &log),
+                    "listbuckets" => bucket::list::handler(msg.id, &msg.data.d, &mut conn, &log),
                     _ => {
                         let err_msg = format!("Unsupported functon: {}", method);
                         Err(HandlerError::IO(other_error(&err_msg)))
@@ -116,26 +110,23 @@ pub mod util {
                         }));
 
                         let msg_data = FastMessageData::new(method.into(), value);
-                        let msg: HandlerResponse =
-                            FastMessage::data(msg.id, msg_data).into();
+                        let msg: HandlerResponse = FastMessage::data(msg.id, msg_data).into();
                         Ok(msg)
-                    },
+                    }
                     HandlerError::Cueball(err) => {
                         // Any other connection pool errors are unexpected in
                         // this context so log loudly and return an error.
                         error!(log, "{}", err);
                         Err(HandlerError::Cueball(err))
-                    },
-                    err => Err(err)
+                    }
+                    err => Err(err),
                 }
             })
             .and_then(|res| {
                 // Add application level response to the `response` vector
                 match res {
-                    HandlerResponse::Message(msg) =>
-                        response.push(msg),
-                    HandlerResponse::Messages(mut msgs) =>
-                        response.append(&mut msgs)
+                    HandlerResponse::Message(msg) => response.push(msg),
+                    HandlerResponse::Messages(mut msgs) => response.append(&mut msgs),
                 }
                 Ok(response)
             })
@@ -147,12 +138,7 @@ pub mod util {
                 let duration = now.elapsed();
                 let t = duration_to_seconds(duration);
 
-                let success =
-                    if connection_acquired {
-                        "true"
-                    } else {
-                        "false"
-                    };
+                let success = if connection_acquired { "true" } else { "false" };
 
                 metrics::FAST_REQUESTS
                     .with_label_values(&[&method, success])
@@ -174,8 +160,8 @@ pub mod util {
                 let ret_err = match err {
                     HandlerError::Cueball(cueball_err) => {
                         other_error(cueball_err.to_string().as_str())
-                    },
-                    HandlerError::IO(io_err) => io_err
+                    }
+                    HandlerError::IO(io_err) => io_err,
                 };
 
                 Err(ret_err)

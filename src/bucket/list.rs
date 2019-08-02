@@ -1,44 +1,35 @@
 // Copyright 2019 Joyent, Inc.
 
 use serde_derive::{Deserialize, Serialize};
-use serde_json::{Value, json};
-use slog::{Logger, debug, error, warn};
+use serde_json::{json, Value};
+use slog::{debug, error, warn, Logger};
 use uuid::Uuid;
 
 use cueball_postgres_connection::PostgresConnection;
 use rust_fast::protocol::{FastMessage, FastMessageData};
 
-use crate::bucket::{
-    BucketResponse,
-    to_json
-};
+use crate::bucket::{to_json, BucketResponse};
 use crate::sql;
-use crate::util::{
-    HandlerError,
-    HandlerResponse,
-    array_wrap,
-    other_error
-};
+use crate::util::{array_wrap, other_error, HandlerError, HandlerResponse};
 
 const METHOD: &str = "listbuckets";
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ListBucketsPayload {
-    pub owner      : Uuid,
-    pub vnode      : u64,
-    pub prefix     : Option<String>,
-    pub limit      : u64,
-    pub marker     : Option<String>,
-    pub request_id : Uuid
+    pub owner: Uuid,
+    pub vnode: u64,
+    pub prefix: Option<String>,
+    pub limit: u64,
+    pub marker: Option<String>,
+    pub request_id: Uuid,
 }
 
 pub(crate) fn handler(
     msg_id: u32,
     data: &Value,
     mut conn: &mut PostgresConnection,
-    log: &Logger
-) -> Result<HandlerResponse, HandlerError>
-{
+    log: &Logger,
+) -> Result<HandlerResponse, HandlerError> {
     debug!(log, "handling {} function request", &METHOD);
 
     serde_json::from_value::<Vec<ListBucketsPayload>>(data.clone())
@@ -63,12 +54,18 @@ pub(crate) fn handler(
                 list(msg_id, payload, &mut conn)
                     .and_then(|resp| {
                         // Handle the successful database response
-                        debug!(log, "{} operation was successful, req_id: {}", &METHOD, &req_id);
+                        debug!(
+                            log,
+                            "{} operation was successful, req_id: {}", &METHOD, &req_id
+                        );
                         Ok(HandlerResponse::from(resp))
                     })
                     .or_else(|e| {
                         // Handle database error response
-                        error!(log, "{} operation failed: {}, req_id: {}", &METHOD, &e, &req_id);
+                        error!(
+                            log,
+                            "{} operation failed: {}, req_id: {}", &METHOD, &e, &req_id
+                        );
 
                         // Database errors are returned to as regular Fast messages
                         // to be handled by the calling application
@@ -77,23 +74,24 @@ pub(crate) fn handler(
                             "message": e
                         }));
                         let msg_data = FastMessageData::new(METHOD.into(), value);
-                        let msg: HandlerResponse =
-                            FastMessage::data(msg_id, msg_data).into();
+                        let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
                         Ok(msg)
                     })
             } else {
                 // Limit constraint violations are returned to as regular
                 // Fast messages to be handled by the calling application
-                let e = format!("the {} limit option must be a value between 1 \
-                                 and 1024. the requested limit was {}, req_id: \
-                                 {}", &METHOD, &payload.limit, &req_id);
+                let e = format!(
+                    "the {} limit option must be a value between 1 \
+                     and 1024. the requested limit was {}, req_id: \
+                     {}",
+                    &METHOD, &payload.limit, &req_id
+                );
                 let value = array_wrap(json!({
                     "name": "LimitConstraintError",
                     "message": e
                 }));
                 let msg_data = FastMessageData::new(METHOD.into(), value);
-                let msg: HandlerResponse =
-                    FastMessage::data(msg_id, msg_data).into();
+                let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
                 Ok(msg)
             }
         })
@@ -103,94 +101,112 @@ pub(crate) fn handler(
 fn list(
     msg_id: u32,
     payload: ListBucketsPayload,
-    mut conn: &mut PostgresConnection
-) -> Result<Vec<FastMessage>, String>
-{
-    let query_result =
-        match (payload.marker, payload.prefix) {
-            (Some(marker), Some(prefix)) => {
-                let sql = list_sql_prefix_marker(payload.vnode, payload.limit);
-                let prefix = format!("{}%", prefix);
-                sql::query(sql::Method::BucketList, &mut conn, sql.as_str(),
-                           &[&payload.owner, &prefix, &marker])
-            }
-            (Some(marker), None) => {
-                let sql = list_sql_marker(payload.vnode, payload.limit);
-                sql::query(sql::Method::BucketList, &mut conn, sql.as_str(),
-                           &[&payload.owner, &marker])
-            }
-            (None, Some(prefix)) => {
-                let sql = list_sql_prefix(payload.vnode, payload.limit);
-                let prefix = format!("{}%", prefix);
-                sql::query(sql::Method::BucketList, &mut conn, sql.as_str(),
-                           &[&payload.owner, &prefix])
-            }
-            (None, None) => {
-                let sql = list_sql(payload.vnode, payload.limit);
-                sql::query(sql::Method::BucketList, &mut conn, sql.as_str(),
-                           &[&payload.owner])
-            }
-        };
+    mut conn: &mut PostgresConnection,
+) -> Result<Vec<FastMessage>, String> {
+    let query_result = match (payload.marker, payload.prefix) {
+        (Some(marker), Some(prefix)) => {
+            let sql = list_sql_prefix_marker(payload.vnode, payload.limit);
+            let prefix = format!("{}%", prefix);
+            sql::query(
+                sql::Method::BucketList,
+                &mut conn,
+                sql.as_str(),
+                &[&payload.owner, &prefix, &marker],
+            )
+        }
+        (Some(marker), None) => {
+            let sql = list_sql_marker(payload.vnode, payload.limit);
+            sql::query(
+                sql::Method::BucketList,
+                &mut conn,
+                sql.as_str(),
+                &[&payload.owner, &marker],
+            )
+        }
+        (None, Some(prefix)) => {
+            let sql = list_sql_prefix(payload.vnode, payload.limit);
+            let prefix = format!("{}%", prefix);
+            sql::query(
+                sql::Method::BucketList,
+                &mut conn,
+                sql.as_str(),
+                &[&payload.owner, &prefix],
+            )
+        }
+        (None, None) => {
+            let sql = list_sql(payload.vnode, payload.limit);
+            sql::query(
+                sql::Method::BucketList,
+                &mut conn,
+                sql.as_str(),
+                &[&payload.owner],
+            )
+        }
+    };
 
     let mut msgs: Vec<FastMessage> = Vec::with_capacity(1024);
 
-    query_result
-        .map_err(|e| e.to_string())
-        .and_then(|rows| {
-            for row in rows.iter() {
-                let resp = BucketResponse {
-                    id: row.get("id"),
-                    owner: row.get("owner"),
-                    name: row.get("name"),
-                    created: row.get("created")
-                };
+    query_result.map_err(|e| e.to_string()).and_then(|rows| {
+        for row in rows.iter() {
+            let resp = BucketResponse {
+                id: row.get("id"),
+                owner: row.get("owner"),
+                name: row.get("name"),
+                created: row.get("created"),
+            };
 
-                let value = to_json(resp);
-                let msg_data =
-                    FastMessageData::new(METHOD.into(), array_wrap(value));
-                let msg = FastMessage::data(msg_id, msg_data);
+            let value = to_json(resp);
+            let msg_data = FastMessageData::new(METHOD.into(), array_wrap(value));
+            let msg = FastMessage::data(msg_id, msg_data);
 
-                msgs.push(msg);
-            }
-            Ok(msgs)
-        })
+            msgs.push(msg);
+        }
+        Ok(msgs)
+    })
 }
 
 fn list_sql_prefix_marker(vnode: u64, limit: u64) -> String {
-    format!("SELECT id, owner, name, created
+    format!(
+        "SELECT id, owner, name, created
         FROM manta_bucket_{}.manta_bucket
         WHERE owner = $1 AND name like $2 AND name > $3
         ORDER BY name ASC
         LIMIT {}",
-        vnode, limit)
+        vnode, limit
+    )
 }
 
 fn list_sql_prefix(vnode: u64, limit: u64) -> String {
-    format!("SELECT id, owner, name, created
+    format!(
+        "SELECT id, owner, name, created
         FROM manta_bucket_{}.manta_bucket
         WHERE owner = $1 AND name like $2
         ORDER BY name ASC
         LIMIT {}",
-        vnode, limit)
+        vnode, limit
+    )
 }
 fn list_sql_marker(vnode: u64, limit: u64) -> String {
-    format!("SELECT id, owner, name, created
+    format!(
+        "SELECT id, owner, name, created
         FROM manta_bucket_{}.manta_bucket
         WHERE owner = $1 AND name > $2
         ORDER BY name ASC
         LIMIT {}",
-        vnode, limit)
+        vnode, limit
+    )
 }
 
 fn list_sql(vnode: u64, limit: u64) -> String {
-    format!("SELECT id, owner, name, created
+    format!(
+        "SELECT id, owner, name, created
         FROM manta_bucket_{}.manta_bucket
         WHERE owner = $1
         ORDER BY name ASC
         LIMIT {}",
-        vnode, limit)
+        vnode, limit
+    )
 }
-
 
 #[cfg(test)]
 mod test {
@@ -245,7 +261,7 @@ mod test {
                 prefix,
                 limit,
                 marker,
-                request_id
+                request_id,
             }
         }
     }

@@ -1,25 +1,14 @@
 // Copyright 2019 Joyent, Inc.
 
-use slog::{Logger, debug, error, warn};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
+use slog::{debug, error, warn, Logger};
 
 use cueball_postgres_connection::PostgresConnection;
 use rust_fast::protocol::{FastMessage, FastMessageData};
 
-use crate::bucket::{
-    GetBucketPayload,
-    BucketResponse,
-    bucket_not_found,
-    response,
-    to_json
-};
-use crate::util::{
-    HandlerError,
-    HandlerResponse,
-    array_wrap,
-    other_error
-};
+use crate::bucket::{bucket_not_found, response, to_json, BucketResponse, GetBucketPayload};
 use crate::sql;
+use crate::util::{array_wrap, other_error, HandlerError, HandlerResponse};
 
 const METHOD: &str = "getbucket";
 
@@ -27,9 +16,8 @@ pub(crate) fn handler(
     msg_id: u32,
     data: &Value,
     mut conn: &mut PostgresConnection,
-    log: &Logger
-) -> Result<HandlerResponse, HandlerError>
-{
+    log: &Logger,
+) -> Result<HandlerResponse, HandlerError> {
     debug!(log, "handling {} function request", &METHOD);
 
     serde_json::from_value::<Vec<GetBucketPayload>>(data.clone())
@@ -53,21 +41,24 @@ pub(crate) fn handler(
             get(payload, &mut conn)
                 .and_then(|maybe_resp| {
                     // Handle the successful database response
-                    debug!(log, "{} operation was successful, req_id: {}", &METHOD, &req_id);
-                    let value =
-                        match maybe_resp {
-                            Some(resp) => to_json(resp),
-                            None => bucket_not_found()
-                        };
-                    let msg_data =
-                        FastMessageData::new(METHOD.into(), array_wrap(value));
-                    let msg: HandlerResponse =
-                        FastMessage::data(msg_id, msg_data).into();
+                    debug!(
+                        log,
+                        "{} operation was successful, req_id: {}", &METHOD, &req_id
+                    );
+                    let value = match maybe_resp {
+                        Some(resp) => to_json(resp),
+                        None => bucket_not_found(),
+                    };
+                    let msg_data = FastMessageData::new(METHOD.into(), array_wrap(value));
+                    let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
                     Ok(msg)
                 })
                 .or_else(|e| {
                     // Handle database error response
-                    error!(log, "{} operation failed: {}, req_id: {}", &METHOD, &e, &req_id);
+                    error!(
+                        log,
+                        "{} operation failed: {}, req_id: {}", &METHOD, &e, &req_id
+                    );
 
                     // Database errors are returned to as regular Fast messages
                     // to be handled by the calling application
@@ -77,8 +68,7 @@ pub(crate) fn handler(
                     }));
 
                     let msg_data = FastMessageData::new(METHOD.into(), value);
-                    let msg: HandlerResponse =
-                        FastMessage::data(msg_id, msg_data).into();
+                    let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
                     Ok(msg)
                 })
         })
@@ -87,27 +77,27 @@ pub(crate) fn handler(
 
 fn get(
     payload: GetBucketPayload,
-    mut conn: &mut PostgresConnection
-) -> Result<Option<BucketResponse>, String>
-{
+    mut conn: &mut PostgresConnection,
+) -> Result<Option<BucketResponse>, String> {
     let sql = get_sql(payload.vnode);
 
-    sql::query(sql::Method::BucketGet, &mut conn, sql.as_str(),
-               &[&payload.owner,
-                 &payload.name])
-        .map_err(|e| e.to_string())
-        .and_then(|rows| {
-            response(METHOD, rows)
-        })
+    sql::query(
+        sql::Method::BucketGet,
+        &mut conn,
+        sql.as_str(),
+        &[&payload.owner, &payload.name],
+    )
+    .map_err(|e| e.to_string())
+    .and_then(|rows| response(METHOD, rows))
 }
 
-fn get_sql(
-    vnode: u64
-) -> String
-{
-    ["SELECT id, owner, name, created \
-      FROM manta_bucket_",
-     &vnode.to_string(),
-     &".manta_bucket WHERE owner = $1 \
-       AND name = $2"].concat()
+fn get_sql(vnode: u64) -> String {
+    [
+        "SELECT id, owner, name, created \
+         FROM manta_bucket_",
+        &vnode.to_string(),
+        &".manta_bucket WHERE owner = $1 \
+          AND name = $2",
+    ]
+    .concat()
 }
