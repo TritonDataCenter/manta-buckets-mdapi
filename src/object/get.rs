@@ -3,7 +3,7 @@
 use std::vec::Vec;
 
 use serde_json::{json, Value};
-use slog::{debug, error, warn, Logger};
+use slog::{debug, error, o, warn, Logger};
 
 use cueball_postgres_connection::PostgresConnection;
 use rust_fast::protocol::{FastMessage, FastMessageData};
@@ -20,7 +20,8 @@ pub(crate) fn handler(
     mut conn: &mut PostgresConnection,
     log: &Logger,
 ) -> Result<HandlerResponse, HandlerError> {
-    debug!(log, "handling getobject function request");
+    let mut log_child = log.clone();
+    debug!(log_child, "handling getobject function request");
 
     serde_json::from_value::<Vec<GetObjectPayload>>(data.clone())
         .map_err(|e| e.to_string())
@@ -31,22 +32,21 @@ pub(crate) fn handler(
             } else {
                 let err_msg = "Failed to parse JSON data as payload for \
                                getobject function";
-                warn!(log, "{}: {}", err_msg, data);
+                warn!(log_child, "{}: {}", err_msg, data);
                 Err(err_msg.to_string())
             }
         })
         .and_then(|payload| {
             // Make database request
             let req_id = payload.request_id;
-            debug!(log, "parsed GetObjectPayload, req_id: {}", &req_id);
+            log_child = log_child.new(o!("req_id" => req_id.to_string()));
+
+            debug!(log_child, "parsed GetObjectPayload");
 
             get(payload, &mut conn)
                 .and_then(|maybe_resp| {
                     // Handle the successful database response
-                    debug!(
-                        log,
-                        "getobject operation was successful, req_id: {}", &req_id
-                    );
+                    debug!(log_child, "getobject operation was successful");
                     let value = match maybe_resp {
                         Some(resp) => array_wrap(to_json(resp)),
                         None => array_wrap(object_not_found()),
@@ -57,10 +57,7 @@ pub(crate) fn handler(
                 })
                 .or_else(|e| {
                     // Handle database error response
-                    error!(
-                        log,
-                        "getobject operation failed: {}, req_id: {}", &e, &req_id
-                    );
+                    error!(log_child, "getobject operation failed: {}", &e);
 
                     // Database errors are returned to as regular Fast messages
                     // to be handled by the calling application

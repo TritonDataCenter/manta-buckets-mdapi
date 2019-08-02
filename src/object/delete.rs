@@ -3,7 +3,7 @@
 use std::vec::Vec;
 
 use serde_json::{json, Value};
-use slog::{debug, error, warn, Logger};
+use slog::{debug, error, o, warn, Logger};
 
 use cueball_postgres_connection::PostgresConnection;
 use rust_fast::protocol::{FastMessage, FastMessageData};
@@ -20,7 +20,8 @@ pub(crate) fn handler(
     mut conn: &mut PostgresConnection,
     log: &Logger,
 ) -> Result<HandlerResponse, HandlerError> {
-    debug!(log, "handling {} function request", &METHOD);
+    let mut log_child = log.clone();
+    debug!(log_child, "handling {} function request", &METHOD);
 
     serde_json::from_value::<Vec<DeleteObjectPayload>>(data.clone())
         .map_err(|e| e.to_string())
@@ -31,22 +32,21 @@ pub(crate) fn handler(
             } else {
                 let err_msg = "Failed to parse JSON data as payload for \
                                deleteobject function";
-                warn!(log, "{}: {}", err_msg, data);
+                warn!(log_child, "{}: {}", err_msg, data);
                 Err(err_msg.to_string())
             }
         })
         .and_then(|payload| {
             // Make database request
             let req_id = payload.request_id;
-            debug!(log, "parsed DeleteObjectPayload, req_id: {}", &req_id);
+            log_child = log_child.new(o!("req_id" => req_id.to_string()));
+
+            debug!(log_child, "parsed DeleteObjectPayload");
 
             delete(payload, &mut conn)
                 .and_then(|affected_rows| {
                     // Handle the successful database response
-                    debug!(
-                        log,
-                        "{} operation was successful, req_id: {}", &METHOD, &req_id
-                    );
+                    debug!(log_child, "{} operation was successful", &METHOD);
                     let value = if affected_rows > 0 {
                         // This conversion can fail if the implementation of
                         // Serialize decides to fail, or if the type
@@ -65,10 +65,7 @@ pub(crate) fn handler(
                 })
                 .or_else(|e| {
                     // Handle database error response
-                    error!(
-                        log,
-                        "{} operation failed: {}, req_id: {}", &METHOD, &e, &req_id
-                    );
+                    error!(log_child, "{} operation failed: {}", &METHOD, &e);
 
                     // Database errors are returned to as regular Fast messages
                     // to be handled by the calling application
