@@ -6,7 +6,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::error::{BorayError, BorayErrorType};
-use crate::util::Rows;
+use crate::types::{HasRequestId, Rows};
 
 pub mod create;
 pub mod delete;
@@ -21,6 +21,12 @@ pub struct GetBucketPayload {
     pub name: String,
     pub vnode: u64,
     pub request_id: Uuid,
+}
+
+impl HasRequestId for GetBucketPayload {
+    fn request_id(&self) -> Uuid {
+        self.request_id
+    }
 }
 
 pub type DeleteBucketPayload = GetBucketPayload;

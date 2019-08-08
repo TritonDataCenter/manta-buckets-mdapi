@@ -2,79 +2,61 @@
 
 use std::vec::Vec;
 
+use serde_json::Error as SerdeError;
 use serde_json::{json, Value};
-use slog::{debug, error, o, warn, Logger};
+use slog::{debug, error, Logger};
 
 use cueball_postgres_connection::PostgresConnection;
 use rust_fast::protocol::{FastMessage, FastMessageData};
 
 use crate::object::{object_not_found, response, to_json, GetObjectPayload, ObjectResponse};
 use crate::sql;
-use crate::util::{array_wrap, other_error, HandlerError, HandlerResponse};
+use crate::types::HandlerResponse;
+use crate::util::array_wrap;
 
-const METHOD: &str = "getobject";
-
-pub(crate) fn handler(
-    msg_id: u32,
-    data: &Value,
-    mut conn: &mut PostgresConnection,
-    log: &Logger,
-) -> Result<HandlerResponse, HandlerError> {
-    let mut log_child = log.clone();
-    debug!(log_child, "handling getobject function request");
-
-    serde_json::from_value::<Vec<GetObjectPayload>>(data.clone())
-        .map_err(|e| e.to_string())
-        .and_then(|mut arr| {
-            // Remove outer JSON array required by Fast
-            if !arr.is_empty() {
-                Ok(arr.remove(0))
-            } else {
-                let err_msg = "Failed to parse JSON data as payload for \
-                               getobject function";
-                warn!(log_child, "{}: {}", err_msg, data);
-                Err(err_msg.to_string())
-            }
-        })
-        .and_then(|payload| {
-            // Make database request
-            let req_id = payload.request_id;
-            log_child = log_child.new(o!("req_id" => req_id.to_string()));
-
-            debug!(log_child, "parsed GetObjectPayload");
-
-            get(payload, &mut conn)
-                .and_then(|maybe_resp| {
-                    // Handle the successful database response
-                    debug!(log_child, "getobject operation was successful");
-                    let value = match maybe_resp {
-                        Some(resp) => array_wrap(to_json(resp)),
-                        None => array_wrap(object_not_found()),
-                    };
-                    let msg_data = FastMessageData::new(METHOD.into(), value);
-                    let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
-                    Ok(msg)
-                })
-                .or_else(|e| {
-                    // Handle database error response
-                    error!(log_child, "getobject operation failed: {}", &e);
-
-                    // Database errors are returned to as regular Fast messages
-                    // to be handled by the calling application
-                    let value = array_wrap(json!({
-                        "name": "PostgresError",
-                        "message": e
-                    }));
-
-                    let msg_data = FastMessageData::new(METHOD.into(), value);
-                    let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
-                    Ok(msg)
-                })
-        })
-        .map_err(|e| HandlerError::IO(other_error(&e)))
+pub(crate) fn decode_msg(value: &Value) -> Result<Vec<GetObjectPayload>, SerdeError> {
+    serde_json::from_value::<Vec<GetObjectPayload>>(value.clone())
 }
 
-fn get(
+pub(crate) fn action(
+    msg_id: u32,
+    method: &str,
+    log: &Logger,
+    payload: GetObjectPayload,
+    conn: &mut PostgresConnection,
+) -> Result<HandlerResponse, String> {
+    // Make database request
+    do_get(method, payload, conn)
+        .and_then(|maybe_resp| {
+            // Handle the successful database response
+            debug!(log, "getobject operation was successful");
+            let value = match maybe_resp {
+                Some(resp) => array_wrap(to_json(resp)),
+                None => array_wrap(object_not_found()),
+            };
+            let msg_data = FastMessageData::new(method.into(), value);
+            let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
+            Ok(msg)
+        })
+        .or_else(|e| {
+            // Handle database error response
+            error!(log, "getobject operation failed: {}", &e);
+
+            // Database errors are returned to as regular Fast messages
+            // to be handled by the calling application
+            let value = array_wrap(json!({
+                "name": "PostgresError",
+                "message": e
+            }));
+
+            let msg_data = FastMessageData::new(method.into(), value);
+            let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
+            Ok(msg)
+        })
+}
+
+fn do_get(
+    method: &str,
     payload: GetObjectPayload,
     mut conn: &mut PostgresConnection,
 ) -> Result<Option<ObjectResponse>, String> {
@@ -87,7 +69,7 @@ fn get(
         &[&payload.owner, &payload.bucket_id, &payload.name],
     )
     .map_err(|e| e.to_string())
-    .and_then(|rows| response(METHOD, rows))
+    .and_then(|rows| response(method, rows))
 }
 
 fn get_sql(vnode: u64) -> String {

@@ -8,15 +8,13 @@ pub mod opts;
 pub mod sql;
 
 pub mod util {
-    use std::collections::HashMap;
     use std::io::Error as IOError;
     use std::io::ErrorKind;
     use std::time::{Duration, Instant};
 
-    use postgres::error::Error as PGError;
-    use postgres::row::Row;
+    use serde_json::Error as SerdeError;
     use serde_json::{json, Value};
-    use slog::{error, warn, Logger};
+    use slog::{debug, error, o, warn, Logger};
 
     use cueball::backend::Backend;
     use cueball::connection_pool::ConnectionPool;
@@ -28,35 +26,9 @@ pub mod util {
     use crate::bucket;
     use crate::metrics;
     use crate::object;
+    use crate::types::{HandlerError, HandlerResponse, HasRequestId};
 
-    pub type Rows = Vec<Row>;
-    pub type PostgresResult<T> = Result<T, PGError>;
-    pub type Hstore = HashMap<String, Option<String>>;
-    pub type Timestamptz = chrono::DateTime<chrono::Utc>;
-
-    pub(crate) enum HandlerError {
-        Cueball(CueballError),
-        IO(IOError),
-    }
-
-    pub(crate) enum HandlerResponse {
-        Message(FastMessage),
-        Messages(Vec<FastMessage>),
-    }
-
-    impl From<FastMessage> for HandlerResponse {
-        fn from(fm: FastMessage) -> Self {
-            HandlerResponse::Message(fm)
-        }
-    }
-
-    impl From<Vec<FastMessage>> for HandlerResponse {
-        fn from(fms: Vec<FastMessage>) -> Self {
-            HandlerResponse::Messages(fms)
-        }
-    }
-
-    pub fn msg_handler(
+    pub fn handle_msg(
         msg: &FastMessage,
         pool: &ConnectionPool<
             PostgresConnection,
@@ -76,17 +48,80 @@ pub mod util {
         pool.claim()
             .map_err(HandlerError::Cueball)
             .and_then(|mut conn| {
-                // Dispatch the request to the proper handler
+                // Dispatch the request
                 match method {
-                    "getobject" => object::get::handler(msg.id, &msg.data.d, &mut conn, &log),
-                    "createobject" => object::create::handler(msg.id, &msg.data.d, &mut conn, &log),
-                    "updateobject" => object::update::handler(msg.id, &msg.data.d, &mut conn, &log),
-                    "deleteobject" => object::delete::handler(msg.id, &msg.data.d, &mut conn, &log),
-                    "listobjects" => object::list::handler(msg.id, &msg.data.d, &mut conn, &log),
-                    "getbucket" => bucket::get::handler(msg.id, &msg.data.d, &mut conn, &log),
-                    "createbucket" => bucket::create::handler(msg.id, &msg.data.d, &mut conn, &log),
-                    "deletebucket" => bucket::delete::handler(msg.id, &msg.data.d, &mut conn, &log),
-                    "listbuckets" => bucket::list::handler(msg.id, &msg.data.d, &mut conn, &log),
+                    "getobject" => handle_request(
+                        msg.id,
+                        method,
+                        object::get::decode_msg(&msg.data.d),
+                        &mut conn,
+                        &object::get::action,
+                        &log,
+                    ),
+                    "createobject" => handle_request(
+                        msg.id,
+                        method,
+                        object::create::decode_msg(&msg.data.d),
+                        &mut conn,
+                        &object::create::action,
+                        &log,
+                    ),
+                    "updateobject" => handle_request(
+                        msg.id,
+                        method,
+                        object::update::decode_msg(&msg.data.d),
+                        &mut conn,
+                        &object::update::action,
+                        &log,
+                    ),
+                    "deleteobject" => handle_request(
+                        msg.id,
+                        method,
+                        object::delete::decode_msg(&msg.data.d),
+                        &mut conn,
+                        &object::delete::action,
+                        &log,
+                    ),
+                    "listobjects" => handle_request(
+                        msg.id,
+                        method,
+                        object::list::decode_msg(&msg.data.d),
+                        &mut conn,
+                        &object::list::action,
+                        &log,
+                    ),
+                    "getbucket" => handle_request(
+                        msg.id,
+                        method,
+                        bucket::get::decode_msg(&msg.data.d),
+                        &mut conn,
+                        &bucket::get::action,
+                        &log,
+                    ),
+                    "createbucket" => handle_request(
+                        msg.id,
+                        method,
+                        bucket::create::decode_msg(&msg.data.d),
+                        &mut conn,
+                        &bucket::create::action,
+                        &log,
+                    ),
+                    "deletebucket" => handle_request(
+                        msg.id,
+                        method,
+                        bucket::delete::decode_msg(&msg.data.d),
+                        &mut conn,
+                        &bucket::delete::action,
+                        &log,
+                    ),
+                    "listbuckets" => handle_request(
+                        msg.id,
+                        method,
+                        bucket::list::decode_msg(&msg.data.d),
+                        &mut conn,
+                        &bucket::list::action,
+                        &log,
+                    ),
                     _ => {
                         let err_msg = format!("Unsupported functon: {}", method);
                         Err(HandlerError::IO(other_error(&err_msg)))
@@ -177,7 +212,119 @@ pub mod util {
         Value::Array(vec![v])
     }
 
+    pub(crate) fn unwrap_fast_message<T>(
+        operation: &str,
+        log: &Logger,
+        mut arr: Vec<T>,
+    ) -> Result<T, String>
+    where
+        T: for<'de> serde::Deserialize<'de>,
+    {
+        // Remove outer JSON array required by Fast
+        if !arr.is_empty() {
+            Ok(arr.remove(0))
+        } else {
+            let err_msg = format!(
+                "Failed to parse JSON data as payload for \
+                 {} function",
+                operation
+            );
+            warn!(log, "{}", err_msg);
+            Err(err_msg.to_string())
+        }
+    }
+
     pub(crate) fn other_error(msg: &str) -> IOError {
         IOError::new(ErrorKind::Other, String::from(msg))
+    }
+
+    /// Handle a valid RPC function request. This function employs higher-ranked
+    /// trait bounds in order to specify a constraint that the request type
+    /// implement serde's `Deserialize` trait while not having to provide a fixed
+    /// lifetime for the constraint. Instead the constraint is specified as being
+    /// valid for all lifetimes `'de`. More information about higher-ranked
+    /// trait bounds can be found
+    /// [here](https://doc.rust-lang.org/nomicon/hrtb.html).
+    pub(crate) fn handle_request<X>(
+        msg_id: u32,
+        method: &str,
+        data: Result<Vec<X>, SerdeError>,
+        conn: &mut PostgresConnection,
+        action: &Fn(
+            u32,
+            &str,
+            &Logger,
+            X,
+            &mut PostgresConnection,
+        ) -> Result<HandlerResponse, String>,
+        log: &Logger,
+    ) -> Result<HandlerResponse, HandlerError>
+    where
+        X: for<'de> serde::Deserialize<'de> + HasRequestId,
+    {
+        let mut log_child = log.clone();
+        debug!(log_child, "handling {} function request", &method);
+
+        data.map_err(|e| e.to_string())
+            .and_then(|arr| unwrap_fast_message(&method, &log_child, arr))
+            .and_then(|payload| {
+                // Add the request id to the log output
+                let req_id = payload.request_id();
+                log_child = log_child.new(o!("req_id" => req_id.to_string()));
+
+                debug!(log_child, "parsed {} payload", &method);
+
+                // Perform the action indicated by the request
+                action(msg_id, &method, &log_child, payload, conn)
+            })
+            .map_err(|e| HandlerError::IO(other_error(&e)))
+    }
+}
+
+pub mod types {
+    use std::collections::HashMap;
+    use std::io::Error as IOError;
+
+    use postgres::error::Error as PGError;
+    use postgres::row::Row;
+    use uuid::Uuid;
+
+    use cueball::error::Error as CueballError;
+    use rust_fast::protocol::FastMessage;
+
+    pub type Rows = Vec<Row>;
+    pub type PostgresResult<T> = Result<T, PGError>;
+    pub type Hstore = HashMap<String, Option<String>>;
+    pub type Timestamptz = chrono::DateTime<chrono::Utc>;
+
+    pub(crate) enum HandlerError {
+        Cueball(CueballError),
+        IO(IOError),
+    }
+
+    pub(crate) enum HandlerResponse {
+        Message(FastMessage),
+        Messages(Vec<FastMessage>),
+    }
+
+    impl From<FastMessage> for HandlerResponse {
+        fn from(fm: FastMessage) -> Self {
+            HandlerResponse::Message(fm)
+        }
+    }
+
+    impl From<Vec<FastMessage>> for HandlerResponse {
+        fn from(fms: Vec<FastMessage>) -> Self {
+            HandlerResponse::Messages(fms)
+        }
+    }
+
+    /// This trait ensures that any implementing type can provide a request UUID
+    /// via the `request_id` method. This trait can be used in trait bounds so
+    /// that certain assumptions can be made in the code. In particular for this
+    /// trait the desired assumption is that a request id field can be added to
+    /// all logging output for any valid request type.
+    pub(crate) trait HasRequestId {
+        fn request_id(&self) -> Uuid;
     }
 }

@@ -1,8 +1,9 @@
 // Copyright 2019 Joyent, Inc.
 
 use serde_derive::{Deserialize, Serialize};
+use serde_json::Error as SerdeError;
 use serde_json::{json, Value};
-use slog::{debug, error, o, warn, Logger};
+use slog::{debug, error, Logger};
 use uuid::Uuid;
 
 use cueball_postgres_connection::PostgresConnection;
@@ -10,9 +11,8 @@ use rust_fast::protocol::{FastMessage, FastMessageData};
 
 use crate::bucket::{to_json, BucketResponse};
 use crate::sql;
-use crate::util::{array_wrap, other_error, HandlerError, HandlerResponse};
-
-const METHOD: &str = "listbuckets";
+use crate::types::{HandlerResponse, HasRequestId};
+use crate::util::array_wrap;
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ListBucketsPayload {
@@ -24,79 +24,66 @@ pub struct ListBucketsPayload {
     pub request_id: Uuid,
 }
 
-pub(crate) fn handler(
-    msg_id: u32,
-    data: &Value,
-    mut conn: &mut PostgresConnection,
-    log: &Logger,
-) -> Result<HandlerResponse, HandlerError> {
-    let mut log_child = log.clone();
-    debug!(log_child, "handling {} function request", &METHOD);
-
-    serde_json::from_value::<Vec<ListBucketsPayload>>(data.clone())
-        .map_err(|e| e.to_string())
-        .and_then(|mut arr| {
-            // Remove outer JSON array required by Fast
-            if !arr.is_empty() {
-                Ok(arr.remove(0))
-            } else {
-                let err_msg = "Failed to parse JSON data as payload for \
-                               getbucket function";
-                warn!(log_child, "{}: {}", err_msg, data);
-                Err(err_msg.to_string())
-            }
-        })
-        .and_then(|payload| {
-            // Make database request
-            let req_id = payload.request_id;
-            log_child = log_child.new(o!("req_id" => req_id.to_string()));
-
-            debug!(log_child, "parsed ListBucketsPayload");
-
-            if payload.limit > 0 && payload.limit <= 1024 {
-                list(msg_id, payload, &mut conn)
-                    .and_then(|resp| {
-                        // Handle the successful database response
-                        debug!(log_child, "{} operation was successful", &METHOD);
-                        Ok(HandlerResponse::from(resp))
-                    })
-                    .or_else(|e| {
-                        // Handle database error response
-                        error!(log_child, "{} operation failed: {}", &METHOD, &e);
-
-                        // Database errors are returned to as regular Fast messages
-                        // to be handled by the calling application
-                        let value = array_wrap(json!({
-                            "name": "PostgresError",
-                            "message": e
-                        }));
-                        let msg_data = FastMessageData::new(METHOD.into(), value);
-                        let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
-                        Ok(msg)
-                    })
-            } else {
-                // Limit constraint violations are returned to as regular
-                // Fast messages to be handled by the calling application
-                let e = format!(
-                    "the {} limit option must be a value between 1 \
-                     and 1024. the requested limit was {}, req_id: \
-                     {}",
-                    &METHOD, &payload.limit, &req_id
-                );
-                let value = array_wrap(json!({
-                    "name": "LimitConstraintError",
-                    "message": e
-                }));
-                let msg_data = FastMessageData::new(METHOD.into(), value);
-                let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
-                Ok(msg)
-            }
-        })
-        .map_err(|e| HandlerError::IO(other_error(&e)))
+impl HasRequestId for ListBucketsPayload {
+    fn request_id(&self) -> Uuid {
+        self.request_id
+    }
 }
 
-fn list(
+pub(crate) fn decode_msg(value: &Value) -> Result<Vec<ListBucketsPayload>, SerdeError> {
+    serde_json::from_value::<Vec<ListBucketsPayload>>(value.clone())
+}
+
+pub(crate) fn action(
     msg_id: u32,
+    method: &str,
+    log: &Logger,
+    payload: ListBucketsPayload,
+    conn: &mut PostgresConnection,
+) -> Result<HandlerResponse, String> {
+    // Make database request
+    if payload.limit > 0 && payload.limit <= 1024 {
+        do_list(msg_id, method, payload, conn)
+            .and_then(|resp| {
+                // Handle the successful database response
+                debug!(log, "{} operation was successful", &method);
+                Ok(HandlerResponse::from(resp))
+            })
+            .or_else(|e| {
+                // Handle database error response
+                error!(log, "{} operation failed: {}", &method, &e);
+
+                // Database errors are returned to as regular Fast messages
+                // to be handled by the calling application
+                let value = array_wrap(json!({
+                    "name": "PostgresError",
+                    "message": e
+                }));
+                let msg_data = FastMessageData::new(method.into(), value);
+                let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
+                Ok(msg)
+            })
+    } else {
+        // Limit constraint violations are returned to as regular
+        // Fast messages to be handled by the calling application
+        let e = format!(
+            "the {} limit option must be a value between 1 \
+             and 1024. the requested limit was {}",
+            &method, &payload.limit
+        );
+        let value = array_wrap(json!({
+            "name": "LimitConstraintError",
+            "message": e
+        }));
+        let msg_data = FastMessageData::new(method.into(), value);
+        let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
+        Ok(msg)
+    }
+}
+
+fn do_list(
+    msg_id: u32,
+    method: &str,
     payload: ListBucketsPayload,
     mut conn: &mut PostgresConnection,
 ) -> Result<Vec<FastMessage>, String> {
@@ -153,7 +140,7 @@ fn list(
             };
 
             let value = to_json(resp);
-            let msg_data = FastMessageData::new(METHOD.into(), array_wrap(value));
+            let msg_data = FastMessageData::new(method.into(), array_wrap(value));
             let msg = FastMessage::data(msg_id, msg_data);
 
             msgs.push(msg);

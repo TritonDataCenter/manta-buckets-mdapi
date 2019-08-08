@@ -11,7 +11,7 @@ use tokio_postgres::{accepts, to_sql_checked};
 use uuid::Uuid;
 
 use crate::error::{BorayError, BorayErrorType};
-use crate::util::{Hstore, Rows, Timestamptz};
+use crate::types::{HasRequestId, Hstore, Rows, Timestamptz};
 
 pub mod create;
 pub mod delete;
@@ -26,6 +26,12 @@ pub struct GetObjectPayload {
     pub name: String,
     pub vnode: u64,
     pub request_id: Uuid,
+}
+
+impl HasRequestId for GetObjectPayload {
+    fn request_id(&self) -> Uuid {
+        self.request_id
+    }
 }
 
 type DeleteObjectPayload = GetObjectPayload;
