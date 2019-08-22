@@ -1,5 +1,6 @@
 // Copyright 2019 Joyent, Inc.
 use clap::{Arg, App};
+use boray::sql;
 
 pub fn main() {
     let matches = App::new("schema-manager")

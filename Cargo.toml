@@ -1,12 +1,5 @@
 [workspace]
 members = [
-    "boray-bin",
+    "boray",
     "schema-manager",
 ]
-
-[package]
-name = "boray"
-version = "0.1.0"
-authors = ["Jon Anderson"]
-
-[dependencies]
