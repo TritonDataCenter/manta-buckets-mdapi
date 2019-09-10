@@ -108,7 +108,7 @@ fn main() {
             let task = server::make_task(
                 socket,
                 move |a, c| boray::util::handle_msg(a, &pool_clone, c),
-                &process_log,
+                Some(&process_log),
             );
             tokio::spawn(task);
             Ok(())
