@@ -17,6 +17,7 @@ prometheus = "0.5.0"
 cueball = { git = "https://github.com/joyent/rust-cueball" }
 cueball-postgres-connection = { git = "https://github.com/joyent/rust-cueball-postgres-connection" }
 cueball-static-resolver = { git = "https://github.com/joyent/rust-cueball-static-resolver" }
+num_cpus = { version = "1.8.0" }
 rust_fast = { git = "https://github.com/joyent/rust-fast", tag = "v0.1.0" }
 serde = "1.0.84"
 serde_derive = "1.0.84"

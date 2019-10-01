@@ -116,8 +116,8 @@ fn main() {
 
     let mut rt = runtime::Builder::new()
         .blocking_threads(config.tokio.blocking_threads)
-        .core_threads(config.tokio.core_threads)
-        .keep_alive(Some(Duration::from_secs(config.tokio.thread_keep_alive)))
+        .core_threads(config.tokio.core_threads.unwrap())
+        .keep_alive(config.tokio.thread_keep_alive.map(Duration::from_secs))
         .name_prefix(config.tokio.thread_name_prefix)
         .stack_size(config.tokio.thread_stack_size)
         .build()
