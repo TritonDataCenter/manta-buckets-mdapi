@@ -1692,8 +1692,6 @@ dependencies = [
 name = "schema-manager"
 version = "0.1.0"
 dependencies = [
- "boray 0.1.0",
- "clap 2.32.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "diesel 1.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "dotenv 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rust_fast 0.1.0 (git+https://github.com/joyent/rust-fast?tag=v0.1.0)",
