@@ -250,7 +250,7 @@ pub mod util {
         method: &str,
         data: Result<Vec<X>, SerdeError>,
         conn: &mut PostgresConnection,
-        action: &Fn(
+        action: &dyn Fn(
             u32,
             &str,
             &Logger,

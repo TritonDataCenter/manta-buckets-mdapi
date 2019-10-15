@@ -163,6 +163,7 @@ dependencies = [
  "tokio-postgres 0.4.0-rc.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "toml 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "url 1.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "utils 0.1.0",
  "uuid 0.7.4 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -1692,6 +1693,7 @@ dependencies = [
 name = "schema-manager"
 version = "0.1.0"
 dependencies = [
+ "clap 2.32.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "diesel 1.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "dotenv 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rust_fast 0.1.0 (git+https://github.com/joyent/rust-fast?tag=v0.1.0)",
