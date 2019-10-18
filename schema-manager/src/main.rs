@@ -28,7 +28,7 @@ use utils::config;
 static APP: &'static str = "schema-manager";
 static BORAY_CONFIG_FILE_PATH: &'static str = "../etc/config.toml";
 const DEFAULT_EB_PORT: u32 = 2020;
-const SCHEMA_STR: &'static str = "../etc/schema.sql";
+const SCHEMA_STR: &'static str = "../schema_templates/schema.in";
 
 #[derive(Clone, Debug, Serialize)]
 pub struct MethodOptions {
