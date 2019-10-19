@@ -57,9 +57,11 @@ release: all deps docs $(SMF_MANIFESTS)
 	cp -r \
 	    $(ROOT)/build \
 	    $(ROOT)/sapi_manifests \
+	    $(ROOT)/schema_templates \
 	    $(ROOT)/smf \
 	    $(RELSTAGEDIR)/root/opt/smartdc/boray/
 	cp target/release/boray $(RELSTAGEDIR)/root/opt/smartdc/boray/bin/
+	cp target/release/schema-manager $(RELSTAGEDIR)/root/opt/smartdc/boray/bin/
 	cp -r $(ROOT)/deps/manta-scripts \
 	    $(RELSTAGEDIR)/root/opt/smartdc/boray/deps
 	mkdir -p $(RELSTAGEDIR)/root/opt/smartdc/boot/scripts
