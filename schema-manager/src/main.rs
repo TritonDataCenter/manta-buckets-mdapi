@@ -152,7 +152,6 @@ fn vnode_response_handler(msg: &FastMessage) -> Result<(), Error> {
 
 // Do the deed
 fn run(
-    _args: Value, // no command line args for now
     log: Logger) -> Result<(), Box<dyn std::error::Error>>
 {
     let sapi_url = get_sapi_url()?;
@@ -194,9 +193,9 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
                    o!("build-id" => "0.1.0"),
     );
 
-    let options = parse_opts(APP.to_string());
-    let args = value_t!(options, "fast_args", Value).unwrap_or_else(|e| e.exit());
+    //let options = parse_opts(APP.to_string());
+    //let args = value_t!(options, "fast_args", Value).unwrap();
 
-    run(args, log)?;
+    run(log)?;
     Ok(())
 }

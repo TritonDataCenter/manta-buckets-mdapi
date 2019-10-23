@@ -113,7 +113,7 @@ manta_ensure_zk
 echo "Setting up Boray"
 get_sapi_config
 setup_boray
-setup_boray_schemas
+manta_setup_boray_schemas
 
 manta_common_setup_end
 
