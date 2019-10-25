@@ -5,7 +5,7 @@ use std::io::{Error, ErrorKind};
 use std::net::TcpStream;
 use std::process;
 
-use clap::{Arg, App, value_t, crate_version, ArgMatches};
+use clap::{Arg, App, crate_version, ArgMatches};
 use cmd_lib::{run_fun, FunResult};
 use diesel::connection::SimpleConnection;
 use diesel::prelude::*;
@@ -193,8 +193,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
                    o!("build-id" => "0.1.0"),
     );
 
-    //let options = parse_opts(APP.to_string());
-    //let args = value_t!(options, "fast_args", Value).unwrap();
+    let _options = parse_opts(APP.to_string());
 
     run(log)?;
     Ok(())
