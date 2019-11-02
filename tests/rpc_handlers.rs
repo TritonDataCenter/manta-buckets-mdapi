@@ -395,10 +395,14 @@ fn verify_rpc_handlers() {
     let delete_object_response = delete_object_result.unwrap();
     assert_eq!(delete_object_response.len(), 1);
 
-    let delete_object_response_result: Result<u64, _> =
+    let delete_object_response_result: Result<Vec<object::DeleteObjectResponse>, _> =
         serde_json::from_value(delete_object_response[0].data.d[0].clone());
     assert!(delete_object_response_result.is_ok());
-    assert_eq!(delete_object_response_result.unwrap(), 1);
+    let delete_object_response = delete_object_response_result.unwrap();
+    assert_eq!(delete_object_response.len(), 1);
+    assert_eq!(&delete_object_response[0].owner, &owner_id);
+    assert_eq!(&delete_object_response[0].bucket_id, &bucket_id);
+    assert_eq!(&delete_object_response[0].name, &object);
 
     // Read object again and verify it is not found
     get_object_result = util::handle_msg(&get_object_fast_msg, &pool, &log);

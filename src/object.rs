@@ -89,6 +89,26 @@ impl<'a> FromSql<'a> for StorageNodeIdentifier {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct DeleteObjectResponse {
+    pub id: Uuid,
+    pub owner: Uuid,
+    pub bucket_id: Uuid,
+    pub name: String,
+    pub content_length: i64,
+    pub shark_count: i32,
+}
+
+impl DeleteObjectResponse {
+    pub fn to_json(&self) -> Value {
+        // Similar to ObjectResponse, the serialization to JSON might fail. However, since
+        // DeleteObjectResponse is a subset of ObjectResponse, we assume that as long
+        // as ObjectResponse can be serialized, so DeleteObjectResponse. If this  is not
+        // enough of a guarantee, we can add test cases to make sure it is always the case.
+        serde_json::to_value(self).expect("failed to serialize DeleteObjectResponse")
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ObjectResponse {
     pub id: Uuid,
     pub owner: Uuid,

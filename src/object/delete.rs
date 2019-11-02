@@ -9,7 +9,9 @@ use slog::{debug, error, Logger};
 use cueball_postgres_connection::PostgresConnection;
 use rust_fast::protocol::{FastMessage, FastMessageData};
 
-use crate::object::{insert_delete_table_sql, object_not_found, DeleteObjectPayload};
+use crate::object::{
+    insert_delete_table_sql, object_not_found, DeleteObjectPayload, DeleteObjectResponse,
+};
 use crate::sql;
 use crate::types::HandlerResponse;
 use crate::util::array_wrap;
@@ -28,19 +30,16 @@ pub(crate) fn action(
 ) -> Result<HandlerResponse, String> {
     // Make database request
     do_delete(&payload, conn)
-        .and_then(|affected_rows| {
+        .and_then(|deleted_objects| {
             // Handle the successful database response
             debug!(log, "{} operation was successful", &method);
-            let value = if affected_rows > 0 {
-                // This conversion can fail if the implementation of
-                // Serialize decides to fail, or if the type
-                // contains a map with non-string keys. There is no
-                // reason for the former to occur and the latter
-                // reason for failure is not a concern here since
-                // the type of `affected_rows` is u64.
-                serde_json::to_value(affected_rows).unwrap()
-            } else {
+
+            let value = if deleted_objects.is_empty() {
                 object_not_found()
+            } else {
+                // This is not expected to fail. As long as DeleteObjectResponse can be
+                // serialized, so a vector of DeleteObjectResponse should be.
+                serde_json::to_value(deleted_objects).unwrap()
             };
 
             let msg_data = FastMessageData::new(method.into(), array_wrap(value));
@@ -64,7 +63,10 @@ pub(crate) fn action(
         })
 }
 
-fn do_delete(payload: &DeleteObjectPayload, conn: &mut PostgresConnection) -> Result<u64, String> {
+fn do_delete(
+    payload: &DeleteObjectPayload,
+    conn: &mut PostgresConnection,
+) -> Result<Vec<DeleteObjectResponse>, String> {
     let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
     let move_sql = insert_delete_table_sql(payload.vnode);
     let delete_sql = delete_sql(payload.vnode);
@@ -76,16 +78,28 @@ fn do_delete(payload: &DeleteObjectPayload, conn: &mut PostgresConnection) -> Re
         &[&payload.owner, &payload.bucket_id, &payload.name],
     )
     .and_then(|_moved_rows| {
-        sql::txn_execute(
+        sql::txn_query(
             sql::Method::ObjectDelete,
             &mut txn,
             delete_sql.as_str(),
             &[&payload.owner, &payload.bucket_id, &payload.name],
         )
     })
-    .and_then(|row_count| {
+    .and_then(|deleted_objects| {
         txn.commit()?;
-        Ok(row_count)
+        let objs = deleted_objects
+            .into_iter()
+            .map(|row| DeleteObjectResponse {
+                id: row.get("id"),
+                owner: row.get("owner"),
+                bucket_id: row.get("bucket_id"),
+                name: row.get("name"),
+                content_length: row.get("content_length"),
+                shark_count: row.get("shark_count"),
+            })
+            .collect();
+
+        Ok(objs)
     })
     .map_err(|e| e.to_string())
 }
@@ -98,6 +112,12 @@ fn delete_sql(vnode: u64) -> String {
           WHERE owner = $1 \
           AND bucket_id = $2 \
           AND name = $3",
+        "RETURNING id, \
+         owner, \
+         bucket_id, \
+         name, \
+         content_length, \
+         array_length(sharks, 1) as shark_count",
     ]
     .concat()
 }
