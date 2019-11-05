@@ -1,5 +1,7 @@
 // Copyright 2019 Joyent, Inc.
 
+#![allow(clippy::module_name_repetitions)]
+
 /// Data structures and helper functions for boray configuration.
 ///
 /// Default configuration parameters are set in the different `Default` trait
@@ -15,7 +17,6 @@ use std::str::FromStr;
 use clap::{value_t, ArgMatches};
 use num_cpus;
 use serde_derive::Deserialize;
-use slog::Level;
 
 use cueball_postgres_connection::TlsConnectMode;
 
@@ -50,12 +51,12 @@ impl FromStr for LogLevel {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "critical" => Ok(LogLevel::Critical),
-            "error" => Ok(LogLevel::Error),
-            "warning" => Ok(LogLevel::Warning),
-            "info" => Ok(LogLevel::Info),
-            "debug" => Ok(LogLevel::Debug),
-            "trace" => Ok(LogLevel::Trace),
+            "critical" => Ok(Self::Critical),
+            "error" => Ok(Self::Error),
+            "warning" => Ok(Self::Warning),
+            "info" => Ok(Self::Info),
+            "debug" => Ok(Self::Debug),
+            "trace" => Ok(Self::Trace),
             _ => Err("invalid log level"),
         }
     }
@@ -63,19 +64,19 @@ impl FromStr for LogLevel {
 
 impl Default for LogLevel {
     fn default() -> Self {
-        LogLevel::Debug
+        Self::Debug
     }
 }
 
 impl ToString for LogLevel {
     fn to_string(&self) -> String {
         match self {
-            LogLevel::Critical => "critical".into(),
-            LogLevel::Error => "error".into(),
-            LogLevel::Warning => "warning".into(),
-            LogLevel::Info => "info".into(),
-            LogLevel::Debug => "debug".into(),
-            LogLevel::Trace => "trace".into(),
+            Self::Critical => "critical".into(),
+            Self::Error => "error".into(),
+            Self::Warning => "warning".into(),
+            Self::Info => "info".into(),
+            Self::Debug => "debug".into(),
+            Self::Trace => "trace".into(),
         }
     }
 }
@@ -83,12 +84,12 @@ impl ToString for LogLevel {
 impl From<LogLevel> for slog::Level {
     fn from(lvl: LogLevel) -> Self {
         match lvl {
-            LogLevel::Critical => Level::Critical,
-            LogLevel::Error => Level::Error,
-            LogLevel::Warning => Level::Warning,
-            LogLevel::Info => Level::Info,
-            LogLevel::Debug => Level::Debug,
-            LogLevel::Trace => Level::Trace,
+            LogLevel::Critical => Self::Critical,
+            LogLevel::Error => Self::Error,
+            LogLevel::Warning => Self::Warning,
+            LogLevel::Info => Self::Info,
+            LogLevel::Debug => Self::Debug,
+            LogLevel::Trace => Self::Trace,
         }
     }
 }
@@ -118,7 +119,7 @@ pub struct ConfigLog {
 
 impl Default for ConfigLog {
     fn default() -> Self {
-        ConfigLog {
+        Self {
             level: LogLevel::Info,
         }
     }
@@ -134,7 +135,7 @@ pub struct ConfigServer {
 
 impl Default for ConfigServer {
     fn default() -> Self {
-        ConfigServer {
+        Self {
             host: "127.0.0.1".into(),
             port: 2030,
         }
@@ -151,7 +152,7 @@ pub struct ConfigMetrics {
 
 impl Default for ConfigMetrics {
     fn default() -> Self {
-        ConfigMetrics {
+        Self {
             host: "127.0.0.1".into(),
             port: 3020,
         }
@@ -178,7 +179,7 @@ pub struct ConfigDatabase {
 
 impl Default for ConfigDatabase {
     fn default() -> Self {
-        ConfigDatabase {
+        Self {
             user: "postgres".into(),
             host: "127.0.0.1".to_owned(),
             port: 2030,
@@ -206,7 +207,7 @@ pub struct ConfigCueball {
 
 impl Default for ConfigCueball {
     fn default() -> Self {
-        ConfigCueball {
+        Self {
             max_connections: 64,
             claim_timeout: Some(500),
             rebalancer_action_delay: Some(20),
@@ -245,7 +246,7 @@ pub struct ConfigTokio {
 
 impl Default for ConfigTokio {
     fn default() -> Self {
-        ConfigTokio {
+        Self {
             core_threads: Some(num_cpus::get().max(1)),
             blocking_threads: 200,
             thread_keep_alive: None,
@@ -329,26 +330,27 @@ pub mod tls {
 
     impl From<io::Error> for TlsError {
         fn from(error: io::Error) -> Self {
-            TlsError::IOError(error)
+            Self::IOError(error)
         }
     }
 
     impl From<CertificateError> for TlsError {
         fn from(error: CertificateError) -> Self {
-            TlsError::CertError(error)
+            Self::CertError(error)
         }
     }
 
     impl fmt::Display for TlsError {
         fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
             match self {
-                TlsError::NoCertificate => write!(fmt, "no TLS certificate file given"),
-                TlsError::CertError(ref e) => e.fmt(fmt),
-                TlsError::IOError(ref e) => e.fmt(fmt),
+                Self::NoCertificate => write!(fmt, "no TLS certificate file given"),
+                Self::CertError(ref e) => e.fmt(fmt),
+                Self::IOError(ref e) => e.fmt(fmt),
             }
         }
     }
 
+    #[allow(clippy::needless_pass_by_value)]
     pub(crate) fn tls_config(
         mode: TlsConnectMode,
         o_p: Option<PathBuf>,

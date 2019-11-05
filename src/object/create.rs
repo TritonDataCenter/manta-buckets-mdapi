@@ -45,6 +45,7 @@ pub(crate) fn decode_msg(value: &Value) -> Result<Vec<CreateObjectPayload>, Serd
     serde_json::from_value::<Vec<CreateObjectPayload>>(value.clone())
 }
 
+#[allow(clippy::needless_pass_by_value)]
 pub(crate) fn action(
     msg_id: u32,
     method: &str,
@@ -53,7 +54,7 @@ pub(crate) fn action(
     conn: &mut PostgresConnection,
 ) -> Result<HandlerResponse, String> {
     // Make database request
-    do_create(method, payload, conn)
+    do_create(method, &payload, conn)
         .and_then(|maybe_resp| {
             // Handle the successful database response
             debug!(log, "{} operation was successful", &method);
@@ -91,7 +92,7 @@ pub(crate) fn action(
 
 fn do_create(
     method: &str,
-    payload: CreateObjectPayload,
+    payload: &CreateObjectPayload,
     conn: &mut PostgresConnection,
 ) -> Result<Option<ObjectResponse>, String> {
     let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
@@ -134,7 +135,7 @@ fn do_create(
         Ok(rows)
     })
     .map_err(|e| e.to_string())
-    .and_then(|rows| response(method, rows))
+    .and_then(|rows| response(method, &rows))
 }
 
 fn create_sql(vnode: u64) -> String {
@@ -210,15 +211,15 @@ mod test {
             let _ = headers.insert(random::string(g, 32), Some(random::string(g, 32)));
             let headers =
                 serde_json::to_value(headers).expect("failed to convert headers field to Value");
-            let shark1 = object::StorageNodeIdentifier {
+            let shark_1 = object::StorageNodeIdentifier {
                 datacenter: random::string(g, 32),
                 manta_storage_id: random::string(g, 32),
             };
-            let shark2 = object::StorageNodeIdentifier {
+            let shark_2 = object::StorageNodeIdentifier {
                 datacenter: random::string(g, 32),
                 manta_storage_id: random::string(g, 32),
             };
-            let sharks = serde_json::to_value(vec![shark1, shark2])
+            let sharks = serde_json::to_value(vec![shark_1, shark_2])
                 .expect("failed to convert sharks field to Value");
             let request_id = serde_json::to_value(Uuid::new_v4())
                 .expect("failed to convert request_id field to Value");
@@ -253,15 +254,15 @@ mod test {
             let _ = headers.insert(random::string(g, 32), Some(random::string(g, 32)));
             let _ = headers.insert(random::string(g, 32), Some(random::string(g, 32)));
 
-            let shark1 = StorageNodeIdentifier {
+            let shark_1 = StorageNodeIdentifier {
                 datacenter: random::string(g, 32),
                 manta_storage_id: random::string(g, 32),
             };
-            let shark2 = StorageNodeIdentifier {
+            let shark_2 = StorageNodeIdentifier {
                 datacenter: random::string(g, 32),
                 manta_storage_id: random::string(g, 32),
             };
-            let sharks = vec![shark1, shark2];
+            let sharks = vec![shark_1, shark_2];
             let properties = None;
             let request_id = Uuid::new_v4();
 

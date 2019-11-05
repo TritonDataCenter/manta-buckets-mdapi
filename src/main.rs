@@ -28,7 +28,7 @@ fn main() {
     // Optionally read config file
     let mut config: Config = match matches.value_of("config") {
         Some(f) => config::read_file(f),
-        None => Default::default(),
+        None => config::Config::default(),
     };
 
     // Read CLI arguments
@@ -56,7 +56,7 @@ fn main() {
     let metrics_log = root_log.clone();
     let metrics_host = config.metrics.host.clone();
     let metrics_port = config.metrics.port;
-    thread::spawn(move || boray::metrics::start_server(metrics_host, metrics_port, metrics_log));
+    thread::spawn(move || boray::metrics::start_server(&metrics_host, metrics_port, &metrics_log));
 
     info!(root_log, "establishing postgres connection pool");
 

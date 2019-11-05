@@ -39,6 +39,7 @@ pub(crate) fn decode_msg(value: &Value) -> Result<Vec<UpdateObjectPayload>, Serd
     serde_json::from_value::<Vec<UpdateObjectPayload>>(value.clone())
 }
 
+#[allow(clippy::needless_pass_by_value)]
 pub(crate) fn action(
     msg_id: u32,
     method: &str,
@@ -47,7 +48,7 @@ pub(crate) fn action(
     conn: &mut PostgresConnection,
 ) -> Result<HandlerResponse, String> {
     // Make database request
-    do_update(method, payload, conn)
+    do_update(method, &payload, conn)
         .and_then(|maybe_resp| {
             // Handle the successful database response
             debug!(log, "{} operation was successful", &method);
@@ -78,7 +79,7 @@ pub(crate) fn action(
 
 fn do_update(
     method: &str,
-    payload: UpdateObjectPayload,
+    payload: &UpdateObjectPayload,
     conn: &mut PostgresConnection,
 ) -> Result<Option<ObjectResponse>, String> {
     let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
@@ -102,7 +103,7 @@ fn do_update(
         Ok(rows)
     })
     .map_err(|e| e.to_string())
-    .and_then(|rows| response(method, rows))
+    .and_then(|rows| response(method, &rows))
 }
 
 fn update_sql(vnode: u64) -> String {

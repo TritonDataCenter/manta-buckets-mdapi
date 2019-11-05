@@ -32,6 +32,7 @@ pub(crate) fn decode_msg(value: &Value) -> Result<Vec<CreateBucketPayload>, Serd
     serde_json::from_value::<Vec<CreateBucketPayload>>(value.clone())
 }
 
+#[allow(clippy::needless_pass_by_value)]
 pub(crate) fn action(
     msg_id: u32,
     method: &str,
@@ -40,7 +41,7 @@ pub(crate) fn action(
     conn: &mut PostgresConnection,
 ) -> Result<HandlerResponse, String> {
     // Make database request
-    do_create(method, payload, conn)
+    do_create(method, &payload, conn)
         .and_then(|maybe_resp| {
             // Handle the successful database response
             debug!(log, "{} operation was successful", &method);
@@ -71,7 +72,7 @@ pub(crate) fn action(
 
 fn do_create(
     method: &str,
-    payload: CreateBucketPayload,
+    payload: &CreateBucketPayload,
     conn: &mut PostgresConnection,
 ) -> Result<Option<BucketResponse>, String> {
     let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
@@ -88,7 +89,7 @@ fn do_create(
         Ok(rows)
     })
     .map_err(|e| e.to_string())
-    .and_then(|rows| response(method, rows))
+    .and_then(|rows| response(method, &rows))
 }
 
 fn create_sql(vnode: u64) -> String {

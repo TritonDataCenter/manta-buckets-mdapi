@@ -1,5 +1,6 @@
 use serde_derive::{Deserialize, Serialize};
 
+#[derive(Clone, Copy)]
 pub enum BorayErrorType {
     BucketAlreadyExists,
     BucketNotFound,
@@ -9,19 +10,19 @@ pub enum BorayErrorType {
 impl ToString for BorayErrorType {
     fn to_string(&self) -> String {
         match *self {
-            BorayErrorType::BucketAlreadyExists => "BucketAlreadyExists".into(),
-            BorayErrorType::BucketNotFound => "BucketNotFound".into(),
-            BorayErrorType::ObjectNotFound => "ObjectNotFound".into(),
+            Self::BucketAlreadyExists => "BucketAlreadyExists".into(),
+            Self::BucketNotFound => "BucketNotFound".into(),
+            Self::ObjectNotFound => "ObjectNotFound".into(),
         }
     }
 }
 
 impl BorayErrorType {
-    fn message(&self) -> String {
-        match *self {
-            BorayErrorType::BucketAlreadyExists => "requested bucket already exists".into(),
-            BorayErrorType::BucketNotFound => "requested bucket not found".into(),
-            BorayErrorType::ObjectNotFound => "requested object not found".into(),
+    fn message(self) -> String {
+        match self {
+            Self::BucketAlreadyExists => "requested bucket already exists".into(),
+            Self::BucketNotFound => "requested bucket not found".into(),
+            Self::ObjectNotFound => "requested object not found".into(),
         }
     }
 }
@@ -43,6 +44,6 @@ impl BorayError {
             name: error.to_string(),
             message: error.message(),
         };
-        BorayError { error: inner }
+        Self { error: inner }
     }
 }

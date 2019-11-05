@@ -13,6 +13,7 @@ use tokio_postgres::Row as PGRow;
 use crate::metrics;
 use crate::util;
 
+#[derive(Clone, Copy)]
 pub enum Method {
     BucketCreate,
     BucketGet,
@@ -31,18 +32,18 @@ pub enum Method {
 impl Method {
     fn as_str(&self) -> &str {
         match self {
-            Method::BucketCreate => "BucketCreate",
-            Method::BucketGet => "BucketGet",
-            Method::BucketList => "BucketList",
-            Method::BucketDeleteMove => "BucketDeleteMove",
-            Method::BucketDelete => "BucketDelete",
-            Method::ObjectCreate => "ObjectCreate",
-            Method::ObjectCreateMove => "ObjectCreateMove",
-            Method::ObjectGet => "ObjectGet",
-            Method::ObjectList => "ObjectList",
-            Method::ObjectDelete => "ObjectDelete",
-            Method::ObjectDeleteMove => "ObjectDeleteMove",
-            Method::ObjectUpdate => "ObjectUpdate",
+            Self::BucketCreate => "BucketCreate",
+            Self::BucketGet => "BucketGet",
+            Self::BucketList => "BucketList",
+            Self::BucketDeleteMove => "BucketDeleteMove",
+            Self::BucketDelete => "BucketDelete",
+            Self::ObjectCreate => "ObjectCreate",
+            Self::ObjectCreateMove => "ObjectCreateMove",
+            Self::ObjectGet => "ObjectGet",
+            Self::ObjectList => "ObjectList",
+            Self::ObjectDelete => "ObjectDelete",
+            Self::ObjectDeleteMove => "ObjectDeleteMove",
+            Self::ObjectUpdate => "ObjectUpdate",
         }
     }
 }
@@ -117,10 +118,7 @@ fn post_timer_metrics(method: Method, now: Instant, success: bool) {
     let duration = now.elapsed();
     let t = util::duration_to_seconds(duration);
 
-    let success = match success {
-        true => "true",
-        false => "false",
-    };
+    let success = if success { "true" } else { "false" };
 
     metrics::POSTGRES_REQUESTS
         .with_label_values(&[&method.as_str(), success])

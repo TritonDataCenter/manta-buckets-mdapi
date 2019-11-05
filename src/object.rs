@@ -11,7 +11,7 @@ use tokio_postgres::{accepts, to_sql_checked};
 use uuid::Uuid;
 
 use crate::error::{BorayError, BorayErrorType};
-use crate::types::{HasRequestId, Hstore, Rows, Timestamptz};
+use crate::types::{HasRequestId, Hstore, RowSlice, Timestamptz};
 
 pub mod create;
 pub mod delete;
@@ -40,14 +40,14 @@ type DeleteObjectPayload = GetObjectPayload;
 /// id of a copy of an object's data.
 ///
 /// The incoming representation of the sharks data is a JSON array of objects
-/// where each object has two keys: datacenter and manta_storage_id. The custom
-/// ToSQL instance for the this type converts the each object in this
+/// where each object has two keys: `datacenter` and `manta_storage_id`. The custom
+/// `ToSQL` instance for the this type converts the each object in this
 /// representation into a String that represents the same data in fewer
 /// bytes. The postgres column type for the sharks column is a text array.
 ///
-/// Likewise, the custom FromSql instance for the type converts the members of
+/// Likewise, the custom `FromSql` instance for the type converts the members of
 /// the text array format stored in the database back into an instance of
-/// StorageNodeIdentifier.
+/// `StorageNodeIdentifier`.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct StorageNodeIdentifier {
     pub datacenter: String,
@@ -63,7 +63,7 @@ impl ToString for StorageNodeIdentifier {
 impl From<String> for StorageNodeIdentifier {
     fn from(s: String) -> Self {
         let v: Vec<&str> = s.split(':').collect();
-        StorageNodeIdentifier {
+        Self {
             datacenter: String::from(v[0]),
             manta_storage_id: String::from(v[1]),
         }
@@ -81,11 +81,8 @@ impl ToSql for StorageNodeIdentifier {
 }
 
 impl<'a> FromSql<'a> for StorageNodeIdentifier {
-    fn from_sql(
-        ty: &Type,
-        raw: &'a [u8],
-    ) -> Result<StorageNodeIdentifier, Box<dyn Error + Sync + Send>> {
-        String::from_sql(ty, raw).and_then(|s| Ok(StorageNodeIdentifier::from(s)))
+    fn from_sql(ty: &Type, raw: &'a [u8]) -> Result<Self, Box<dyn Error + Sync + Send>> {
+        String::from_sql(ty, raw).and_then(|s| Ok(Self::from(s)))
     }
 
     accepts!(TEXT);
@@ -123,7 +120,7 @@ pub(self) fn object_not_found() -> Value {
         .expect("failed to encode a ObjectNotFound error")
 }
 
-pub(self) fn response(method: &str, rows: Rows) -> Result<Option<ObjectResponse>, String> {
+pub(self) fn response(method: &str, rows: &RowSlice) -> Result<Option<ObjectResponse>, String> {
     if rows.is_empty() {
         Ok(None)
     } else if rows.len() == 1 {
@@ -261,15 +258,15 @@ mod test {
             let _ = headers.insert(random::string(g, 32), Some(random::string(g, 32)));
             let _ = headers.insert(random::string(g, 32), Some(random::string(g, 32)));
 
-            let shark1 = StorageNodeIdentifier {
+            let shark_1 = StorageNodeIdentifier {
                 datacenter: random::string(g, 32),
                 manta_storage_id: random::string(g, 32),
             };
-            let shark2 = StorageNodeIdentifier {
+            let shark_2 = StorageNodeIdentifier {
                 datacenter: random::string(g, 32),
                 manta_storage_id: random::string(g, 32),
             };
-            let sharks = vec![shark1, shark2];
+            let sharks = vec![shark_1, shark_2];
             let properties = None;
 
             ObjectResponse {
