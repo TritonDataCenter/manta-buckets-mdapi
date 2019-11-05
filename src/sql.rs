@@ -32,18 +32,18 @@ pub enum Method {
 impl Method {
     fn as_str(&self) -> &str {
         match self {
-            Self::BucketCreate => "BucketCreate",
-            Self::BucketGet => "BucketGet",
-            Self::BucketList => "BucketList",
-            Self::BucketDeleteMove => "BucketDeleteMove",
-            Self::BucketDelete => "BucketDelete",
-            Self::ObjectCreate => "ObjectCreate",
-            Self::ObjectCreateMove => "ObjectCreateMove",
-            Self::ObjectGet => "ObjectGet",
-            Self::ObjectList => "ObjectList",
-            Self::ObjectDelete => "ObjectDelete",
-            Self::ObjectDeleteMove => "ObjectDeleteMove",
-            Self::ObjectUpdate => "ObjectUpdate",
+            Method::BucketCreate => "BucketCreate",
+            Method::BucketGet => "BucketGet",
+            Method::BucketList => "BucketList",
+            Method::BucketDeleteMove => "BucketDeleteMove",
+            Method::BucketDelete => "BucketDelete",
+            Method::ObjectCreate => "ObjectCreate",
+            Method::ObjectCreateMove => "ObjectCreateMove",
+            Method::ObjectGet => "ObjectGet",
+            Method::ObjectList => "ObjectList",
+            Method::ObjectDelete => "ObjectDelete",
+            Method::ObjectDeleteMove => "ObjectDeleteMove",
+            Method::ObjectUpdate => "ObjectUpdate",
         }
     }
 }

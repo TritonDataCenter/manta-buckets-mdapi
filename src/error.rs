@@ -10,9 +10,9 @@ pub enum BorayErrorType {
 impl ToString for BorayErrorType {
     fn to_string(&self) -> String {
         match *self {
-            Self::BucketAlreadyExists => "BucketAlreadyExists".into(),
-            Self::BucketNotFound => "BucketNotFound".into(),
-            Self::ObjectNotFound => "ObjectNotFound".into(),
+            BorayErrorType::BucketAlreadyExists => "BucketAlreadyExists".into(),
+            BorayErrorType::BucketNotFound => "BucketNotFound".into(),
+            BorayErrorType::ObjectNotFound => "ObjectNotFound".into(),
         }
     }
 }
@@ -20,9 +20,9 @@ impl ToString for BorayErrorType {
 impl BorayErrorType {
     fn message(self) -> String {
         match self {
-            Self::BucketAlreadyExists => "requested bucket already exists".into(),
-            Self::BucketNotFound => "requested bucket not found".into(),
-            Self::ObjectNotFound => "requested object not found".into(),
+            BorayErrorType::BucketAlreadyExists => "requested bucket already exists".into(),
+            BorayErrorType::BucketNotFound => "requested bucket not found".into(),
+            BorayErrorType::ObjectNotFound => "requested object not found".into(),
         }
     }
 }

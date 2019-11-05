@@ -313,13 +313,13 @@ pub mod types {
 
     impl From<FastMessage> for HandlerResponse {
         fn from(fm: FastMessage) -> Self {
-            Self::Message(fm)
+            HandlerResponse::Message(fm)
         }
     }
 
     impl From<Vec<FastMessage>> for HandlerResponse {
         fn from(fms: Vec<FastMessage>) -> Self {
-            Self::Messages(fms)
+            HandlerResponse::Messages(fms)
         }
     }
 

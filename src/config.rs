@@ -51,12 +51,12 @@ impl FromStr for LogLevel {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "critical" => Ok(Self::Critical),
-            "error" => Ok(Self::Error),
-            "warning" => Ok(Self::Warning),
-            "info" => Ok(Self::Info),
-            "debug" => Ok(Self::Debug),
-            "trace" => Ok(Self::Trace),
+            "critical" => Ok(LogLevel::Critical),
+            "error" => Ok(LogLevel::Error),
+            "warning" => Ok(LogLevel::Warning),
+            "info" => Ok(LogLevel::Info),
+            "debug" => Ok(LogLevel::Debug),
+            "trace" => Ok(LogLevel::Trace),
             _ => Err("invalid log level"),
         }
     }
@@ -64,19 +64,19 @@ impl FromStr for LogLevel {
 
 impl Default for LogLevel {
     fn default() -> Self {
-        Self::Debug
+        LogLevel::Debug
     }
 }
 
 impl ToString for LogLevel {
     fn to_string(&self) -> String {
         match self {
-            Self::Critical => "critical".into(),
-            Self::Error => "error".into(),
-            Self::Warning => "warning".into(),
-            Self::Info => "info".into(),
-            Self::Debug => "debug".into(),
-            Self::Trace => "trace".into(),
+            LogLevel::Critical => "critical".into(),
+            LogLevel::Error => "error".into(),
+            LogLevel::Warning => "warning".into(),
+            LogLevel::Info => "info".into(),
+            LogLevel::Debug => "debug".into(),
+            LogLevel::Trace => "trace".into(),
         }
     }
 }
@@ -84,12 +84,12 @@ impl ToString for LogLevel {
 impl From<LogLevel> for slog::Level {
     fn from(lvl: LogLevel) -> Self {
         match lvl {
-            LogLevel::Critical => Self::Critical,
-            LogLevel::Error => Self::Error,
-            LogLevel::Warning => Self::Warning,
-            LogLevel::Info => Self::Info,
-            LogLevel::Debug => Self::Debug,
-            LogLevel::Trace => Self::Trace,
+            LogLevel::Critical => slog::Level::Critical,
+            LogLevel::Error => slog::Level::Error,
+            LogLevel::Warning => slog::Level::Warning,
+            LogLevel::Info => slog::Level::Info,
+            LogLevel::Debug => slog::Level::Debug,
+            LogLevel::Trace => slog::Level::Trace,
         }
     }
 }
@@ -330,22 +330,22 @@ pub mod tls {
 
     impl From<io::Error> for TlsError {
         fn from(error: io::Error) -> Self {
-            Self::IOError(error)
+            TlsError::IOError(error)
         }
     }
 
     impl From<CertificateError> for TlsError {
         fn from(error: CertificateError) -> Self {
-            Self::CertError(error)
+            TlsError::CertError(error)
         }
     }
 
     impl fmt::Display for TlsError {
         fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
             match self {
-                Self::NoCertificate => write!(fmt, "no TLS certificate file given"),
-                Self::CertError(ref e) => e.fmt(fmt),
-                Self::IOError(ref e) => e.fmt(fmt),
+                TlsError::NoCertificate => write!(fmt, "no TLS certificate file given"),
+                TlsError::CertError(ref e) => e.fmt(fmt),
+                TlsError::IOError(ref e) => e.fmt(fmt),
             }
         }
     }
