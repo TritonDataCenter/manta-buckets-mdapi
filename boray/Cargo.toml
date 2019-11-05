@@ -25,11 +25,9 @@ slog-bunyan = { git = "https://github.com/slog-rs/bunyan" }
 tokio = "0.1.14"
 tokio-postgres = "0.4.0-rc.2"
 toml = "0.5"
+rand = { git = 'https://github.com/rust-random/rand' }
 utils = { path = "../utils" }
 uuid = { version = "0.7", features = ["serde", "v4"] }
-
-[patch.crates-io]
-rand = { git = 'https://github.com/rust-random/rand' }
 
 [dev-dependencies]
 quickcheck = "0.8.5"

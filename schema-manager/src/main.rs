@@ -29,47 +29,113 @@ static APP: &'static str = "schema-manager";
 static BORAY_CONFIG_FILE_PATH: &'static str = "/opt/smartdc/boray/etc/config.toml";
 const DEFAULT_EB_PORT: u32 = 2020;
 const SCHEMA_STR: &'static str = "/opt/smartdc/boray/schema_templates/schema.in";
+const ADMIN_STR: &'static str = "/opt/smartdc/boray/schema_templates/admin.in";
+const DB_STR: &'static str = "/opt/smartdc/boray/schema_templates/db.in";
 
 #[derive(Clone, Debug, Serialize)]
 pub struct MethodOptions {
     pub req_id: String, // UUID as string,
 }
 
-// Create the schemas from the schema.sql template
-// And then run the whole shebang in one go, semi-colons and all
-// with batch_execute()
+// create users, role, database and schemas
 fn create_bucket_schemas(vnode: &str) -> Result<(), Error> {
-    let db_url = format_db_url();
-    let conn = establish_db_connection(db_url);
+    let admin_url = format_admin_db_url();
     let schema_template = read_schema_template()?;
     let template = Template::new(&schema_template);
     let mut args = HashMap::new();
     args.insert("vnode", vnode);
-    let exec_str = template.render(&args);
+    let schema_str = template.render(&args);
 
-    match conn.batch_execute(&exec_str) {
+    println!("Creating boray user and role if they don't exist on {}", admin_url);
+    match create_user_role(&admin_url) {
+        Ok(_) => {
+            println!("Creating boray database if it doesn't exist on {}", admin_url);
+            match create_database(&admin_url) {
+                Ok(_) => {
+                    let boray_url = format_boray_db_url();
+                    let boray_conn = establish_db_connection(&boray_url);
+                    println!("Creating boray schemas on {}", boray_url);
+                    match boray_conn.batch_execute(&schema_str) {
+                        Ok(_) => Ok(()),
+                        Err(e) => {
+                            println!("error on schema creation:{}, vnode:{}", e.to_string(), vnode);
+                            Err(std::io::Error::new(ErrorKind::Other, e))
+                        }
+                    }
+                },
+                Err(e) => {
+                    println!("error on database creation:{}", e.to_string());
+                    Err(std::io::Error::new(ErrorKind::Other, e))
+                }
+            }
+        },
+        Err(e) => {
+            println!("error on role creation:{}", e.to_string());
+            Err(std::io::Error::new(ErrorKind::Other, e))
+        }
+    }
+}
+
+// create the db in its own transaction
+fn create_database(db_url: &str) -> Result<(), Error> {
+    let conn = establish_db_connection(&db_url);
+    let db_str = read_db_template()?;
+    match conn.batch_execute(&db_str) {
         Ok(_) => Ok(()),
-        Err(e) => Err(std::io::Error::new(ErrorKind::Other, e))
+        Err(e) => {
+            if e.to_string().contains("already exists") {
+                return Ok(())
+            } else {
+               Err(std::io::Error::new(ErrorKind::Other, e))
+            }
+        }
+    }
+}
+
+// create the role in its own transaction
+fn create_user_role(db_url: &str) -> Result<(), Error> {
+    let conn = establish_db_connection(&db_url);
+    let admin_str = read_admin_template()?;
+    match conn.batch_execute(&admin_str) {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            if e.to_string().contains("already exists") {
+                return Ok(())
+            } else {
+               Err(std::io::Error::new(ErrorKind::Other, e))
+            }
+        }
     }
 }
 
 // This uses SimpleConnection, which is discouraged, but we need to
 // run batch_execute, only available there.
-fn establish_db_connection(database_url: String) -> PgConnection {
-
-    PgConnection::establish(&database_url)
+fn establish_db_connection(database_url: &str) -> PgConnection {
+    PgConnection::establish(database_url)
         .expect(&format!("Error connecting to {}", database_url))
 }
 
 // For use connecting to the shard Postgres server
-fn format_db_url() -> String {
+fn format_admin_db_url() -> String {
+    let boray_config = get_boray_config();
+    let db_url = format!("postgres://{}:{}@{}:{}",
+                             boray_config.database.admin_user,
+                             boray_config.database.admin_user,
+                             boray_config.database.host,
+                             boray_config.database.port
+                         );
+    db_url
+}
+
+// For use connecting to the shard Postgres server
+fn format_boray_db_url() -> String {
     let boray_config = get_boray_config();
     let db_url = format!("postgres://{}:{}@{}:{}/{}",
-                         boray_config.database.user,
-                         boray_config.database.user,
-                         boray_config.database.host,
-                         boray_config.database.port,
-                         boray_config.database.database
+                             boray_config.database.user,
+                             boray_config.database.user,
+                             boray_config.database.host,
+                             boray_config.database.port,
+                             boray_config.database.database
                          );
     db_url
 }
@@ -92,10 +158,8 @@ fn get_zone_config(sapi: SAPI) -> Result<ZoneConfig, Box<dyn std::error::Error>>
 
 // Get the boray zone UUID for use in the sapi config request
 fn get_zone_uuid() -> FunResult {
-    run_fun!("/usr/sbin/zoneadm list")
+    run_fun!("/usr/bin/zonename")
 }
-
-
 
 // Get a sapi client from the URL in the zone config
 fn init_sapi_client(sapi_address: String, log: Logger) -> Result<SAPI, Error> {
@@ -108,7 +172,7 @@ fn parse_vnodes(msg: &FastMessage) -> Result<(), Error> {
     let v: Vec<Value> = msg.data.d.as_array().unwrap().to_vec();
     for vnode in v {
         for v in vnode.as_array().unwrap() {
-            let vn =v.as_str().unwrap();
+            let vn = v.as_str().unwrap();
             println!("processing vnode: {:#?}", vn);
             create_bucket_schemas(v.as_str().unwrap())?;
         }
@@ -131,9 +195,19 @@ fn parse_opts<'a, 'b>(app: String) -> ArgMatches<'a> {
         .get_matches()
 }
 
-// Schema template is stored in boray/etc/schema.sql
+// Schema template is stored in boray/schema_templates/schema.in
 fn read_schema_template() -> Result<String, Error> {
     fs::read_to_string(SCHEMA_STR)
+}
+
+// Admin template is stored in boray/schema_templates/admin.in
+fn read_admin_template() -> Result<String, Error> {
+    fs::read_to_string(ADMIN_STR)
+}
+
+// db template is stored in boray/schema_templates/db.in
+fn read_db_template() -> Result<String, Error> {
+    fs::read_to_string(DB_STR)
 }
 
 // Callback function handed in to the fast::recieve call.
@@ -196,5 +270,6 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _options = parse_opts(APP.to_string());
 
     run(log)?;
+    println!("Done.");
     Ok(())
 }

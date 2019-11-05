@@ -39,6 +39,7 @@ port = 3020
 {{/BORAY_METRICS_PORT}}
 
 [database]
+admin_user = "postgres"
 user = "boray"
 {{#BORAY_DATABASE_HOST}}
 host = "{{BORAY_DATABASE_HOST}}"

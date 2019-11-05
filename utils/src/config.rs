@@ -149,6 +149,7 @@ impl Default for ConfigMetrics {
 
 #[derive(Clone, Deserialize)]
 pub struct ConfigDatabase {
+    pub admin_user: String,
     pub user: String,
     pub host: String,
     pub port: u16,
@@ -161,6 +162,7 @@ pub struct ConfigDatabase {
 impl Default for ConfigDatabase {
     fn default() -> Self {
         ConfigDatabase {
+            admin_user: "postgres".into(),
             user: "postgres".into(),
             host: "127.0.0.1".to_owned(),
             port: 2030,
