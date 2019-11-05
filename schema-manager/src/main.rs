@@ -244,7 +244,7 @@ fn run(
         .concat();
     println!("electric-boray endpoint:{}", eb_endpoint);
     let mut stream = TcpStream::connect(&eb_endpoint).unwrap_or_else(|e| {
-        println!("failed to connec to electric-boray: {}", e);
+        println!("failed to connect to electric-boray: {}", e);
         process::exit(1)
     });
 
