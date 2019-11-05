@@ -18,6 +18,7 @@ pub(crate) fn decode_msg(value: &Value) -> Result<Vec<GetObjectPayload>, SerdeEr
     serde_json::from_value::<Vec<GetObjectPayload>>(value.clone())
 }
 
+#[allow(clippy::needless_pass_by_value)]
 pub(crate) fn action(
     msg_id: u32,
     method: &str,
@@ -26,7 +27,7 @@ pub(crate) fn action(
     conn: &mut PostgresConnection,
 ) -> Result<HandlerResponse, String> {
     // Make database request
-    do_get(method, payload, conn)
+    do_get(method, &payload, conn)
         .and_then(|maybe_resp| {
             // Handle the successful database response
             debug!(log, "getobject operation was successful");
@@ -57,7 +58,7 @@ pub(crate) fn action(
 
 fn do_get(
     method: &str,
-    payload: GetObjectPayload,
+    payload: &GetObjectPayload,
     mut conn: &mut PostgresConnection,
 ) -> Result<Option<ObjectResponse>, String> {
     let sql = get_sql(payload.vnode);
@@ -69,7 +70,7 @@ fn do_get(
         &[&payload.owner, &payload.bucket_id, &payload.name],
     )
     .map_err(|e| e.to_string())
-    .and_then(|rows| response(method, rows))
+    .and_then(|rows| response(method, &rows))
 }
 
 fn get_sql(vnode: u64) -> String {

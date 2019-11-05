@@ -1,5 +1,7 @@
 // Copyright 2019 Joyent, Inc.
 
+#![allow(clippy::module_name_repetitions)]
+
 /// Data structures and helper functions for boray configuration.
 ///
 /// Default configuration parameters are set in the different `Default` trait
@@ -15,7 +17,6 @@ use std::str::FromStr;
 use clap::{value_t, ArgMatches};
 use num_cpus;
 use serde_derive::Deserialize;
-use slog::Level;
 
 use cueball_postgres_connection::TlsConnectMode;
 
@@ -83,12 +84,12 @@ impl ToString for LogLevel {
 impl From<LogLevel> for slog::Level {
     fn from(lvl: LogLevel) -> Self {
         match lvl {
-            LogLevel::Critical => Level::Critical,
-            LogLevel::Error => Level::Error,
-            LogLevel::Warning => Level::Warning,
-            LogLevel::Info => Level::Info,
-            LogLevel::Debug => Level::Debug,
-            LogLevel::Trace => Level::Trace,
+            LogLevel::Critical => slog::Level::Critical,
+            LogLevel::Error => slog::Level::Error,
+            LogLevel::Warning => slog::Level::Warning,
+            LogLevel::Info => slog::Level::Info,
+            LogLevel::Debug => slog::Level::Debug,
+            LogLevel::Trace => slog::Level::Trace,
         }
     }
 }
@@ -118,7 +119,7 @@ pub struct ConfigLog {
 
 impl Default for ConfigLog {
     fn default() -> Self {
-        ConfigLog {
+        Self {
             level: LogLevel::Info,
         }
     }
@@ -134,7 +135,7 @@ pub struct ConfigServer {
 
 impl Default for ConfigServer {
     fn default() -> Self {
-        ConfigServer {
+        Self {
             host: "127.0.0.1".into(),
             port: 2030,
         }
@@ -151,7 +152,7 @@ pub struct ConfigMetrics {
 
 impl Default for ConfigMetrics {
     fn default() -> Self {
-        ConfigMetrics {
+        Self {
             host: "127.0.0.1".into(),
             port: 3020,
         }
@@ -178,7 +179,7 @@ pub struct ConfigDatabase {
 
 impl Default for ConfigDatabase {
     fn default() -> Self {
-        ConfigDatabase {
+        Self {
             user: "postgres".into(),
             host: "127.0.0.1".to_owned(),
             port: 2030,
@@ -206,7 +207,7 @@ pub struct ConfigCueball {
 
 impl Default for ConfigCueball {
     fn default() -> Self {
-        ConfigCueball {
+        Self {
             max_connections: 64,
             claim_timeout: Some(500),
             rebalancer_action_delay: Some(20),
@@ -245,7 +246,7 @@ pub struct ConfigTokio {
 
 impl Default for ConfigTokio {
     fn default() -> Self {
-        ConfigTokio {
+        Self {
             core_threads: Some(num_cpus::get().max(1)),
             blocking_threads: 200,
             thread_keep_alive: None,
@@ -349,6 +350,7 @@ pub mod tls {
         }
     }
 
+    #[allow(clippy::needless_pass_by_value)]
     pub(crate) fn tls_config(
         mode: TlsConnectMode,
         o_p: Option<PathBuf>,
