@@ -131,7 +131,7 @@ fn do_list(
     let mut msgs: Vec<FastMessage> = Vec::with_capacity(1024);
 
     query_result.map_err(|e| e.to_string()).and_then(|rows| {
-        for row in rows.iter() {
+        for row in &rows {
             let resp = BucketResponse {
                 id: row.get("id"),
                 owner: row.get("owner"),

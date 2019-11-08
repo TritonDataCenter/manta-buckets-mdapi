@@ -135,7 +135,7 @@ fn do_list(
     let mut msgs: Vec<FastMessage> = Vec::with_capacity(1024);
 
     query_result.map_err(|e| e.to_string()).and_then(|rows| {
-        for row in rows.iter() {
+        for row in &rows {
             let content_md5_bytes: Vec<u8> = row.get(7);
             let content_md5 = base64::encode(&content_md5_bytes);
             let resp = ObjectResponse {

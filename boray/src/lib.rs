@@ -1,5 +1,7 @@
 // Copyright 2019 Joyent, Inc.
 
+#![allow(clippy::module_name_repetitions)]
+
 pub mod bucket;
 pub mod error;
 pub mod sql;
@@ -203,6 +205,7 @@ pub mod util {
             })
     }
 
+    #[allow(clippy::cast_precision_loss)]
     pub(crate) fn duration_to_seconds(d: Duration) -> f64 {
         let nanos = f64::from(d.subsec_nanos()) / 1e9;
         d.as_secs() as f64 + nanos
@@ -221,9 +224,7 @@ pub mod util {
         T: for<'de> serde::Deserialize<'de>,
     {
         // Remove outer JSON array required by Fast
-        if !arr.is_empty() {
-            Ok(arr.remove(0))
-        } else {
+        if arr.is_empty() {
             let err_msg = format!(
                 "Failed to parse JSON data as payload for \
                  {} function",
@@ -231,6 +232,8 @@ pub mod util {
             );
             warn!(log, "{}", err_msg);
             Err(err_msg.to_string())
+        } else {
+            Ok(arr.remove(0))
         }
     }
 
@@ -293,6 +296,7 @@ pub mod types {
     use rust_fast::protocol::FastMessage;
 
     pub type Rows = Vec<Row>;
+    pub type RowSlice = [Row];
     pub type PostgresResult<T> = Result<T, PGError>;
     pub type Hstore = HashMap<String, Option<String>>;
     pub type Timestamptz = chrono::DateTime<chrono::Utc>;

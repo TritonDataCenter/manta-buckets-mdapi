@@ -18,6 +18,7 @@ pub(crate) fn decode_msg(value: &Value) -> Result<Vec<DeleteObjectPayload>, Serd
     serde_json::from_value::<Vec<DeleteObjectPayload>>(value.clone())
 }
 
+#[allow(clippy::needless_pass_by_value)]
 pub(crate) fn action(
     msg_id: u32,
     method: &str,
@@ -26,7 +27,7 @@ pub(crate) fn action(
     conn: &mut PostgresConnection,
 ) -> Result<HandlerResponse, String> {
     // Make database request
-    do_delete(payload, conn)
+    do_delete(&payload, conn)
         .and_then(|affected_rows| {
             // Handle the successful database response
             debug!(log, "{} operation was successful", &method);
@@ -63,7 +64,7 @@ pub(crate) fn action(
         })
 }
 
-fn do_delete(payload: DeleteObjectPayload, conn: &mut PostgresConnection) -> Result<u64, String> {
+fn do_delete(payload: &DeleteObjectPayload, conn: &mut PostgresConnection) -> Result<u64, String> {
     let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
     let move_sql = insert_delete_table_sql(payload.vnode);
     let delete_sql = delete_sql(payload.vnode);

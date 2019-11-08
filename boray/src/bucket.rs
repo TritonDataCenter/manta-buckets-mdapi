@@ -6,7 +6,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::error::{BorayError, BorayErrorType};
-use crate::types::{HasRequestId, Rows};
+use crate::types::{HasRequestId, RowSlice};
 
 pub mod create;
 pub mod delete;
@@ -62,7 +62,7 @@ pub(self) fn bucket_already_exists() -> Value {
         .expect("failed to encode a BucketAlreadyExists error")
 }
 
-pub(self) fn response(method: &str, rows: Rows) -> Result<Option<BucketResponse>, String> {
+pub(self) fn response(method: &str, rows: &RowSlice) -> Result<Option<BucketResponse>, String> {
     if rows.is_empty() {
         Ok(None)
     } else if rows.len() == 1 {

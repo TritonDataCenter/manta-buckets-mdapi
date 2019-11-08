@@ -1,5 +1,5 @@
 [log]
-level = "debug"
+level = "info"
 
 [server]
 host = "0.0.0.0"
@@ -18,7 +18,7 @@ application_name = "boray"
 tls_mode = "disable"
 
 [cueball]
-max_connections = 5
+max_connections = 64
 claim_timeout = 500 # milliseconds
 # Time to delay when an action that would trigger a rebalancing of the pool
 # connections is received. The purpose of the delay is to avoid minimize to work
@@ -27,8 +27,13 @@ claim_timeout = 500 # milliseconds
 rebalancer_action_delay = 100 # milliseconds
 
 [tokio]
+# It's best to omit this from your config file and use the default which is the
+# number of logical cores. This is here primarily to demonstrate it can be
+# set. Only set core_threads if you are certain about what you are doing.
 core_threads = 4
 blocking_threads = 200
+# This is here primarily to demonstrate it can be set. If it is omitted the
+# default behavior is to disable keep alive for threads.
 thread_keep_alive = 60
 thread_stack_size = 2097152
 thread_name_prefix = "boray-worker-"

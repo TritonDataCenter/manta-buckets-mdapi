@@ -13,6 +13,7 @@ use tokio_postgres::Row as PGRow;
 use crate::metrics;
 use crate::util;
 
+#[derive(Clone, Copy)]
 pub enum Method {
     BucketCreate,
     BucketGet,
@@ -117,10 +118,7 @@ fn post_timer_metrics(method: Method, now: Instant, success: bool) {
     let duration = now.elapsed();
     let t = util::duration_to_seconds(duration);
 
-    let success = match success {
-        true => "true",
-        false => "false",
-    };
+    let success = if success { "true" } else { "false" };
 
     metrics::POSTGRES_REQUESTS
         .with_label_values(&[&method.as_str(), success])

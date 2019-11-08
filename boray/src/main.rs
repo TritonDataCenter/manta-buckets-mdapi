@@ -55,7 +55,7 @@ fn main() {
     let metrics_log = root_log.clone();
     let metrics_host = config.metrics.host.clone();
     let metrics_port = config.metrics.port;
-    thread::spawn(move || boray::metrics::start_server(metrics_host, metrics_port, metrics_log));
+    thread::spawn(move || boray::metrics::start_server(&metrics_host, metrics_port, &metrics_log));
 
     info!(root_log, "establishing postgres connection pool");
 
@@ -107,7 +107,7 @@ fn main() {
             let task = server::make_task(
                 socket,
                 move |a, c| boray::util::handle_msg(a, &pool_clone, c),
-                &process_log,
+                Some(&process_log),
             );
             tokio::spawn(task);
             Ok(())
@@ -115,8 +115,8 @@ fn main() {
 
     let mut rt = runtime::Builder::new()
         .blocking_threads(config.tokio.blocking_threads)
-        .core_threads(config.tokio.core_threads)
-        .keep_alive(Some(Duration::from_secs(config.tokio.thread_keep_alive)))
+        .core_threads(config.tokio.core_threads.unwrap())
+        .keep_alive(config.tokio.thread_keep_alive.map(Duration::from_secs))
         .name_prefix(config.tokio.thread_name_prefix)
         .stack_size(config.tokio.thread_stack_size)
         .build()
