@@ -86,19 +86,31 @@ fn do_delete(
         )
     })
     .and_then(|deleted_objects| {
-        txn.commit()?;
-        let objs = deleted_objects
-            .into_iter()
-            .map(|row| DeleteObjectResponse {
+        let mut objs = vec![];
+        for row in deleted_objects.into_iter() {
+            /*
+             * As of now, there is no constraint in the database to guarantee that
+             * 'content_length' is not null, as a result of that we need to be cautious
+             * while tying to get an integer out of it. Also, 'shark_count' could be
+             * null, the reason is that array_length() returns 'null' if the array is
+             * empty instead of returning '0'. Yeah, this is weird!
+             */
+            let content_length = row.try_get("content_length")?;
+            let shark_count = row.try_get("shark_count").unwrap_or(0);
+
+            let obj = DeleteObjectResponse {
                 id: row.get("id"),
                 owner: row.get("owner"),
                 bucket_id: row.get("bucket_id"),
                 name: row.get("name"),
-                content_length: row.get("content_length"),
-                shark_count: row.get("shark_count"),
-            })
-            .collect();
+                content_length,
+                shark_count,
+            };
 
+            objs.push(obj);
+        }
+
+        txn.commit()?;
         Ok(objs)
     })
     .map_err(|e| e.to_string())
