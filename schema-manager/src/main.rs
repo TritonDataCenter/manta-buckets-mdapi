@@ -14,7 +14,7 @@ use rust_fast::protocol::{FastMessage, FastMessageId};
 use sapi::{SAPI, ZoneConfig};
 use serde::Serialize;
 use serde_json::{Value, json};
-use slog::{o, Drain, Logger};
+use slog::{error, info, o, Drain, Logger};
 use std::sync::Mutex;
 use string_template::Template;
 use utils::config;
@@ -38,7 +38,7 @@ pub struct MethodOptions {
 }
 
 // create users, role, database and schemas
-fn create_bucket_schemas(vnode: &str) -> Result<(), Error> {
+fn create_bucket_schemas(log: &Logger, vnode: &str) -> Result<(), Error> {
     let admin_url = format_admin_db_url();
     let schema_template = read_schema_template()?;
     let template = Template::new(&schema_template);
@@ -46,31 +46,31 @@ fn create_bucket_schemas(vnode: &str) -> Result<(), Error> {
     args.insert("vnode", vnode);
     let schema_str = template.render(&args);
 
-    println!("Creating boray user and role if they don't exist on {}", admin_url);
+    info!(log, "Creating boray user and role if they don't exist on {}", admin_url);
     match create_user_role(&admin_url) {
         Ok(_) => {
-            println!("Creating boray database if it doesn't exist on {}", admin_url);
+            info!(log, "Creating boray database if it doesn't exist on {}", admin_url);
             match create_database(&admin_url) {
                 Ok(_) => {
                     let boray_url = format_boray_db_url();
                     let boray_conn = establish_db_connection(&boray_url);
-                    println!("Creating boray schemas on {}", boray_url);
+                    info!(log, "Creating boray schemas on {}", boray_url);
                     match boray_conn.batch_execute(&schema_str) {
                         Ok(_) => Ok(()),
                         Err(e) => {
-                            println!("error on schema creation:{}, vnode:{}", e.to_string(), vnode);
+                            error!(log, "error on schema creation:{}, vnode:{}", e.to_string(), vnode);
                             Err(std::io::Error::new(ErrorKind::Other, e))
                         }
                     }
                 },
                 Err(e) => {
-                    println!("error on database creation:{}", e.to_string());
+                    info!(log, "error on database creation:{}", e.to_string());
                     Err(std::io::Error::new(ErrorKind::Other, e))
                 }
             }
         },
         Err(e) => {
-            println!("error on role creation:{}", e.to_string());
+            info!(log, "error on role creation:{}", e.to_string());
             Err(std::io::Error::new(ErrorKind::Other, e))
         }
     }
@@ -168,13 +168,13 @@ fn init_sapi_client(sapi_address: String, log: Logger) -> Result<SAPI, Error> {
 
 // Iterated through the vnodes returned from electric-boray and create the
 // associated schemas on the shards
-fn parse_vnodes(msg: &FastMessage) -> Result<(), Error> {
+fn parse_vnodes(log: &Logger, msg: &FastMessage) -> Result<(), Error> {
     let v: Vec<Value> = msg.data.d.as_array().unwrap().to_vec();
     for vnode in v {
         for v in vnode.as_array().unwrap() {
             let vn = v.as_str().unwrap();
-            println!("processing vnode: {:#?}", vn);
-            create_bucket_schemas(v.as_str().unwrap())?;
+            info!(log, "processing vnode: {:#?}", vn);
+            create_bucket_schemas(log, v.as_str().unwrap())?;
         }
     }
     Ok(())
@@ -211,14 +211,12 @@ fn read_db_template() -> Result<String, Error> {
 }
 
 // Callback function handed in to the fast::recieve call.
-// NB: this is an asynchronous call back so the arity is prescribed.
-// This means we cannot send in extra bits for later use.
-fn vnode_response_handler(msg: &FastMessage) -> Result<(), Error> {
+fn vnode_response_handler(log: &Logger, msg: &FastMessage) -> Result<(), Error> {
     match msg.data.m.name.as_str() {
         "getvnodes" => {
-            parse_vnodes(msg)?;
+            parse_vnodes(log, msg)?;
         }
-        _ => println!("Received unrecognized {} response", msg.data.m.name),
+        _ => info!(log, "Received unrecognized {} response", msg.data.m.name),
     }
 
     Ok(())
@@ -229,7 +227,7 @@ fn run(
     log: Logger) -> Result<(), Box<dyn std::error::Error>>
 {
     let sapi_url = get_sapi_url()?;
-    println!("sapi_url:{}", sapi_url);
+    info!(log, "sapi_url:{}", sapi_url);
     let sapi = init_sapi_client(sapi_url, log.clone())?;
     let zone_config = get_zone_config(sapi)?;
     let eb_address = zone_config.metadata.electric_boray;
@@ -239,23 +237,24 @@ fn run(
 
     let fast_arg = [String::from("tcp://"), boray_host, String::from(":"), boray_port.to_string()]
                     .concat();
-    println!("pnode argument to electric-boray:{}", fast_arg);
+    info!(log, "pnode argument to electric-boray:{}", fast_arg);
     let eb_endpoint = [eb_address, String::from(":"), DEFAULT_EB_PORT.to_string()]
         .concat();
-    println!("electric-boray endpoint:{}", eb_endpoint);
+    info!(log, "electric-boray endpoint:{}", eb_endpoint);
     let mut stream = TcpStream::connect(&eb_endpoint).unwrap_or_else(|e| {
-        println!("failed to connect to electric-boray: {}", e);
+        error!(log, "failed to connect to electric-boray: {}", e);
         process::exit(1)
     });
 
     let mut msg_id = FastMessageId::new();
-
+    let recv_cb = |msg: &FastMessage| { vnode_response_handler(&log, msg) };
     let vnode_method = String::from("getvnodes");
+
     fast_client::send(vnode_method,
                       json!([fast_arg]),
                       &mut msg_id,
                       &mut stream).and_then(
-            |_| fast_client::receive(&mut stream, vnode_response_handler),
+            |_| fast_client::receive(&mut stream, recv_cb),
     )?;
     Ok(())
 }
