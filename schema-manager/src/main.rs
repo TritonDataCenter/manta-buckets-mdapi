@@ -25,12 +25,12 @@ use utils::config;
       command line args for overriding.
 */
 
-static APP: &'static str = "schema-manager";
-static BORAY_CONFIG_FILE_PATH: &'static str = "/opt/smartdc/boray/etc/config.toml";
+const APP: &str = "schema-manager";
+const BORAY_CONFIG_FILE_PATH: &str = "/opt/smartdc/boray/etc/config.toml";
 const DEFAULT_EB_PORT: u32 = 2020;
-const SCHEMA_STR: &'static str = "/opt/smartdc/boray/schema_templates/schema.in";
-const ADMIN_STR: &'static str = "/opt/smartdc/boray/schema_templates/admin.in";
-const DB_STR: &'static str = "/opt/smartdc/boray/schema_templates/db.in";
+const SCHEMA_STR: &str = "/opt/smartdc/boray/schema_templates/schema.in";
+const ADMIN_STR: &str = "/opt/smartdc/boray/schema_templates/admin.in";
+const DB_STR: &str = "/opt/smartdc/boray/schema_templates/db.in";
 
 #[derive(Clone, Debug, Serialize)]
 pub struct MethodOptions {
@@ -84,7 +84,7 @@ fn create_database(db_url: &str) -> Result<(), Error> {
         Ok(_) => Ok(()),
         Err(e) => {
             if e.to_string().contains("already exists") {
-                return Ok(())
+                Ok(())
             } else {
                Err(std::io::Error::new(ErrorKind::Other, e))
             }
@@ -100,7 +100,7 @@ fn create_user_role(db_url: &str) -> Result<(), Error> {
         Ok(_) => Ok(()),
         Err(e) => {
             if e.to_string().contains("already exists") {
-                return Ok(())
+                Ok(())
             } else {
                Err(std::io::Error::new(ErrorKind::Other, e))
             }
@@ -112,7 +112,7 @@ fn create_user_role(db_url: &str) -> Result<(), Error> {
 // run batch_execute, only available there.
 fn establish_db_connection(database_url: &str) -> PgConnection {
     PgConnection::establish(database_url)
-        .expect(&format!("Error connecting to {}", database_url))
+        .unwrap_or_else(|_| panic!("Error connecting to {}", database_url))
 }
 
 // For use connecting to the shard Postgres server
@@ -151,7 +151,7 @@ fn get_sapi_url() -> FunResult {
 }
 
 // Call out to the sapi endpoint and get this zone's configuration
-fn get_zone_config(sapi: SAPI) -> Result<ZoneConfig, Box<dyn std::error::Error>> {
+fn get_zone_config(sapi: &SAPI) -> Result<ZoneConfig, Box<dyn std::error::Error>> {
     let zone_uuid = get_zone_uuid()?;
     sapi.get_zone_config(&zone_uuid)
 }
@@ -162,7 +162,7 @@ fn get_zone_uuid() -> FunResult {
 }
 
 // Get a sapi client from the URL in the zone config
-fn init_sapi_client(sapi_address: String, log: Logger) -> Result<SAPI, Error> {
+fn init_sapi_client(sapi_address: &str, log: &Logger) -> Result<SAPI, Error> {
     Ok(SAPI::new(&sapi_address, 60, log.clone()))
 }
 
@@ -181,7 +181,7 @@ fn parse_vnodes(log: &Logger, msg: &FastMessage) -> Result<(), Error> {
 }
 
 // Not really used for anything yet
-fn parse_opts<'a, 'b>(app: String) -> ArgMatches<'a> {
+fn parse_opts<'a>(app: String) -> ArgMatches<'a> {
    App::new(app)
         .version(crate_version!())
         .about("Tool to manage postgres schemas for boray")
@@ -223,13 +223,12 @@ fn vnode_response_handler(log: &Logger, msg: &FastMessage) -> Result<(), Error> 
 }
 
 // Do the deed
-fn run(
-    log: Logger) -> Result<(), Box<dyn std::error::Error>>
+fn run(log: &Logger) -> Result<(), Box<dyn std::error::Error>>
 {
     let sapi_url = get_sapi_url()?;
     info!(log, "sapi_url:{}", sapi_url);
-    let sapi = init_sapi_client(sapi_url, log.clone())?;
-    let zone_config = get_zone_config(sapi)?;
+    let sapi = init_sapi_client(&sapi_url, &log)?;
+    let zone_config = get_zone_config(&sapi)?;
     let eb_address = zone_config.metadata.electric_boray;
     let boray_host = zone_config.metadata.service_name;
     let boray_config = get_boray_config();
@@ -269,6 +268,6 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let _options = parse_opts(APP.to_string());
 
-    run(log)?;
+    run(&log)?;
     Ok(())
 }

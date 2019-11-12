@@ -27,7 +27,7 @@ fn main() {
     // Optionally read config file
     let mut config: Config = match matches.value_of("config") {
         Some(f) => utils::config::read_file(f),
-        None => Default::default(),
+        None => utils::config::Config::default(),
     };
 
     // Read CLI arguments
