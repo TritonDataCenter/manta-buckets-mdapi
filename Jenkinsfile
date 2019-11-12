@@ -17,6 +17,11 @@ pipeline {
                 sh('make check')
             }
         }
+        stage('test') {
+            steps{
+                sh('make test-unit')
+            }
+        }
         stage('build image and upload') {
             steps {
                 joyBuildImageAndUpload()
