@@ -89,6 +89,26 @@ impl<'a> FromSql<'a> for StorageNodeIdentifier {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct DeleteObjectResponse {
+    pub id: Uuid,
+    pub owner: Uuid,
+    pub bucket_id: Uuid,
+    pub name: String,
+    pub content_length: i64,
+    pub shark_count: i32,
+}
+
+impl DeleteObjectResponse {
+    pub fn to_json(&self) -> Value {
+        // Similar to ObjectResponse, the serialization to JSON might fail if the
+        // implementation of Serialize decideds to fail. We have JSON roundtrip
+        // quickcheck testing to verify we can serialize and deserialize the same
+        // object safely and correctly.
+        serde_json::to_value(self).expect("failed to serialize DeleteObjectResponse")
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ObjectResponse {
     pub id: Uuid,
     pub owner: Uuid,
@@ -286,6 +306,19 @@ mod test {
         }
     }
 
+    impl Arbitrary for DeleteObjectResponse {
+        fn arbitrary<G: Gen>(g: &mut G) -> Self {
+            Self {
+                id: Uuid::new_v4(),
+                owner: Uuid::new_v4(),
+                bucket_id: Uuid::new_v4(),
+                name: random::string(g, 32),
+                content_length: i64::arbitrary(g),
+                shark_count: i32::arbitrary(g),
+            }
+        }
+    }
+
     quickcheck! {
         fn prop_get_object_payload_roundtrip(msg: GetObjectPayload) -> bool {
             match serde_json::to_string(&msg) {
@@ -315,6 +348,21 @@ mod test {
                 },
                 Err(_) => false
             }
+        }
+    }
+    quickcheck! {
+        fn prop_delete_object_response_roundtrip(dobjr: DeleteObjectResponse) -> bool {
+              match serde_json::to_string(&dobjr) {
+                 Ok(dobjr_str) => {
+                   let decode_result: Result<DeleteObjectResponse, _> =
+                         serde_json::from_str(&dobjr_str);
+                        match decode_result {
+                        Ok(decoded_dobjr) => decoded_dobjr == dobjr,
+                            Err(_) => false
+                       }
+                   },
+                  Err(_) => false
+             }
         }
     }
 
