@@ -87,7 +87,7 @@ fn do_delete(
     })
     .and_then(|deleted_objects| {
         let mut objs = vec![];
-        for row in deleted_objects.into_iter() {
+        for row in deleted_objects {
             /*
              * As of now, there is no constraint in the database to guarantee that
              * 'content_length' is not null, as a result of that we need to be cautious
