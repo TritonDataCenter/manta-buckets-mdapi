@@ -97,6 +97,10 @@ publish: release
 build-boray:
 	$(CARGO) build --release
 
+.PHONY: test-unit
+test-unit:
+	$(CARGO) test --lib
+
 include ./deps/eng/tools/mk/Makefile.deps
 include ./deps/eng/tools/mk/Makefile.agent_prebuilt.targ
 include ./deps/eng/tools/mk/Makefile.smf.targ
