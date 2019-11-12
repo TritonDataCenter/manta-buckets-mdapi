@@ -256,6 +256,7 @@ fn run(
                       &mut stream).and_then(
             |_| fast_client::receive(&mut stream, recv_cb),
     )?;
+    info!(log, "Done.");
     Ok(())
 }
 
@@ -269,6 +270,5 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _options = parse_opts(APP.to_string());
 
     run(log)?;
-    println!("Done.");
     Ok(())
 }
