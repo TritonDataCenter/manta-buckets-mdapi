@@ -43,7 +43,7 @@ pub(crate) fn action(
 ) -> Result<HandlerResponse, String> {
     // Make database request
     if payload.limit > 0 && payload.limit <= 1024 {
-        do_list(msg_id, method, payload, conn)
+        do_list(msg_id, method, payload, conn, log)
             .and_then(|resp| {
                 // Handle the successful database response
                 debug!(log, "{} operation was successful", &method);
@@ -86,6 +86,7 @@ fn do_list(
     method: &str,
     payload: ListBucketsPayload,
     mut conn: &mut PostgresConnection,
+    log: &Logger,
 ) -> Result<Vec<FastMessage>, String> {
     let query_result = match (payload.marker, payload.prefix) {
         (Some(marker), Some(prefix)) => {
@@ -96,6 +97,7 @@ fn do_list(
                 &mut conn,
                 sql.as_str(),
                 &[&payload.owner, &prefix, &marker],
+                &log,
             )
         }
         (Some(marker), None) => {
@@ -105,6 +107,7 @@ fn do_list(
                 &mut conn,
                 sql.as_str(),
                 &[&payload.owner, &marker],
+                &log,
             )
         }
         (None, Some(prefix)) => {
@@ -115,6 +118,7 @@ fn do_list(
                 &mut conn,
                 sql.as_str(),
                 &[&payload.owner, &prefix],
+                &log,
             )
         }
         (None, None) => {
@@ -124,6 +128,7 @@ fn do_list(
                 &mut conn,
                 sql.as_str(),
                 &[&payload.owner],
+                &log,
             )
         }
     };

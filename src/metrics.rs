@@ -1,6 +1,4 @@
-/*
- * Copyright 2019 Joyent, Inc.
- */
+// Copyright 2019 Joyent, Inc.
 
 use std::net::SocketAddr;
 
@@ -74,7 +72,7 @@ pub fn start_server(address: &str, port: u16, log: &Logger) {
         })
         .map_err(move |e| error!(log_clone, "metrics server error: {}", e));
 
-    info!(log, "metrics server listening at {}", addr);
+    info!(log, "listening"; "address" => addr);
 
     rt::run(server);
 }

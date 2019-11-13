@@ -29,7 +29,7 @@ pub(crate) fn action(
     conn: &mut PostgresConnection,
 ) -> Result<HandlerResponse, String> {
     // Make database request
-    do_delete(&payload, conn)
+    do_delete(&payload, conn, log)
         .and_then(|deleted_objects| {
             // Handle the successful database response
             debug!(log, "{} operation was successful", &method);
@@ -66,6 +66,7 @@ pub(crate) fn action(
 fn do_delete(
     payload: &DeleteObjectPayload,
     conn: &mut PostgresConnection,
+    log: &Logger,
 ) -> Result<Vec<DeleteObjectResponse>, String> {
     let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
     let move_sql = insert_delete_table_sql(payload.vnode);
@@ -76,6 +77,7 @@ fn do_delete(
         &mut txn,
         move_sql.as_str(),
         &[&payload.owner, &payload.bucket_id, &payload.name],
+        &log,
     )
     .and_then(|_moved_rows| {
         sql::txn_query(
@@ -83,6 +85,7 @@ fn do_delete(
             &mut txn,
             delete_sql.as_str(),
             &[&payload.owner, &payload.bucket_id, &payload.name],
+            &log,
         )
     })
     .and_then(|deleted_objects| {

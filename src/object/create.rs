@@ -54,7 +54,7 @@ pub(crate) fn action(
     conn: &mut PostgresConnection,
 ) -> Result<HandlerResponse, String> {
     // Make database request
-    do_create(method, &payload, conn)
+    do_create(method, &payload, conn, log)
         .and_then(|maybe_resp| {
             // Handle the successful database response
             debug!(log, "{} operation was successful", &method);
@@ -94,6 +94,7 @@ fn do_create(
     method: &str,
     payload: &CreateObjectPayload,
     conn: &mut PostgresConnection,
+    log: &Logger,
 ) -> Result<Option<ObjectResponse>, String> {
     let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
     let create_sql = create_sql(payload.vnode);
@@ -110,6 +111,7 @@ fn do_create(
         &mut txn,
         move_sql.as_str(),
         &[&payload.owner, &payload.bucket_id, &payload.name],
+        &log,
     )
     .and_then(|_moved_rows| {
         sql::txn_query(
@@ -128,6 +130,7 @@ fn do_create(
                 &payload.sharks,
                 &payload.properties,
             ],
+            &log,
         )
     })
     .and_then(|rows| {

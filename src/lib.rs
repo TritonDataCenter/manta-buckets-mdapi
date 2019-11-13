@@ -13,6 +13,7 @@ pub mod util {
     use std::io::Error as IOError;
     use std::io::ErrorKind;
     use std::time::{Duration, Instant};
+    use std::thread;
 
     use serde_json::Error as SerdeError;
     use serde_json::{json, Value};
@@ -265,8 +266,9 @@ pub mod util {
     where
         X: for<'de> serde::Deserialize<'de> + HasRequestId,
     {
-        let mut log_child = log.clone();
-        debug!(log_child, "handling {} function request", &method);
+        let mut log_child = log.new(o!("method" => method.to_string()));
+
+        debug!(log_child, "handling request");
 
         data.map_err(|e| e.to_string())
             .and_then(|arr| unwrap_fast_message(&method, &log_child, arr))
@@ -275,12 +277,20 @@ pub mod util {
                 let req_id = payload.request_id();
                 log_child = log_child.new(o!("req_id" => req_id.to_string()));
 
-                debug!(log_child, "parsed {} payload", &method);
+                debug!(log_child, "parsed payload");
 
                 // Perform the action indicated by the request
                 action(msg_id, &method, &log_child, payload, conn)
             })
             .map_err(|e| HandlerError::IO(other_error(&e)))
+    }
+
+    pub fn get_thread_name() -> String {
+        if thread::current().name().is_none() {
+            return "unnamed".to_string()
+        }
+
+        thread::current().name().unwrap().to_string()
     }
 }
 

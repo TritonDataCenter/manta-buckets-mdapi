@@ -25,7 +25,7 @@ pub(crate) fn action(
     conn: &mut PostgresConnection,
 ) -> Result<HandlerResponse, String> {
     // Make database request
-    do_delete(&payload, conn)
+    do_delete(&payload, conn, log)
         .and_then(|affected_rows| {
             // Handle the successful database response
             debug!(log, "deletebucket operation was successful");
@@ -62,7 +62,11 @@ pub(crate) fn action(
         })
 }
 
-fn do_delete(payload: &DeleteBucketPayload, conn: &mut PostgresConnection) -> Result<u64, String> {
+fn do_delete(
+    payload: &DeleteBucketPayload,
+    conn: &mut PostgresConnection,
+    log: &Logger,
+) -> Result<u64, String> {
     let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
     let move_sql = insert_delete_table_sql(payload.vnode);
     let delete_sql = delete_sql(payload.vnode);
@@ -72,6 +76,7 @@ fn do_delete(payload: &DeleteBucketPayload, conn: &mut PostgresConnection) -> Re
         &mut txn,
         move_sql.as_str(),
         &[&payload.owner, &payload.name],
+        &log,
     )
     .and_then(|_moved_rows| {
         sql::txn_execute(
@@ -79,6 +84,7 @@ fn do_delete(payload: &DeleteBucketPayload, conn: &mut PostgresConnection) -> Re
             &mut txn,
             delete_sql.as_str(),
             &[&payload.owner, &payload.name],
+            &log,
         )
     })
     .and_then(|row_count| {

@@ -25,7 +25,7 @@ pub(crate) fn action(
     conn: &mut PostgresConnection,
 ) -> Result<HandlerResponse, String> {
     // Make database request
-    do_get(method, &payload, conn)
+    do_get(method, &payload, conn, log)
         .and_then(|maybe_resp| {
             // Handle the successful database response
             debug!(log, "{} operation was successful", &method);
@@ -58,6 +58,7 @@ fn do_get(
     method: &str,
     payload: &GetBucketPayload,
     mut conn: &mut PostgresConnection,
+    log: &Logger,
 ) -> Result<Option<BucketResponse>, String> {
     let sql = get_sql(payload.vnode);
 
@@ -66,6 +67,7 @@ fn do_get(
         &mut conn,
         sql.as_str(),
         &[&payload.owner, &payload.name],
+        &log,
     )
     .map_err(|e| e.to_string())
     .and_then(|rows| response(method, &rows))
