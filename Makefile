@@ -31,7 +31,7 @@ RELSTAGEDIR :=		/tmp/$(NAME)-$(STAMP)
 
 BASE_IMAGE_UUID   = cbf116a0-43a5-447c-ad8c-8fa57787351c
 BUILDIMAGE_NAME   = manta-boray
-BUILDIMAGE_DESC	  = Manta boray proxy
+BUILDIMAGE_DESC   = Manta boray proxy
 BUILDIMAGE_PKGSRC = postgresql11-client-11.2
 AGENTS		  = amon config registrar
 

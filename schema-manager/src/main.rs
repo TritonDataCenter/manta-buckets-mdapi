@@ -20,7 +20,7 @@ use string_template::Template;
 use utils::config;
 
 /* TODO
-    - populate service name per shard
+    - Dynamic lookup of boray shard IP instad of checking config.
     - make boray config file, schema file and fast arg
       command line args for overriding.
 */
