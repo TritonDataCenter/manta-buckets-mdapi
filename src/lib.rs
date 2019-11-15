@@ -4,6 +4,7 @@
 
 pub mod bucket;
 pub mod error;
+pub mod gc;
 pub mod metrics;
 pub mod object;
 pub mod opts;
@@ -26,6 +27,7 @@ pub mod util {
     use rust_fast::protocol::{FastMessage, FastMessageData};
 
     use crate::bucket;
+    use crate::gc;
     use crate::metrics;
     use crate::object;
     use crate::types::{HandlerError, HandlerResponse, HasRequestId};
@@ -122,6 +124,22 @@ pub mod util {
                         bucket::list::decode_msg(&msg.data.d),
                         &mut conn,
                         &bucket::list::action,
+                        &log,
+                    ),
+                    "getgcbatch" => handle_request(
+                        msg.id,
+                        method,
+                        gc::get::decode_msg(&msg.data.d),
+                        &mut conn,
+                        &gc::get::action,
+                        &log,
+                    ),
+                    "deletegcbatch" => handle_request(
+                        msg.id,
+                        method,
+                        gc::delete::decode_msg(&msg.data.d),
+                        &mut conn,
+                        &gc::delete::action,
                         &log,
                     ),
                     _ => {

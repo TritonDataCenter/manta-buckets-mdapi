@@ -27,6 +27,8 @@ pub enum Method {
     ObjectDelete,
     ObjectDeleteMove,
     ObjectUpdate,
+    GarbageGet,
+    GarbageDelete
 }
 
 impl Method {
@@ -44,6 +46,8 @@ impl Method {
             Method::ObjectDelete => "ObjectDelete",
             Method::ObjectDeleteMove => "ObjectDeleteMove",
             Method::ObjectUpdate => "ObjectUpdate",
+            Method::GarbageGet => "GarbageGet",
+            Method::GarbageDelete => "GarbageDelete",
         }
     }
 }
