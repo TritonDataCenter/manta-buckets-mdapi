@@ -99,6 +99,7 @@ fn do_get(
 
 fn get_sql() -> &'static str {
     "SELECT * FROM list_all_deleted_objects(1024)"
+
 }
 
 pub(self) fn response(_method: &str, rows: &RowSlice) -> Result<GetGarbageResponse, String> {

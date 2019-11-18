@@ -92,6 +92,20 @@ fn main() {
 
     info!(root_log, "established postgres connection pool");
 
+    // Create a helper function in postgres to garther the deleted objects
+    // across the local vnodes. This is only a temporary approach to get some
+    // testing off the ground.
+    let mut conn = pool.claim().expect("failed to acquire postgres connection");
+
+    match boray::gc::create_list_all_deleted_objects_fn(&mut conn) {
+        Ok(()) => info!(root_log, "created list_all_deleted_objects postgres function"),
+        Err(e) => {
+            error!(root_log, "failed to create list_all_deleted_objects postgres function: {}", e);
+            std::process::exit(1);
+        }
+    }
+    drop(conn);
+
     let addr = [&config.server.host, ":", &config.server.port.to_string()].concat();
     let addr = addr.parse::<SocketAddr>().unwrap();
 
