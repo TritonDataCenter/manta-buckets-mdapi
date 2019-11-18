@@ -3,8 +3,7 @@
 pipeline {
 
     agent {
-        // Temporarily use new jenkins-agent 2.2.0 from MANTA-4728.
-        label joyCommonLabels(image_ver: '19.1.0') + ' && jenkins_agent:2.2.0'
+        label joyCommonLabels(image_ver: '19.1.0')
     }
 
     options {
