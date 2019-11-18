@@ -14,7 +14,7 @@ use rust_fast::protocol::{FastMessage, FastMessageId};
 use sapi::{SAPI, ZoneConfig};
 use serde::Serialize;
 use serde_json::{Value, json};
-use slog::{error, info, o, Drain, Logger};
+use slog::{error, info, warn, o, Drain, Logger};
 use std::sync::Mutex;
 use string_template::Template;
 use utils::config;
@@ -78,25 +78,20 @@ fn create_bucket_schemas(log: &Logger, vnode: &str) -> Result<(), Error> {
 
 // create the db in its own transaction
 fn create_database(db_url: &str) -> Result<(), Error> {
-    let conn = establish_db_connection(&db_url);
     let db_str = read_db_template()?;
-    match conn.batch_execute(&db_str) {
-        Ok(_) => Ok(()),
-        Err(e) => {
-            if e.to_string().contains("already exists") {
-                Ok(())
-            } else {
-               Err(std::io::Error::new(ErrorKind::Other, e))
-            }
-        }
-    }
+    db_create_object(&db_url, &db_str)
 }
 
 // create the role in its own transaction
 fn create_user_role(db_url: &str) -> Result<(), Error> {
-    let conn = establish_db_connection(&db_url);
     let admin_str = read_admin_template()?;
-    match conn.batch_execute(&admin_str) {
+    db_create_object(&db_url, &admin_str)
+}
+
+// Generic DB create function
+fn db_create_object(db_url: &str, sql: &str) -> Result<(), Error> {
+    let conn = establish_db_connection(&db_url);
+    match conn.batch_execute(&sql) {
         Ok(_) => Ok(()),
         Err(e) => {
             if e.to_string().contains("already exists") {
@@ -216,7 +211,7 @@ fn vnode_response_handler(log: &Logger, msg: &FastMessage) -> Result<(), Error> 
         "getvnodes" => {
             parse_vnodes(log, msg)?;
         }
-        _ => info!(log, "Received unrecognized {} response", msg.data.m.name),
+        _ => warn!(log, "Received unrecognized {} response", msg.data.m.name),
     }
 
     Ok(())
@@ -268,6 +263,5 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let _options = parse_opts(APP.to_string());
 
-    run(&log)?;
-    Ok(())
+    run(&log)
 }
