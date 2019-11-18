@@ -28,7 +28,7 @@ pub(crate) fn action(
     do_delete(&payload, conn, log)
         .and_then(|affected_rows| {
             // Handle the successful database response
-            debug!(log, "deletebucket operation was successful");
+            debug!(log, "operation successful");
             let value = if affected_rows > 0 {
                 // This conversion can fail if the implementation of
                 // Serialize decides to fail, or if the type
@@ -47,7 +47,7 @@ pub(crate) fn action(
         })
         .or_else(|e| {
             // Handle database error response
-            error!(log, "{} operation failed: {}", &method, &e);
+            error!(log, "operation failed"; "error" => &e);
 
             // Database errors are returned to as regular Fast messages
             // to be handled by the calling application

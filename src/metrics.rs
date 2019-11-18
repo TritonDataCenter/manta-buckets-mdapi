@@ -70,7 +70,7 @@ pub fn start_server(address: &str, port: u16, log: &Logger) {
                     .unwrap()
             })
         })
-        .map_err(move |e| error!(log_clone, "metrics server error: {}", e));
+        .map_err(move |e| error!(log_clone, "metrics server error"; "error" => %e));
 
     info!(log, "listening"; "address" => addr);
 

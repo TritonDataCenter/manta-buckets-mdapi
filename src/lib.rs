@@ -139,9 +139,10 @@ pub mod util {
                     HandlerError::Cueball(CueballError::ClaimFailure) => {
                         // If the error was due to a claim timeout return an
                         // application level error indicating the service is
-                        // overloade as a normal Fast message so the calling
+                        // overloaded as a normal Fast message so the calling
                         // application can take appropriate action.
-                        warn!(log, "{}", CueballError::ClaimFailure);
+                        warn!(log, "timed out claiming connection";
+                            "error" => CueballError::ClaimFailure.to_string());
                         let value = array_wrap(json!({
                             "name": "OverloadedError",
                             "message": CueballError::ClaimFailure.to_string()
@@ -154,7 +155,7 @@ pub mod util {
                     HandlerError::Cueball(err) => {
                         // Any other connection pool errors are unexpected in
                         // this context so log loudly and return an error.
-                        error!(log, "{}", err);
+                        error!(log, "unexpected error claiming connection"; "error" => %err);
                         Err(HandlerError::Cueball(err))
                     }
                     err => Err(err),

@@ -57,7 +57,7 @@ pub(crate) fn action(
     do_create(method, &payload, conn, log)
         .and_then(|maybe_resp| {
             // Handle the successful database response
-            debug!(log, "{} operation was successful", &method);
+            debug!(log, "operation successful");
             // The `None` branch of the following match statement should
             // never be reached. If `maybe_resp` was `None` this would
             // mean that the SQL INSERT for the object was successful
@@ -75,7 +75,7 @@ pub(crate) fn action(
         })
         .or_else(|e| {
             // Handle database error response
-            error!(log, "{} operation failed: {}", &method, &e);
+            error!(log, "operation failed"; "error" => &e);
 
             // Database errors are returned to as regular Fast messages
             // to be handled by the calling application

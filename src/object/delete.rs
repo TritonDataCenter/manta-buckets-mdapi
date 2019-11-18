@@ -32,7 +32,7 @@ pub(crate) fn action(
     do_delete(&payload, conn, log)
         .and_then(|deleted_objects| {
             // Handle the successful database response
-            debug!(log, "{} operation was successful", &method);
+            debug!(log, "operation successful");
 
             let value = if deleted_objects.is_empty() {
                 object_not_found()
@@ -48,7 +48,7 @@ pub(crate) fn action(
         })
         .or_else(|e| {
             // Handle database error response
-            error!(log, "{} operation failed: {}", &method, &e);
+            error!(log, "operation failed"; "error" => &e);
 
             // Database errors are returned to as regular Fast messages
             // to be handled by the calling application

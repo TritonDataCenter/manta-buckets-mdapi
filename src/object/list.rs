@@ -50,12 +50,12 @@ pub(crate) fn action(
         do_list(msg_id, method, payload, conn, log)
             .and_then(|resp| {
                 // Handle the successful database response
-                debug!(log, "{} operation was successful", &method);
+                debug!(log, "operation successful");
                 Ok(HandlerResponse::from(resp))
             })
             .or_else(|e| {
                 // Handle database error response
-                error!(log, "{} operation failed: {}", &method, &e);
+                error!(log, "operation failed"; "error" => &e);
 
                 // Database errors are returned to as regular Fast messages
                 // to be handled by the calling application

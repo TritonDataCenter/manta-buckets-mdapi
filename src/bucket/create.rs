@@ -44,7 +44,7 @@ pub(crate) fn action(
     do_create(method, &payload, conn, log)
         .and_then(|maybe_resp| {
             // Handle the successful database response
-            debug!(log, "{} operation was successful", &method);
+            debug!(log, "operation successful");
             let value = match maybe_resp {
                 Some(resp) => to_json(resp),
                 None => bucket_already_exists(),
@@ -55,7 +55,7 @@ pub(crate) fn action(
         })
         .or_else(|e| {
             // Handle database error response
-            error!(log, "{} operation failed: {}", &method, &e);
+            error!(log, "operation failed"; "error" => &e);
 
             // Database errors are returned to as regular Fast messages
             // to be handled by the calling application
