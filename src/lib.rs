@@ -12,8 +12,8 @@ pub mod sql;
 pub mod util {
     use std::io::Error as IOError;
     use std::io::ErrorKind;
-    use std::time::{Duration, Instant};
     use std::thread;
+    use std::time::{Duration, Instant};
 
     use serde_json::Error as SerdeError;
     use serde_json::{json, Value};
@@ -288,7 +288,7 @@ pub mod util {
 
     pub fn get_thread_name() -> String {
         if thread::current().name().is_none() {
-            return "unnamed".to_string()
+            return "unnamed".to_string();
         }
 
         thread::current().name().unwrap().to_string()

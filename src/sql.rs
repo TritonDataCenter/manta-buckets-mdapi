@@ -1,15 +1,15 @@
 // Copyright 2019 Joyent, Inc.
 
+use std::fmt::Display;
 use std::time::Instant;
 use std::vec::Vec;
-use std::fmt::Display;
 
 use postgres::types::ToSql;
 use postgres::{Client, ToStatement, Transaction};
 use tokio_postgres::Error as PGError;
 use tokio_postgres::Row as PGRow;
 
-use slog::{trace, o, Logger};
+use slog::{o, trace, Logger};
 
 use crate::metrics;
 use crate::util;
@@ -138,12 +138,7 @@ where
     res
 }
 
-fn post_timer_metrics<T>(
-    method: Method,
-    log: &Logger,
-    now: Instant,
-    res: &Result<T, PGError>
-) {
+fn post_timer_metrics<T>(method: Method, log: &Logger, now: Instant, res: &Result<T, PGError>) {
     // Generate metrics for the request
     let duration = now.elapsed();
     let t = util::duration_to_seconds(duration);

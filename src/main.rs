@@ -9,7 +9,7 @@ use std::thread;
 use std::time::Duration;
 
 use clap::{crate_name, crate_version};
-use slog::{error, crit, info, o, Drain, LevelFilter, Logger};
+use slog::{crit, error, info, o, Drain, LevelFilter, Logger};
 use tokio::net::TcpListener;
 use tokio::prelude::*;
 use tokio::runtime;
@@ -55,19 +55,20 @@ fn main() {
     // Configure and start metrics server
     let metrics_host = config.metrics.host.clone();
     let metrics_port = config.metrics.port;
-    let metrics_thread_builder = thread::Builder::new()
-        .name("metrics-server".into());
+    let metrics_thread_builder = thread::Builder::new().name("metrics-server".into());
     let m = log.clone();
-    let _mtb_handler = metrics_thread_builder.spawn(move || {
-        let metrics_log = m.new(o!(
-            "component" => "MetricsServer",
-            "thread" => boray::util::get_thread_name()
-        ));
-        boray::metrics::start_server(&metrics_host, metrics_port, &metrics_log)
-    }).unwrap_or_else(|e| {
-        crit!(log, "failed to start metrics server"; "err" => %e);
-        std::process::exit(1);
-    });
+    let _mtb_handler = metrics_thread_builder
+        .spawn(move || {
+            let metrics_log = m.new(o!(
+                "component" => "MetricsServer",
+                "thread" => boray::util::get_thread_name()
+            ));
+            boray::metrics::start_server(&metrics_host, metrics_port, &metrics_log)
+        })
+        .unwrap_or_else(|e| {
+            crit!(log, "failed to start metrics server"; "err" => %e);
+            std::process::exit(1);
+        });
 
     let tls_config = config::tls::tls_config(config.database.tls_mode, config.database.certificate)
         .unwrap_or_else(|e| {
