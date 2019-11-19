@@ -9,7 +9,7 @@ use std::thread;
 use std::time::Duration;
 
 use clap::{crate_name, crate_version};
-use slog::{error, info, o, Drain, LevelFilter, Logger};
+use slog::{error, crit, info, o, Drain, LevelFilter, Logger};
 use tokio::net::TcpListener;
 use tokio::prelude::*;
 use tokio::runtime;
@@ -64,11 +64,14 @@ fn main() {
             "thread" => boray::util::get_thread_name()
         ));
         boray::metrics::start_server(&metrics_host, metrics_port, &metrics_log)
+    }).unwrap_or_else(|e| {
+        crit!(log, "failed to start metrics server"; "err" => %e);
+        std::process::exit(1);
     });
 
     let tls_config = config::tls::tls_config(config.database.tls_mode, config.database.certificate)
         .unwrap_or_else(|e| {
-            error!(log, "TLS configuration error"; "err" => %e);
+            crit!(log, "TLS configuration error"; "err" => %e);
             std::process::exit(1);
         });
 
@@ -109,13 +112,13 @@ fn main() {
     let listener = TcpListener::bind(&addr).expect("failed to bind");
     info!(log, "listening"; "address" => addr);
 
-    let l = log.clone();
+    let err_log = log.clone();
     let server = listener
         .incoming()
-        .map_err(move |e| error!(log.clone(), "failed to accept socket"; "err" => %e))
+        .map_err(move |e| error!(&err_log, "failed to accept socket"; "err" => %e))
         .for_each(move |socket| {
             let pool_clone = pool.clone();
-            let task_log = l.new(o!(
+            let task_log = log.new(o!(
                 "component" => "FastServer",
                 "thread" => boray::util::get_thread_name()));
             let task = server::make_task(
