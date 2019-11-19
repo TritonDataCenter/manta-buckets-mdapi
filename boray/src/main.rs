@@ -1,6 +1,5 @@
 // Copyright 2019 Joyent, Inc.
 
-pub mod config;
 
 use std::default::Default;
 use std::net::{IpAddr, SocketAddr};
@@ -20,19 +19,19 @@ use cueball_postgres_connection::{PostgresConnection, PostgresConnectionConfig};
 use cueball_static_resolver::StaticIpResolver;
 use rust_fast::server;
 
-use config::Config;
+use utils::config::Config;
 
 fn main() {
     let matches = boray::opts::parse(crate_name!());
 
     // Optionally read config file
     let mut config: Config = match matches.value_of("config") {
-        Some(f) => config::read_file(f),
-        None => config::Config::default(),
+        Some(f) => utils::config::read_file(f),
+        None => utils::config::Config::default(),
     };
 
     // Read CLI arguments
-    config::read_cli_args(&matches, &mut config);
+    utils::config::read_cli_args(&matches, &mut config);
 
     // XXX postgres host must be an IP address currently
     let pg_ip: IpAddr = match config.database.host.parse() {
@@ -60,7 +59,7 @@ fn main() {
 
     info!(root_log, "establishing postgres connection pool");
 
-    let tls_config = config::tls::tls_config(config.database.tls_mode, config.database.certificate)
+    let tls_config = utils::config::tls::tls_config(config.database.tls_mode, config.database.certificate)
         .unwrap_or_else(|e| {
             error!(root_log, "TLS configuration error: {}", e);
             std::process::exit(1);
