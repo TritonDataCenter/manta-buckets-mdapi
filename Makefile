@@ -29,10 +29,11 @@ RELEASE_TARBALL :=	$(NAME)-pkg-$(STAMP).tar.gz
 ROOT :=			$(shell pwd)
 RELSTAGEDIR :=		/tmp/$(NAME)-$(STAMP)
 
-BASE_IMAGE_UUID = cbf116a0-43a5-447c-ad8c-8fa57787351c
-BUILDIMAGE_NAME = manta-boray
-BUILDIMAGE_DESC	= Manta boray proxy
-AGENTS		= amon config registrar
+BASE_IMAGE_UUID   = cbf116a0-43a5-447c-ad8c-8fa57787351c
+BUILDIMAGE_NAME   = manta-boray
+BUILDIMAGE_DESC   = Manta boray proxy
+BUILDIMAGE_PKGSRC = postgresql11-client-11.2
+AGENTS		  = amon config registrar
 
 #
 # Repo-specific targets
@@ -57,9 +58,11 @@ release: all deps docs $(SMF_MANIFESTS)
 	cp -r \
 	    $(ROOT)/build \
 	    $(ROOT)/sapi_manifests \
+	    $(ROOT)/schema_templates \
 	    $(ROOT)/smf \
 	    $(RELSTAGEDIR)/root/opt/smartdc/boray/
 	cp target/release/boray $(RELSTAGEDIR)/root/opt/smartdc/boray/bin/
+	cp target/release/schema-manager $(RELSTAGEDIR)/root/opt/smartdc/boray/bin/
 	cp -r $(ROOT)/deps/manta-scripts \
 	    $(RELSTAGEDIR)/root/opt/smartdc/boray/deps
 	mkdir -p $(RELSTAGEDIR)/root/opt/smartdc/boot/scripts

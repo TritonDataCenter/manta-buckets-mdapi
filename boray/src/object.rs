@@ -190,10 +190,10 @@ pub(self) fn insert_delete_table_sql(vnode: u64) -> String {
         &vnode_str,
         &".manta_bucket_deleted_object ( \
           id, owner, bucket_id, name, created, modified, \
-          creator, content_length, content_md5, \
+          content_length, content_md5, \
           content_type, headers, sharks, properties) \
           SELECT id, owner, bucket_id, name, created, \
-          modified, creator, content_length, \
+          modified, content_length, \
           content_md5, content_type, headers, sharks, \
           properties FROM manta_bucket_",
         &vnode_str,

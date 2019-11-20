@@ -5,10 +5,10 @@
 pub mod bucket;
 pub mod error;
 pub mod gc;
+pub mod sql;
 pub mod metrics;
 pub mod object;
 pub mod opts;
-pub mod sql;
 
 pub mod util {
     use std::io::Error as IOError;
