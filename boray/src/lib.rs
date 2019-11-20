@@ -21,8 +21,8 @@ pub mod util {
     use cueball::backend::Backend;
     use cueball::connection_pool::ConnectionPool;
     use cueball::error::Error as CueballError;
+    use cueball::resolver::Resolver;
     use cueball_postgres_connection::PostgresConnection;
-    use cueball_static_resolver::StaticIpResolver;
     use rust_fast::protocol::{FastMessage, FastMessageData};
 
     use crate::bucket;
@@ -30,15 +30,18 @@ pub mod util {
     use crate::object;
     use crate::types::{HandlerError, HandlerResponse, HasRequestId};
 
-    pub fn handle_msg(
+    pub fn handle_msg<R>(
         msg: &FastMessage,
         pool: &ConnectionPool<
             PostgresConnection,
-            StaticIpResolver,
+            R,
             impl FnMut(&Backend) -> PostgresConnection + Send + 'static,
         >,
         log: &Logger,
-    ) -> Result<Vec<FastMessage>, IOError> {
+    ) -> Result<Vec<FastMessage>, IOError>
+    where
+        R: Resolver
+    {
         let now = Instant::now();
         let mut response: Vec<FastMessage> = vec![];
 

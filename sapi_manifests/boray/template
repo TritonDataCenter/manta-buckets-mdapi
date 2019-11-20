@@ -38,6 +38,10 @@ port = {{BORAY_METRICS_PORT}}
 port = 3020
 {{/BORAY_METRICS_PORT}}
 
+[zookeeper]
+connect_string = "{{#ZK_SERVERS}}{{host}}:{{port}}{{^last}},{{/last}}{{/ZK_SERVERS}}"
+path = "/manatee/{{SERVICE_NAME}}"
+
 [database]
 admin_user = "postgres"
 user = "boray"

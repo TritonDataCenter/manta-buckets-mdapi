@@ -3,6 +3,7 @@
 
 use std::default::Default;
 use std::net::{IpAddr, SocketAddr};
+use std::str::FromStr;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
@@ -16,7 +17,7 @@ use tokio::runtime;
 use cueball::connection_pool::types::ConnectionPoolOptions;
 use cueball::connection_pool::ConnectionPool;
 use cueball_postgres_connection::{PostgresConnection, PostgresConnectionConfig};
-use cueball_static_resolver::StaticIpResolver;
+use cueball_manatee_primary_resolver::{ManateePrimaryResolver, ZkConnectString};
 use rust_fast::server;
 
 use utils::config::Config;
@@ -34,7 +35,7 @@ fn main() {
     utils::config::read_cli_args(&matches, &mut config);
 
     // XXX postgres host must be an IP address currently
-    let pg_ip: IpAddr = match config.database.host.parse() {
+    let _pg_ip: IpAddr = match config.database.host.parse() {
         Ok(pg_ip) => pg_ip,
         Err(e) => {
             eprintln!("postgres host MUST be an IPv4 address: {}", e);
@@ -78,14 +79,24 @@ fn main() {
     let connection_creator = PostgresConnection::connection_creator(pg_config);
 
     let pool_opts = ConnectionPoolOptions {
-        maximum: config.cueball.max_connections,
+        max_connections: Some(config.cueball.max_connections),
         claim_timeout: config.cueball.claim_timeout,
-        log: root_log.clone(),
+        log: Some(root_log.clone()),
         rebalancer_action_delay: config.cueball.rebalancer_action_delay,
+        decoherence_interval: None
     };
 
-    let primary_backend = (pg_ip, config.database.port);
-    let resolver = StaticIpResolver::new(vec![primary_backend]);
+    // let primary_backend = (pg_ip, config.database.port);
+
+    // Form ZkConnectString from config data
+    let zk_connect_str = ZkConnectString::from_str(&config.zookeeper.connect_string)
+        .expect("Failed to parse zookeeper connection string as a valid \
+                 ZkConnectString type");
+    let zk_path = config.zookeeper.path;
+    let resolver_log = Some(root_log.clone());
+
+    // let resolver = StaticIpResolver::new(vec![primary_backend]);
+    let resolver = ManateePrimaryResolver::new(zk_connect_str, zk_path, resolver_log);
 
     let pool = ConnectionPool::new(pool_opts, resolver, connection_creator);
 
