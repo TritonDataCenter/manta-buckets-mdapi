@@ -287,11 +287,7 @@ pub mod util {
     }
 
     pub fn get_thread_name() -> String {
-        if thread::current().name().is_none() {
-            return "unnamed".to_string();
-        }
-
-        thread::current().name().unwrap().to_string()
+        thread::current().name().unwrap_or_else(|| "unnamed").to_string()
     }
 }
 
