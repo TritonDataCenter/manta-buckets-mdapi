@@ -1,0 +1,59 @@
+CREATE EXTENSION IF NOT EXISTS hstore;
+
+CREATE SCHEMA IF NOT EXISTS manta_bucket_{{vnode}};
+
+CREATE TABLE IF NOT EXISTS manta_bucket_{{vnode}}.manta_bucket (
+    id uuid NOT NULL,
+    name text NOT NULL,
+    owner uuid NOT NULL,
+    created timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+
+    PRIMARY KEY (owner, name)
+);
+
+CREATE TABLE IF NOT EXISTS manta_bucket_{{vnode}}.manta_bucket_deleted_bucket (
+    id uuid NOT NULL,
+    name text NOT NULL,
+    owner uuid NOT NULL,
+    created timestamp with time zone NOT NULL,
+    deleted_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS manta_bucket_{{vnode}}.manta_bucket_deleted_object (
+    id uuid NOT NULL,
+    name text NOT NULL,
+    owner uuid NOT NULL,
+    bucket_id uuid NOT NULL,
+    created timestamp with time zone NOT NULL,
+    modified timestamp with time zone NOT NULL,
+    content_length bigint NOT NULL,
+    content_md5 bytea NOT NULL,
+    content_type text NOT NULL,
+    headers hstore,
+    sharks text[],
+    properties jsonb,
+    deleted_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS manta_bucket_{{vnode}}.manta_bucket_object (
+    id uuid NOT NULL,
+    name text NOT NULL,
+    owner uuid NOT NULL,
+    bucket_id uuid NOT NULL,
+    created timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    modified timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    content_length bigint NOT NULL,
+    content_md5 bytea NOT NULL,
+    content_type text NOT NULL,
+    headers hstore,
+    sharks text[],
+    properties jsonb,
+
+    PRIMARY KEY (owner, bucket_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_deleted_{{vnode}} ON manta_bucket_{{vnode}}.manta_bucket_deleted_object USING btree (deleted_at);
+
+CREATE INDEX IF NOT EXISTS idx_id_{{vnode}} ON manta_bucket_{{vnode}}.manta_bucket_deleted_object USING btree (id);
+
+COMMIT;

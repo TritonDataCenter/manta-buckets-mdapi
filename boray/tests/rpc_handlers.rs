@@ -49,7 +49,7 @@ fn verify_rpc_handlers() {
     // vnode schemas (vnodes 0 and 1) for use in testing. This is controlled by
     // the ephermeral-db-schema.sql file in ./tools/postgres.
     ////////////////////////////////////////////////////////////////////////////
-    let create_db_output = Command::new("./tools/postgres/create-ephemeral-db.sh")
+    let create_db_output = Command::new("../tools/postgres/create-ephemeral-db.sh")
         .output()
         .expect("failed to execute process");
 

@@ -97,6 +97,19 @@ function setup_boray {
     svcadm enable boray || fatal "unable to start boray"
 }
 
+#
+# manta_setup_boray_schemas: run the schema-manager to define the boray
+# schemas on the associated shards if they do not yet exist.
+#
+function manta_setup_boray_schemas {
+    if [[ -x /opt/smartdc/boray/bin/schema-manager ]] ; then
+        echo "Setting up boray schemas"
+        /opt/smartdc/boray/bin/schema-manager || echo "unable to set up boray schemas"
+    else
+        fatal "schema-manager executable not found."
+    fi
+}
+
 source ${DIR}/scripts/util.sh
 source ${DIR}/scripts/services.sh
 
@@ -113,6 +126,7 @@ manta_ensure_zk
 echo "Setting up Boray"
 get_sapi_config
 setup_boray
+manta_setup_boray_schemas
 
 manta_common_setup_end
 
