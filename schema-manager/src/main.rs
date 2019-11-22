@@ -19,6 +19,8 @@ use std::sync::Mutex;
 use string_template::Template;
 use utils::config;
 
+pub mod helper_functions;
+
 /* TODO
     - Dynamic lookup of boray shard IP instad of checking config.
     - make boray config file, schema file and fast arg
@@ -47,65 +49,63 @@ fn create_bucket_schemas(log: &Logger, vnode: &str) -> Result<(), Error> {
     let schema_str = template.render(&args);
 
     info!(log, "Creating boray user and role if they don't exist on {}", admin_url);
-    match create_user_role(&admin_url) {
-        Ok(_) => {
+    create_user_role(&admin_url)
+        .and_then(|_| {
             info!(log, "Creating boray database if it doesn't exist on {}", admin_url);
-            match create_database(&admin_url) {
-                Ok(_) => {
-                    let boray_url = format_boray_db_url();
-                    let boray_conn = establish_db_connection(&boray_url);
-                    info!(log, "Creating boray schemas on {}", boray_url);
-                    match boray_conn.batch_execute(&schema_str) {
-                        Ok(_) => Ok(()),
-                        Err(e) => {
-                            error!(log, "error on schema creation:{}, vnode:{}", e.to_string(), vnode);
-                            Err(std::io::Error::new(ErrorKind::Other, e))
-                        }
-                    }
-                },
-                Err(e) => {
-                    info!(log, "error on database creation:{}", e.to_string());
-                    Err(std::io::Error::new(ErrorKind::Other, e))
-                }
-            }
-        },
-        Err(e) => {
-            info!(log, "error on role creation:{}", e.to_string());
-            Err(std::io::Error::new(ErrorKind::Other, e))
-        }
-    }
+            create_database(&admin_url)
+        })
+        .and_then(|_| {
+            let boray_url = format_boray_db_url();
+            let boray_conn = establish_db_connection(&boray_url);
+            info!(log, "Creating boray schemas on {}", boray_url);
+            boray_conn.batch_execute(&schema_str)
+                .map_err(|e| {
+                    let err_str = format!("error on schema creation: {}, vnode: {}", e, vnode);
+                    std::io::Error::new(ErrorKind::Other, err_str)
+                })
+        })
+        .or_else (|e| {
+            error!(log, "{}", e);
+            Err(e)
+        })
 }
 
 // create the db in its own transaction
 fn create_database(db_url: &str) -> Result<(), Error> {
     let db_str = read_db_template()?;
     db_create_object(&db_url, &db_str)
+        .map_err(|e| {
+            let err_str = format!("error on database creation: {}", e);
+            std::io::Error::new(ErrorKind::Other, err_str)
+        })
 }
 
 // create the role in its own transaction
 fn create_user_role(db_url: &str) -> Result<(), Error> {
     let admin_str = read_admin_template()?;
     db_create_object(&db_url, &admin_str)
+        .map_err(|e| {
+            let err_str = format!("error on role creation: {}", e);
+            std::io::Error::new(ErrorKind::Other, err_str)
+        })
 }
 
 // Generic DB create function
-fn db_create_object(db_url: &str, sql: &str) -> Result<(), Error> {
+fn db_create_object(db_url: &str, sql: &str) -> Result<(), diesel::result::Error> {
     let conn = establish_db_connection(&db_url);
-    match conn.batch_execute(&sql) {
-        Ok(_) => Ok(()),
-        Err(e) => {
+    conn.batch_execute(&sql)
+        .or_else(|e| {
             if e.to_string().contains("already exists") {
                 Ok(())
             } else {
-               Err(std::io::Error::new(ErrorKind::Other, e))
+                Err(e)
             }
-        }
-    }
+        })
 }
 
 // This uses SimpleConnection, which is discouraged, but we need to
 // run batch_execute, only available there.
-fn establish_db_connection(database_url: &str) -> PgConnection {
+pub fn establish_db_connection(database_url: &str) -> PgConnection {
     PgConnection::establish(database_url)
         .unwrap_or_else(|_| panic!("Error connecting to {}", database_url))
 }
