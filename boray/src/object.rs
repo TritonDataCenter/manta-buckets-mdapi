@@ -168,7 +168,7 @@ pub(self) fn response(method: &str, rows: &RowSlice) -> Result<Option<ObjectResp
         } else {
             let err = format!(
                 "{} query returned a row with only {} columns, \
-                 but 12 were expected .",
+                 but 12 were expected.",
                 method, cols
             );
             Err(err.to_string())

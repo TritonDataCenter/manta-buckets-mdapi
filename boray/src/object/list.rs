@@ -47,15 +47,15 @@ pub(crate) fn action(
 ) -> Result<HandlerResponse, String> {
     // Make database request
     if payload.limit > 0 && payload.limit <= 1024 {
-        do_list(msg_id, method, payload, conn)
+        do_list(msg_id, method, payload, conn, log)
             .and_then(|resp| {
                 // Handle the successful database response
-                debug!(log, "{} operation was successful", &method);
+                debug!(log, "operation successful");
                 Ok(HandlerResponse::from(resp))
             })
             .or_else(|e| {
                 // Handle database error response
-                error!(log, "{} operation failed: {}", &method, &e);
+                error!(log, "operation failed"; "error" => &e);
 
                 // Database errors are returned to as regular Fast messages
                 // to be handled by the calling application
@@ -90,6 +90,7 @@ fn do_list(
     method: &str,
     payload: ListObjectsPayload,
     mut conn: &mut PostgresConnection,
+    log: &Logger,
 ) -> Result<Vec<FastMessage>, String> {
     let query_result = match (payload.marker, payload.prefix) {
         (Some(marker), Some(prefix)) => {
@@ -100,6 +101,7 @@ fn do_list(
                 &mut conn,
                 sql.as_str(),
                 &[&payload.owner, &payload.bucket_id, &prefix, &marker],
+                &log,
             )
         }
         (Some(marker), None) => {
@@ -109,6 +111,7 @@ fn do_list(
                 &mut conn,
                 sql.as_str(),
                 &[&payload.owner, &payload.bucket_id, &marker],
+                &log,
             )
         }
         (None, Some(prefix)) => {
@@ -119,6 +122,7 @@ fn do_list(
                 &mut conn,
                 sql.as_str(),
                 &[&payload.owner, &payload.bucket_id, &prefix],
+                &log,
             )
         }
         (None, None) => {
@@ -128,6 +132,7 @@ fn do_list(
                 &mut conn,
                 sql.as_str(),
                 &[&payload.owner, &payload.bucket_id],
+                &log,
             )
         }
     };
