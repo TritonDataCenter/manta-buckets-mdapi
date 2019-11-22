@@ -1,6 +1,5 @@
 // Copyright 2019 Joyent, Inc.
 
-
 use std::default::Default;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Mutex;
@@ -69,11 +68,12 @@ fn main() {
             std::process::exit(1);
         });
 
-    let tls_config = utils::config::tls::tls_config(config.database.tls_mode, config.database.certificate)
-        .unwrap_or_else(|e| {
-            crit!(log, "TLS configuration error"; "err" => %e);
-            std::process::exit(1);
-        });
+    let tls_config =
+        utils::config::tls::tls_config(config.database.tls_mode, config.database.certificate)
+            .unwrap_or_else(|e| {
+                crit!(log, "TLS configuration error"; "err" => %e);
+                std::process::exit(1);
+            });
 
     let pg_config = PostgresConnectionConfig {
         user: Some(config.database.user),

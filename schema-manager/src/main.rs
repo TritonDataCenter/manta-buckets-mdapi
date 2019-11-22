@@ -5,16 +5,16 @@ use std::io::{Error, ErrorKind};
 use std::net::TcpStream;
 use std::process;
 
-use clap::{Arg, App, crate_version, ArgMatches};
+use clap::{crate_version, App, Arg, ArgMatches};
 use cmd_lib::{run_fun, FunResult};
 use diesel::connection::SimpleConnection;
 use diesel::prelude::*;
 use rust_fast::client as fast_client;
 use rust_fast::protocol::{FastMessage, FastMessageId};
-use sapi::{SAPI, ZoneConfig};
+use sapi::{ZoneConfig, SAPI};
 use serde::Serialize;
-use serde_json::{Value, json};
-use slog::{error, info, warn, o, Drain, Logger};
+use serde_json::{json, Value};
+use slog::{error, info, o, warn, Drain, Logger};
 use std::sync::Mutex;
 use string_template::Template;
 use utils::config;
@@ -46,10 +46,16 @@ fn create_bucket_schemas(log: &Logger, vnode: &str) -> Result<(), Error> {
     args.insert("vnode", vnode);
     let schema_str = template.render(&args);
 
-    info!(log, "Creating boray user and role if they don't exist on {}", admin_url);
+    info!(
+        log,
+        "Creating boray user and role if they don't exist on {}", admin_url
+    );
     match create_user_role(&admin_url) {
         Ok(_) => {
-            info!(log, "Creating boray database if it doesn't exist on {}", admin_url);
+            info!(
+                log,
+                "Creating boray database if it doesn't exist on {}", admin_url
+            );
             match create_database(&admin_url) {
                 Ok(_) => {
                     let boray_url = format_boray_db_url();
@@ -58,17 +64,22 @@ fn create_bucket_schemas(log: &Logger, vnode: &str) -> Result<(), Error> {
                     match boray_conn.batch_execute(&schema_str) {
                         Ok(_) => Ok(()),
                         Err(e) => {
-                            error!(log, "error on schema creation:{}, vnode:{}", e.to_string(), vnode);
+                            error!(
+                                log,
+                                "error on schema creation:{}, vnode:{}",
+                                e.to_string(),
+                                vnode
+                            );
                             Err(std::io::Error::new(ErrorKind::Other, e))
                         }
                     }
-                },
+                }
                 Err(e) => {
                     info!(log, "error on database creation:{}", e.to_string());
                     Err(std::io::Error::new(ErrorKind::Other, e))
                 }
             }
-        },
+        }
         Err(e) => {
             info!(log, "error on role creation:{}", e.to_string());
             Err(std::io::Error::new(ErrorKind::Other, e))
@@ -97,7 +108,7 @@ fn db_create_object(db_url: &str, sql: &str) -> Result<(), Error> {
             if e.to_string().contains("already exists") {
                 Ok(())
             } else {
-               Err(std::io::Error::new(ErrorKind::Other, e))
+                Err(std::io::Error::new(ErrorKind::Other, e))
             }
         }
     }
@@ -113,25 +124,27 @@ fn establish_db_connection(database_url: &str) -> PgConnection {
 // For use connecting to the shard Postgres server
 fn format_admin_db_url() -> String {
     let boray_config = get_boray_config();
-    let db_url = format!("postgres://{}:{}@{}:{}",
-                             boray_config.database.admin_user,
-                             boray_config.database.admin_user,
-                             boray_config.database.host,
-                             boray_config.database.port
-                         );
+    let db_url = format!(
+        "postgres://{}:{}@{}:{}",
+        boray_config.database.admin_user,
+        boray_config.database.admin_user,
+        boray_config.database.host,
+        boray_config.database.port
+    );
     db_url
 }
 
 // For use connecting to the shard Postgres server
 fn format_boray_db_url() -> String {
     let boray_config = get_boray_config();
-    let db_url = format!("postgres://{}:{}@{}:{}/{}",
-                             boray_config.database.user,
-                             boray_config.database.user,
-                             boray_config.database.host,
-                             boray_config.database.port,
-                             boray_config.database.database
-                         );
+    let db_url = format!(
+        "postgres://{}:{}@{}:{}/{}",
+        boray_config.database.user,
+        boray_config.database.user,
+        boray_config.database.host,
+        boray_config.database.port,
+        boray_config.database.database
+    );
     db_url
 }
 
@@ -177,7 +190,7 @@ fn parse_vnodes(log: &Logger, msg: &FastMessage) -> Result<(), Error> {
 
 // Not really used for anything yet
 fn parse_opts<'a>(app: String) -> ArgMatches<'a> {
-   App::new(app)
+    App::new(app)
         .version(crate_version!())
         .about("Tool to manage postgres schemas for boray")
         .arg(
@@ -218,8 +231,7 @@ fn vnode_response_handler(log: &Logger, msg: &FastMessage) -> Result<(), Error> 
 }
 
 // Do the deed
-fn run(log: &Logger) -> Result<(), Box<dyn std::error::Error>>
-{
+fn run(log: &Logger) -> Result<(), Box<dyn std::error::Error>> {
     let sapi_url = get_sapi_url()?;
     info!(log, "sapi_url:{}", sapi_url);
     let sapi = init_sapi_client(&sapi_url, &log)?;
@@ -229,11 +241,15 @@ fn run(log: &Logger) -> Result<(), Box<dyn std::error::Error>>
     let boray_config = get_boray_config();
     let boray_port = boray_config.server.port;
 
-    let fast_arg = [String::from("tcp://"), boray_host, String::from(":"), boray_port.to_string()]
-                    .concat();
+    let fast_arg = [
+        String::from("tcp://"),
+        boray_host,
+        String::from(":"),
+        boray_port.to_string(),
+    ]
+    .concat();
     info!(log, "pnode argument to electric-boray:{}", fast_arg);
-    let eb_endpoint = [eb_address, String::from(":"), DEFAULT_EB_PORT.to_string()]
-        .concat();
+    let eb_endpoint = [eb_address, String::from(":"), DEFAULT_EB_PORT.to_string()].concat();
     info!(log, "electric-boray endpoint:{}", eb_endpoint);
     let mut stream = TcpStream::connect(&eb_endpoint).unwrap_or_else(|e| {
         error!(log, "failed to connect to electric-boray: {}", e);
@@ -241,15 +257,11 @@ fn run(log: &Logger) -> Result<(), Box<dyn std::error::Error>>
     });
 
     let mut msg_id = FastMessageId::new();
-    let recv_cb = |msg: &FastMessage| { vnode_response_handler(&log, msg) };
+    let recv_cb = |msg: &FastMessage| vnode_response_handler(&log, msg);
     let vnode_method = String::from("getvnodes");
 
-    fast_client::send(vnode_method,
-                      json!([fast_arg]),
-                      &mut msg_id,
-                      &mut stream).and_then(
-            |_| fast_client::receive(&mut stream, recv_cb),
-    )?;
+    fast_client::send(vnode_method, json!([fast_arg]), &mut msg_id, &mut stream)
+        .and_then(|_| fast_client::receive(&mut stream, recv_cb))?;
     info!(log, "Done.");
     Ok(())
 }
@@ -258,7 +270,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     let plain = slog_term::PlainSyncDecorator::new(std::io::stdout());
     let log = Logger::root(
         Mutex::new(slog_term::FullFormat::new(plain).build()).fuse(),
-                   o!("build-id" => "0.1.0"),
+        o!("build-id" => "0.1.0"),
     );
 
     let _options = parse_opts(APP.to_string());

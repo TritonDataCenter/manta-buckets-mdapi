@@ -4,10 +4,10 @@
 
 pub mod bucket;
 pub mod error;
-pub mod sql;
 pub mod metrics;
 pub mod object;
 pub mod opts;
+pub mod sql;
 
 pub mod util {
     use std::io::Error as IOError;
@@ -287,7 +287,10 @@ pub mod util {
     }
 
     pub fn get_thread_name() -> String {
-        thread::current().name().unwrap_or_else(|| "unnamed").to_string()
+        thread::current()
+            .name()
+            .unwrap_or_else(|| "unnamed")
+            .to_string()
     }
 }
 
