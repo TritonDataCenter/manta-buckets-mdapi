@@ -106,6 +106,8 @@ pub mod config {
 	pub metrics: ConfigMetrics,
 	/// The database connection configuration entries
 	pub database: ConfigDatabase,
+	/// The zookeeper connection configuration entries
+	pub zookeeper: ConfigZookeeper,
 	/// The database connection pool configuration entries
 	pub cueball: ConfigCueball,
 	/// The configuration entries controlling the behavior of the tokio runtime
@@ -192,6 +194,21 @@ pub mod config {
 		application_name: "boray".into(),
 		tls_mode: TlsConnectMode::Disable,
 		certificate: None,
+	    }
+	}
+    }
+
+    #[derive(Clone, Deserialize)]
+    pub struct ConfigZookeeper {
+	pub path: String,
+	pub zk_conn_str: String,
+    }
+
+    impl Default for ConfigZookeeper {
+	fn default() -> Self {
+	    ConfigZookeeper {
+		path: "/manatee/1.boray.example.com".into(),
+		zk_conn_str: "127.0.0.1".into(),
 	    }
 	}
     }
@@ -293,14 +310,6 @@ pub mod config {
 
 	value_t!(matches, "port", u16)
 	    .map(|p| config.server.port = p)
-	    .unwrap_or_else(|_| ());
-
-	if let Some(h) = matches.value_of("pg ip") {
-	    config.database.host = h.into();
-	}
-
-	value_t!(matches, "pg port", u16)
-	    .map(|p| config.database.port = p)
 	    .unwrap_or_else(|_| ());
 
 	if let Some(db) = matches.value_of("pg database") {

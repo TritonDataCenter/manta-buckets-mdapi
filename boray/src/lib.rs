@@ -21,8 +21,8 @@ pub mod util {
     use cueball::backend::Backend;
     use cueball::connection_pool::ConnectionPool;
     use cueball::error::Error as CueballError;
+    use cueball_manatee_primary_resolver::ManateePrimaryResolver;
     use cueball_postgres_connection::PostgresConnection;
-    use cueball_static_resolver::StaticIpResolver;
     use rust_fast::protocol::{FastMessage, FastMessageData};
 
     use crate::bucket;
@@ -34,7 +34,7 @@ pub mod util {
         msg: &FastMessage,
         pool: &ConnectionPool<
             PostgresConnection,
-            StaticIpResolver,
+            ManateePrimaryResolver,
             impl FnMut(&Backend) -> PostgresConnection + Send + 'static,
         >,
         log: &Logger,
