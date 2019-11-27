@@ -2,7 +2,7 @@
 
 
 use std::default::Default;
-use std::net::{IpAddr, SocketAddr};
+use std::net::SocketAddr;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
@@ -16,7 +16,7 @@ use tokio::runtime;
 use cueball::connection_pool::types::ConnectionPoolOptions;
 use cueball::connection_pool::ConnectionPool;
 use cueball_postgres_connection::{PostgresConnection, PostgresConnectionConfig};
-use cueball_static_resolver::StaticIpResolver;
+use cueball_manatee_primary_resolver::{ManateePrimaryResolver, ZkConnectString};
 use rust_fast::server;
 
 use utils::config::Config;
@@ -32,15 +32,6 @@ fn main() {
 
     // Read CLI arguments
     utils::config::read_cli_args(&matches, &mut config);
-
-    // XXX postgres host must be an IP address currently
-    let pg_ip: IpAddr = match config.database.host.parse() {
-        Ok(pg_ip) => pg_ip,
-        Err(e) => {
-            eprintln!("postgres host MUST be an IPv4 address: {}", e);
-            std::process::exit(1);
-        }
-    };
 
     let log = Logger::root(
         Mutex::new(LevelFilter::new(
@@ -78,8 +69,8 @@ fn main() {
     let pg_config = PostgresConnectionConfig {
         user: Some(config.database.user),
         password: None,
-        host: Some(config.database.host),
-        port: Some(config.database.port),
+        host: None,
+        port: None,
         database: Some(config.database.database),
         application_name: Some(config.database.application_name),
         tls_config,
@@ -87,22 +78,27 @@ fn main() {
 
     let connection_creator = PostgresConnection::connection_creator(pg_config);
 
-    // When the manatee resolver is complete then this will need to log the
-    // dynamic backend in some other way.  For now, at least reporting backend
-    // ip/port will be helpful.
+    //
+    // TODO log the dynamic backend IP somehow? The resolver will at least emit
+    // log entries when the IP changes.
+    //
     let pool_opts = ConnectionPoolOptions {
-        maximum: config.cueball.max_connections,
+        max_connections: Some(config.cueball.max_connections),
         claim_timeout: config.cueball.claim_timeout,
-        log: log.new(o!(
-            "component" => "CueballConnectionPool",
-            "backend_ip" => pg_ip.to_string(),
-            "backend_port" => config.database.port,
-        )),
+        log: Some(log.new(o!(
+            "component" => "CueballConnectionPool"
+        ))),
         rebalancer_action_delay: config.cueball.rebalancer_action_delay,
+        decoherence_interval: None
     };
 
-    let primary_backend = (pg_ip, config.database.port);
-    let resolver = StaticIpResolver::new(vec![primary_backend]);
+    let resolver = ManateePrimaryResolver::new(
+        config.zookeeper.zk_conn_str.parse::<ZkConnectString>().unwrap(),
+        config.zookeeper.path,
+        Some(log.new(o!(
+            "component" => "ManateePrimaryResolver"
+        )))
+    );
 
     let pool = ConnectionPool::new(pool_opts, resolver, connection_creator);
 

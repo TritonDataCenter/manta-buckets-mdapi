@@ -72,6 +72,10 @@ tls_mode = "{{BORAY_DATABASE_TLS_MODE}}"
 tls_mode = "disable"
 {{/BORAY_DATABASE_TLS_MODE}}
 
+[zookeeper]
+path = "/manatee/{{SERVICE_NAME}}"
+zk_conn_str = "{{#ZK_SERVERS}}{{host}}:{{port}}{{^last}},{{/last}}{{/ZK_SERVERS}}"
+
 [cueball]
 {{#BORAY_CUEBALL_MAX_CONNECTIONS}}
 max_connections = {{BORAY_CUEBALL_MAX_CONNECTIONS}}
