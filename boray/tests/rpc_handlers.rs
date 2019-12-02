@@ -81,10 +81,11 @@ fn verify_rpc_handlers() {
 
     let connection_creator = PostgresConnection::connection_creator(pg_config);
     let pool_opts = ConnectionPoolOptions {
-        maximum: 5,
+        max_connections: Some(5),
         claim_timeout: None,
-        log: log.clone(),
+        log: Some(log.clone()),
         rebalancer_action_delay: None,
+        decoherence_interval: None
     };
 
     let primary_backend = (IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), pg_port);
