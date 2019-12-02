@@ -16,7 +16,7 @@ use tokio::runtime;
 use cueball::connection_pool::types::ConnectionPoolOptions;
 use cueball::connection_pool::ConnectionPool;
 use cueball_postgres_connection::{PostgresConnection, PostgresConnectionConfig};
-use cueball_manatee_primary_resolver::{ManateePrimaryResolver, ZkConnectString};
+use cueball_manatee_primary_resolver::ManateePrimaryResolver;
 use rust_fast::server;
 
 use utils::config::Config;
@@ -93,7 +93,7 @@ fn main() {
     };
 
     let resolver = ManateePrimaryResolver::new(
-        config.zookeeper.zk_conn_str.parse::<ZkConnectString>().unwrap(),
+        config.zookeeper.connection_string,
         config.zookeeper.path,
         Some(log.new(o!(
             "component" => "ManateePrimaryResolver"

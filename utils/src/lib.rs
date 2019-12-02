@@ -20,6 +20,7 @@ pub mod config {
     use num_cpus;
     use serde_derive::Deserialize;
 
+    use cueball_manatee_primary_resolver::ZkConnectString;
     use cueball_postgres_connection::TlsConnectMode;
 
     /// A type representing the valid logging levels in a boray configuration.
@@ -201,14 +202,14 @@ pub mod config {
     #[derive(Clone, Deserialize)]
     pub struct ConfigZookeeper {
 	pub path: String,
-	pub zk_conn_str: String,
+	pub connection_string: ZkConnectString,
     }
 
     impl Default for ConfigZookeeper {
 	fn default() -> Self {
 	    ConfigZookeeper {
 		path: "/manatee/1.boray.example.com".into(),
-		zk_conn_str: "127.0.0.1".into(),
+		connection_string: ZkConnectString::from_str("127.0.0.1").unwrap(),
 	    }
 	}
     }

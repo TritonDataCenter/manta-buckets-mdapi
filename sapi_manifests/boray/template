@@ -74,7 +74,7 @@ tls_mode = "disable"
 
 [zookeeper]
 path = "/manatee/{{SERVICE_NAME}}"
-zk_conn_str = "{{#ZK_SERVERS}}{{host}}:{{port}}{{^last}},{{/last}}{{/ZK_SERVERS}}"
+connection_string = [{{#ZK_SERVERS}}"{{host}}:{{port}}"{{^last}},{{/last}}{{/ZK_SERVERS}}]
 
 [cueball]
 {{#BORAY_CUEBALL_MAX_CONNECTIONS}}
