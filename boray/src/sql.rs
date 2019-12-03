@@ -97,24 +97,6 @@ where
     sql_with_metrics(method, &log, || txn.execute(sql, items))
 }
 
-// txn.execute wrapper for prepared statements that posts metrics
-pub fn txn_execute_statement<T>(
-    method: Method,
-    txn: &mut Transaction,
-    sql: &T,
-    items: &[&dyn ToSql],
-    log: &Logger,
-) -> Result<u64, PGError>
-where
-    T: ?Sized + ToStatement,
-{
-    let q_log = log.new(o!("op" => "sql::txn_execute_statement"));
-    trace!(q_log, "begin";
-        "items" => format!("{:?}", items),
-    );
-    sql_with_metrics(method, &log, || txn.execute(sql, items))
-}
-
 // conn.query wrapper that posts metrics
 pub fn query<T: Display>(
     method: Method,

@@ -74,15 +74,6 @@ fn do_delete(
 ) -> Result<(), String> {
     let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
 
-    // TODO: Error handling
-    let delete_stmt = txn
-        .prepare(
-            "DELETE FROM $1.manta_bucket_deleted_object \
-             WHERE owner = $2 AND bucket_id = $3 AND \
-             name = $4 AND id = $5",
-        )
-        .unwrap();
-
     sql::txn_query(
         sql::Method::GarbageGet,
         &mut txn,
@@ -104,11 +95,13 @@ fn do_delete(
                 let bucket_id: Uuid = row.get("bucket_id");
                 let name: Uuid = row.get("name");
 
-                last_result = sql::txn_execute_statement(
+                let delete_stmt = delete_garbage_sql(schema);
+
+                last_result = sql::txn_execute(
                     sql::Method::GarbageRecordDelete,
                     &mut txn,
-                    &delete_stmt,
-                    &[&schema, &owner, &bucket_id, &name, &id],
+                    delete_stmt.as_str(),
+                    &[&owner, &bucket_id, &name, &id],
                     log,
                 )
             }
@@ -145,6 +138,16 @@ fn do_delete(
 
 fn get_garbage_records_sql() -> &'static str {
     "SELECT schma, id, name, owner, bucket_id FROM GARBAGE_BATCH"
+}
+
+fn delete_garbage_sql(schema: String) -> String {
+    [
+        "DELETE FROM ",
+        &schema,
+        ".manta_bucket_deleted_object WHERE owner = $1 AND bucket_id = $2 AND \
+         name = $3 AND id = $4",
+    ]
+    .concat()
 }
 
 fn refresh_garbage_view_sql() -> &'static str {
