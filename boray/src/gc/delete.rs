@@ -11,7 +11,7 @@ use rust_fast::protocol::{FastMessage, FastMessageData};
 use tokio_postgres::Error as PGError;
 
 use crate::sql;
-use crate::types::{HasRequestId, HandlerResponse};
+use crate::types::{HandlerResponse, HasRequestId};
 use crate::util::array_wrap;
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -39,7 +39,7 @@ pub(crate) fn action(
     conn: &mut PostgresConnection,
 ) -> Result<HandlerResponse, String> {
     // Make database request
-    do_delete(&payload, conn)
+    do_delete(&payload, conn, log)
         .and_then(|_affected_rows| {
             // Handle the successful database response
             debug!(log, "{} operation was successful", &method);
@@ -67,64 +67,80 @@ pub(crate) fn action(
         })
 }
 
-fn do_delete(_payload: &DeleteGarbagePayload, conn: &mut PostgresConnection) -> Result<(), String> {
+fn do_delete(
+    _payload: &DeleteGarbagePayload,
+    conn: &mut PostgresConnection,
+    log: &Logger,
+) -> Result<(), String> {
     let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
 
     // TODO: Error handling
-    let delete_stmt = txn.prepare("DELETE FROM $1.manta_bucket_deleted_object \
-                                   WHERE owner = $2 AND bucket_id = $3 AND \
-                                   name = $4 AND id = $5").unwrap();
+    let delete_stmt = txn
+        .prepare(
+            "DELETE FROM $1.manta_bucket_deleted_object \
+             WHERE owner = $2 AND bucket_id = $3 AND \
+             name = $4 AND id = $5",
+        )
+        .unwrap();
 
     sql::txn_query(
         sql::Method::GarbageGet,
         &mut txn,
         get_garbage_records_sql(),
         &[],
-    ).and_then(|garbage_rows| {
+        log,
+    )
+    .and_then(|garbage_rows| {
         // Delete the records in the materialized view
-         if garbage_rows.is_empty() {
+        if garbage_rows.is_empty() {
             Ok(0)
-         } else {
-             let mut last_result: Result<u64, PGError> = Ok(0);
+        } else {
+            let mut last_result: Result<u64, PGError> = Ok(0);
 
-             for row in garbage_rows {
-                 let schema: String = row.get("schma");
-                 let id: Uuid = row.get("id");
-                 let owner: Uuid = row.get("owner");
-                 let bucket_id: Uuid = row.get("bucket_id");
-                 let name: Uuid = row.get("name");
+            for row in garbage_rows {
+                let schema: String = row.get("schma");
+                let id: Uuid = row.get("id");
+                let owner: Uuid = row.get("owner");
+                let bucket_id: Uuid = row.get("bucket_id");
+                let name: Uuid = row.get("name");
 
-                 last_result =
-                     sql::txn_execute(
-                         sql::Method::GarbageRecordDelete,
-                         &mut txn,
-                         &delete_stmt,
-                         &[&schema, &owner, &bucket_id, &name, &id],
-                     )
-             }
+                last_result = sql::txn_execute_statement(
+                    sql::Method::GarbageRecordDelete,
+                    &mut txn,
+                    &delete_stmt,
+                    &[&schema, &owner, &bucket_id, &name, &id],
+                    log,
+                )
+            }
 
-             last_result
+            last_result
         }
-    }).and_then(|_| {
+    })
+    .and_then(|_| {
         // Refresh the view
         sql::txn_execute(
             sql::Method::GarbageRefresh,
             &mut txn,
             refresh_garbage_view_sql(),
             &[],
+            log,
         )
-    }).and_then(|_| {
+    })
+    .and_then(|_| {
         // Update the batch id
         sql::txn_query(
             sql::Method::GarbageBatchIdUpdate,
             &mut txn,
             update_garbage_batch_id_sql().as_str(),
             &[],
+            log,
         )
-    }).and_then(|_| {
+    })
+    .and_then(|_| {
         // All steps completed without error so commit the transaction
         txn.commit()
-    }).map_err(|e| e.to_string())
+    })
+    .map_err(|e| e.to_string())
 }
 
 fn get_garbage_records_sql() -> &'static str {
@@ -140,6 +156,7 @@ fn update_garbage_batch_id_sql() -> String {
     [
         "UPDATE garbage_batch_id SET batch_id = ",
         &batch_id.to_string(),
-        &" WHERE id = 1"
-    ].concat()
+        &" WHERE id = 1",
+    ]
+    .concat()
 }

@@ -48,10 +48,10 @@ pub(crate) fn action(
     conn: &mut PostgresConnection,
 ) -> Result<HandlerResponse, String> {
     // Make database request
-    do_update(method, &payload, conn)
+    do_update(method, &payload, conn, log)
         .and_then(|maybe_resp| {
             // Handle the successful database response
-            debug!(log, "{} operation was successful", &method);
+            debug!(log, "operation successful");
             let value = match maybe_resp {
                 Some(resp) => to_json(resp),
                 None => object_not_found(),
@@ -62,7 +62,7 @@ pub(crate) fn action(
         })
         .or_else(|e| {
             // Handle database error response
-            error!(log, "{} operation failed: {}", &method, &e);
+            error!(log, "operation failed"; "error" => &e);
 
             // Database errors are returned to as regular Fast messages
             // to be handled by the calling application
@@ -81,6 +81,7 @@ fn do_update(
     method: &str,
     payload: &UpdateObjectPayload,
     conn: &mut PostgresConnection,
+    log: &Logger,
 ) -> Result<Option<ObjectResponse>, String> {
     let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
     let update_sql = update_sql(payload.vnode);
@@ -97,6 +98,7 @@ fn do_update(
             &payload.bucket_id,
             &payload.name,
         ],
+        &log,
     )
     .and_then(|rows| {
         txn.commit()?;

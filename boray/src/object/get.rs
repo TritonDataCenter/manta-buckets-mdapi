@@ -27,10 +27,10 @@ pub(crate) fn action(
     conn: &mut PostgresConnection,
 ) -> Result<HandlerResponse, String> {
     // Make database request
-    do_get(method, &payload, conn)
+    do_get(method, &payload, conn, log)
         .and_then(|maybe_resp| {
             // Handle the successful database response
-            debug!(log, "getobject operation was successful");
+            debug!(log, "operation successful");
             let value = match maybe_resp {
                 Some(resp) => array_wrap(to_json(resp)),
                 None => array_wrap(object_not_found()),
@@ -41,7 +41,7 @@ pub(crate) fn action(
         })
         .or_else(|e| {
             // Handle database error response
-            error!(log, "getobject operation failed: {}", &e);
+            error!(log, "operation failed"; "error" => &e);
 
             // Database errors are returned to as regular Fast messages
             // to be handled by the calling application
@@ -60,6 +60,7 @@ fn do_get(
     method: &str,
     payload: &GetObjectPayload,
     mut conn: &mut PostgresConnection,
+    log: &Logger,
 ) -> Result<Option<ObjectResponse>, String> {
     let sql = get_sql(payload.vnode);
 
@@ -68,6 +69,7 @@ fn do_get(
         &mut conn,
         sql.as_str(),
         &[&payload.owner, &payload.bucket_id, &payload.name],
+        &log,
     )
     .map_err(|e| e.to_string())
     .and_then(|rows| response(method, &rows))

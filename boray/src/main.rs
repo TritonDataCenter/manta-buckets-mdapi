@@ -1,22 +1,21 @@
 // Copyright 2019 Joyent, Inc.
 
-
 use std::default::Default;
-use std::net::{IpAddr, SocketAddr};
+use std::net::SocketAddr;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 
 use clap::{crate_name, crate_version};
-use slog::{error, info, o, Drain, LevelFilter, Logger};
+use slog::{crit, error, info, o, Drain, LevelFilter, Logger};
 use tokio::net::TcpListener;
 use tokio::prelude::*;
 use tokio::runtime;
 
 use cueball::connection_pool::types::ConnectionPoolOptions;
 use cueball::connection_pool::ConnectionPool;
+use cueball_manatee_primary_resolver::ManateePrimaryResolver;
 use cueball_postgres_connection::{PostgresConnection, PostgresConnectionConfig};
-use cueball_static_resolver::StaticIpResolver;
 use rust_fast::server;
 
 use utils::config::Config;
@@ -33,43 +32,45 @@ fn main() {
     // Read CLI arguments
     utils::config::read_cli_args(&matches, &mut config);
 
-    // XXX postgres host must be an IP address currently
-    let pg_ip: IpAddr = match config.database.host.parse() {
-        Ok(pg_ip) => pg_ip,
-        Err(e) => {
-            eprintln!("postgres host MUST be an IPv4 address: {}", e);
-            std::process::exit(1);
-        }
-    };
-
-    let root_log = Logger::root(
+    let log = Logger::root(
         Mutex::new(LevelFilter::new(
             slog_bunyan::with_name(crate_name!(), std::io::stdout()).build(),
             config.log.level.into(),
         ))
         .fuse(),
-        o!("build-id" => crate_version!()),
+        o!("v" => crate_version!()),
     );
 
     // Configure and start metrics server
-    let metrics_log = root_log.clone();
     let metrics_host = config.metrics.host.clone();
     let metrics_port = config.metrics.port;
-    thread::spawn(move || boray::metrics::start_server(&metrics_host, metrics_port, &metrics_log));
-
-    info!(root_log, "establishing postgres connection pool");
-
-    let tls_config = utils::config::tls::tls_config(config.database.tls_mode, config.database.certificate)
+    let metrics_thread_builder = thread::Builder::new().name("metrics-server".into());
+    let m = log.clone();
+    let _mtb_handler = metrics_thread_builder
+        .spawn(move || {
+            let metrics_log = m.new(o!(
+                "component" => "MetricsServer",
+                "thread" => boray::util::get_thread_name()
+            ));
+            boray::metrics::start_server(&metrics_host, metrics_port, &metrics_log)
+        })
         .unwrap_or_else(|e| {
-            error!(root_log, "TLS configuration error: {}", e);
+            crit!(log, "failed to start metrics server"; "err" => %e);
             std::process::exit(1);
         });
+
+    let tls_config =
+        utils::config::tls::tls_config(config.database.tls_mode, config.database.certificate)
+            .unwrap_or_else(|e| {
+                crit!(log, "TLS configuration error"; "err" => %e);
+                std::process::exit(1);
+            });
 
     let pg_config = PostgresConnectionConfig {
         user: Some(config.database.user),
         password: None,
-        host: Some(config.database.host),
-        port: Some(config.database.port),
+        host: None,
+        port: None,
         database: Some(config.database.database),
         application_name: Some(config.database.application_name),
         tls_config,
@@ -77,29 +78,44 @@ fn main() {
 
     let connection_creator = PostgresConnection::connection_creator(pg_config);
 
+    //
+    // TODO log the dynamic backend IP somehow? The resolver will at least emit
+    // log entries when the IP changes.
+    //
     let pool_opts = ConnectionPoolOptions {
-        maximum: config.cueball.max_connections,
+        max_connections: Some(config.cueball.max_connections),
         claim_timeout: config.cueball.claim_timeout,
-        log: root_log.clone(),
+        log: Some(log.new(o!(
+            "component" => "CueballConnectionPool"
+        ))),
         rebalancer_action_delay: config.cueball.rebalancer_action_delay,
+        decoherence_interval: None,
     };
 
-    let primary_backend = (pg_ip, config.database.port);
-    let resolver = StaticIpResolver::new(vec![primary_backend]);
+    let resolver = ManateePrimaryResolver::new(
+        config.zookeeper.connection_string,
+        config.zookeeper.path,
+        Some(log.new(o!(
+            "component" => "ManateePrimaryResolver"
+        ))),
+    );
 
     let pool = ConnectionPool::new(pool_opts, resolver, connection_creator);
 
-    info!(root_log, "established postgres connection pool");
+    info!(log, "established postgres connection pool");
 
     // Create the infrastructure in postgres necessary to gather the deleted
     // objects across the local vnodes. This is only a temporary approach to get
     // some testing off the ground.
     let mut conn = pool.claim().expect("failed to acquire postgres connection");
 
-    match boray::gc::create_garbage_infra(&mut conn) {
-        Ok(()) => info!(root_log, "gc infra setup complete"),
+    match boray::gc::create_garbage_infra(&mut conn, &log) {
+        Ok(()) => info!(log, "gc infra setup complete"),
         Err(e) => {
-            info!(root_log, "failed to create garbage infra, but it may just already exist: {}", e);
+            info!(
+                log,
+                "failed to create garbage infra, but it may just already exist: {}", e
+            );
         }
     }
     drop(conn);
@@ -108,19 +124,21 @@ fn main() {
     let addr = addr.parse::<SocketAddr>().unwrap();
 
     let listener = TcpListener::bind(&addr).expect("failed to bind");
-    info!(root_log, "listening for fast requests"; "address" => addr);
+    info!(log, "listening"; "address" => addr);
 
-    let process_log = root_log.clone();
-    let err_log = root_log.clone();
+    let err_log = log.clone();
     let server = listener
         .incoming()
         .map_err(move |e| error!(&err_log, "failed to accept socket"; "err" => %e))
         .for_each(move |socket| {
             let pool_clone = pool.clone();
+            let task_log = log.new(o!(
+                "component" => "FastServer",
+                "thread" => boray::util::get_thread_name()));
             let task = server::make_task(
                 socket,
                 move |a, c| boray::util::handle_msg(a, &pool_clone, c),
-                Some(&process_log),
+                Some(&task_log),
             );
             tokio::spawn(task);
             Ok(())

@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::object::ObjectResponse;
 use crate::sql;
-use crate::types::{HasRequestId, HandlerResponse, RowSlice};
+use crate::types::{HandlerResponse, HasRequestId, RowSlice};
 use crate::util::array_wrap;
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -28,7 +28,7 @@ impl HasRequestId for GetGarbagePayload {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct GetGarbageResponse {
     pub batch_id: Uuid,
-    pub garbage: Vec<ObjectResponse>
+    pub garbage: Vec<ObjectResponse>,
 }
 
 pub(self) fn to_json(gr: GetGarbageResponse) -> Value {
@@ -39,7 +39,6 @@ pub(self) fn to_json(gr: GetGarbageResponse) -> Value {
     // so the latter reason for failure is not a concern either.
     serde_json::to_value(gr).expect("failed to serialize GetGarbageResponse")
 }
-
 
 pub(crate) fn decode_msg(value: &Value) -> Result<Vec<GetGarbagePayload>, SerdeError> {
     serde_json::from_value::<Vec<GetGarbagePayload>>(value.clone())
@@ -54,7 +53,7 @@ pub(crate) fn action(
     conn: &mut PostgresConnection,
 ) -> Result<HandlerResponse, String> {
     // Make database request
-    do_get(method, conn)
+    do_get(method, conn, log)
         .and_then(|resp| {
             // Handle the successful database response
             debug!(log, "{} operation was successful", &method);
@@ -84,22 +83,17 @@ pub(crate) fn action(
 fn do_get(
     method: &str,
     mut conn: &mut PostgresConnection,
+    log: &Logger,
 ) -> Result<GetGarbageResponse, String> {
     let sql = get_sql();
 
-    sql::query(
-        sql::Method::GarbageGet,
-        &mut conn,
-        sql,
-        &[],
-    )
-    .map_err(|e| e.to_string())
-    .and_then(|rows| response(method, &rows))
+    sql::query(sql::Method::GarbageGet, &mut conn, sql, &[], log)
+        .map_err(|e| e.to_string())
+        .and_then(|rows| response(method, &rows))
 }
 
 fn get_sql() -> &'static str {
     "SELECT * FROM get_garbage()"
-
 }
 
 pub(self) fn response(_method: &str, rows: &RowSlice) -> Result<GetGarbageResponse, String> {
@@ -126,8 +120,5 @@ pub(self) fn response(_method: &str, rows: &RowSlice) -> Result<GetGarbageRespon
         garbage.push(garbage_item);
     }
 
-    Ok(GetGarbageResponse {
-        batch_id,
-        garbage
-    })
+    Ok(GetGarbageResponse { batch_id, garbage })
 }

@@ -3,13 +3,14 @@
 pub mod delete;
 pub mod get;
 
+use slog::Logger;
 use uuid::Uuid;
 
 use cueball_postgres_connection::PostgresConnection;
 
 use crate::sql;
 
-pub fn create_garbage_infra(conn: &mut PostgresConnection) -> Result<(), String> {
+pub fn create_garbage_infra(conn: &mut PostgresConnection, log: &Logger) -> Result<(), String> {
     let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
 
     // First create the gc helper function
@@ -18,38 +19,46 @@ pub fn create_garbage_infra(conn: &mut PostgresConnection) -> Result<(), String>
         &mut txn,
         create_get_garbage_function_sql(),
         &[],
-    ).and_then(|_| {
+        log,
+    )
+    .and_then(|_| {
         // Attempt to create the materialized view
         sql::txn_execute(
             sql::Method::GarbageGet,
             &mut txn,
             create_garbage_view_sql(),
             &[],
+            log,
         )
-    }).and_then(|_| {
+    })
+    .and_then(|_| {
         // Attempt to create the garbage batch id table
         sql::txn_execute(
             sql::Method::GarbageGet,
             &mut txn,
             create_garbage_batch_id_table_sql(),
             &[],
+            log,
         )
-    }).and_then(|_| {
+    })
+    .and_then(|_| {
         // Initialize the garbage batch id
         sql::txn_execute(
             sql::Method::GarbageGet,
             &mut txn,
             initialize_garbage_batch_id_sql().as_str(),
             &[],
+            log,
         )
-    }).and_then(|_| {
+    })
+    .and_then(|_| {
         txn.commit()?;
         Ok(())
     })
     .map_err(|e| e.to_string())
 }
 
-pub fn create_garbage_view(conn: &mut PostgresConnection) -> Result<(), String> {
+pub fn create_garbage_view(conn: &mut PostgresConnection, log: &Logger) -> Result<(), String> {
     let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
 
     sql::txn_execute(
@@ -57,6 +66,7 @@ pub fn create_garbage_view(conn: &mut PostgresConnection) -> Result<(), String> 
         &mut txn,
         create_garbage_view_sql(),
         &[],
+        log,
     )
     .and_then(|_| {
         txn.commit()?;
@@ -67,7 +77,7 @@ pub fn create_garbage_view(conn: &mut PostgresConnection) -> Result<(), String> 
 
 fn create_garbage_view_sql() -> &'static str {
     "CREATE MATERIALIZED VIEW GARBAGE_BATCH AS ( \
-         SELECT * FROM get_garbage(1000) \
+     SELECT * FROM get_garbage(1000) \
      ) \
      WITH DATA"
 }
@@ -81,8 +91,9 @@ fn initialize_garbage_batch_id_sql() -> String {
     [
         "INSERT INTO garbage_batch_id (id, batch_id) VALUES (1, ",
         &batch_id.to_string(),
-        ")"
-    ].concat()
+        ")",
+    ]
+    .concat()
 }
 
 fn create_get_garbage_function_sql() -> &'static str {

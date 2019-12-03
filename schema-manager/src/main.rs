@@ -12,7 +12,6 @@ use diesel::prelude::*;
 use rust_fast::client as fast_client;
 use rust_fast::protocol::{FastMessage, FastMessageId};
 use sapi::{ZoneConfig, SAPI};
-use serde::Serialize;
 use serde_json::{json, Value};
 use slog::{error, info, o, warn, Drain, Logger};
 use std::sync::Mutex;
@@ -31,11 +30,6 @@ const DEFAULT_EB_PORT: u32 = 2020;
 const SCHEMA_STR: &str = "/opt/smartdc/boray/schema_templates/schema.in";
 const ADMIN_STR: &str = "/opt/smartdc/boray/schema_templates/admin.in";
 const DB_STR: &str = "/opt/smartdc/boray/schema_templates/db.in";
-
-#[derive(Clone, Debug, Serialize)]
-pub struct MethodOptions {
-    pub req_id: String, // UUID as string,
-}
 
 // create users, role, database and schemas
 fn create_bucket_schemas(log: &Logger, vnode: &str) -> Result<(), Error> {
