@@ -93,7 +93,7 @@ fn do_delete(
                 let id: Uuid = row.get("id");
                 let owner: Uuid = row.get("owner");
                 let bucket_id: Uuid = row.get("bucket_id");
-                let name: Uuid = row.get("name");
+                let name: String = row.get("name");
 
                 let delete_stmt = delete_garbage_sql(schema);
 
@@ -121,11 +121,12 @@ fn do_delete(
     })
     .and_then(|_| {
         // Update the batch id
+        let batch_id = Uuid::new_v4();
         sql::txn_query(
             sql::Method::GarbageBatchIdUpdate,
             &mut txn,
-            update_garbage_batch_id_sql().as_str(),
-            &[],
+            update_garbage_batch_id_sql(),
+            &[&batch_id],
             log,
         )
     })
@@ -154,12 +155,6 @@ fn refresh_garbage_view_sql() -> &'static str {
     "REFRESH MATERIALIZED VIEW GARBAGE_BATCH"
 }
 
-fn update_garbage_batch_id_sql() -> String {
-    let batch_id = Uuid::new_v4();
-    [
-        "UPDATE garbage_batch_id SET batch_id = ",
-        &batch_id.to_string(),
-        &" WHERE id = 1",
-    ]
-    .concat()
+fn update_garbage_batch_id_sql() -> &'static str {
+    "UPDATE garbage_batch_id SET batch_id = $1 WHERE id = 1"
 }
