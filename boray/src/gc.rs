@@ -43,11 +43,12 @@ pub fn create_garbage_infra(conn: &mut PostgresConnection, log: &Logger) -> Resu
     })
     .and_then(|_| {
         // Initialize the garbage batch id
+        let batch_id = Uuid::new_v4();
         sql::txn_execute(
             sql::Method::GarbageGet,
             &mut txn,
-            initialize_garbage_batch_id_sql().as_str(),
-            &[],
+            initialize_garbage_batch_id_sql(),
+            &[&batch_id],
             log,
         )
     })
@@ -86,14 +87,8 @@ fn create_garbage_batch_id_table_sql() -> &'static str {
     "CREATE TABLE garbage_batch_id (id integer, batch_id UUID)"
 }
 
-fn initialize_garbage_batch_id_sql() -> String {
-    let batch_id = Uuid::new_v4();
-    [
-        "INSERT INTO garbage_batch_id (id, batch_id) VALUES (1, ",
-        &batch_id.to_string(),
-        ")",
-    ]
-    .concat()
+fn initialize_garbage_batch_id_sql() -> &'static str {
+    "INSERT INTO garbage_batch_id (id, batch_id) VALUES (1, $1)"
 }
 
 fn create_get_garbage_function_sql() -> &'static str {
