@@ -91,16 +91,15 @@ fn main() {
 
     info!(root_log, "established postgres connection pool");
 
-    // Create a helper function in postgres to garther the deleted objects
-    // across the local vnodes. This is only a temporary approach to get some
-    // testing off the ground.
+    // Create the infrastructure in postgres necessary to gather the deleted
+    // objects across the local vnodes. This is only a temporary approach to get
+    // some testing off the ground.
     let mut conn = pool.claim().expect("failed to acquire postgres connection");
 
-    match boray::gc::create_list_all_deleted_objects_fn(&mut conn) {
-        Ok(()) => info!(root_log, "created list_all_deleted_objects postgres function"),
+    match boray::gc::create_garbage_infra(&mut conn) {
+        Ok(()) => info!(root_log, "gc infra setup complete"),
         Err(e) => {
-            error!(root_log, "failed to create list_all_deleted_objects postgres function: {}", e);
-            std::process::exit(1);
+            info!(root_log, "failed to create garbage infra, but it may just already exist: {}", e);
         }
     }
     drop(conn);

@@ -98,7 +98,7 @@ fn do_get(
 }
 
 fn get_sql() -> &'static str {
-    "SELECT * FROM list_all_deleted_objects(1024)"
+    "SELECT * FROM get_garbage()"
 
 }
 
