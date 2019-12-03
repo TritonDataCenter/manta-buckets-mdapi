@@ -101,7 +101,7 @@ pub(self) fn response(_method: &str, rows: &RowSlice) -> Result<GetGarbageRespon
 
     let mut garbage: Vec<ObjectResponse> = Vec::with_capacity(1024);
     for row in rows {
-        let content_md5_bytes: Vec<u8> = row.get(7);
+        let content_md5_bytes: Vec<u8> = row.get("content_md5");
         let content_md5 = base64::encode(&content_md5_bytes);
         let garbage_item = ObjectResponse {
             id: row.get("id"),
