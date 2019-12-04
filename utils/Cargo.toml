@@ -9,6 +9,7 @@ edition = "2018"
 clap = "2.32"
 cueball-manatee-primary-resolver = { git = "https://github.com/joyent/rust-cueball-manatee-primary-resolver", tag = "v0.1.0" }
 cueball-postgres-connection = { git = "https://github.com/joyent/rust-cueball-postgres-connection", tag = "v0.1.1" }
+diesel = { version = "1.0.0", features = ["postgres"] }
 num_cpus = { version = "1.8.0" }
 slog = { version = "2.4.1", features = [ "max_level_trace" ] }
 slog-stdlog = "3"
@@ -16,4 +17,5 @@ slog-term = "2.4.0"
 serde = "1.0"
 serde_derive = "1.0.84"
 serde_json = "1.0"
+string_template = "0.2.1"
 toml = "0.5"
