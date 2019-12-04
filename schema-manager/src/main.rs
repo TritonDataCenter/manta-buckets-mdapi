@@ -8,8 +8,12 @@ use std::sync::Mutex;
 use clap::{crate_version, App, Arg, ArgMatches};
 use cmd_lib::{run_fun, FunResult};
 use serde_json::{json, Value};
-use slog::{error, info, o, warn, Drain, Logger};
+use slog::{crit, error, info, o, warn, Drain, Logger};
 
+use cueball::connection_pool::types::ConnectionPoolOptions;
+use cueball::connection_pool::ConnectionPool;
+use cueball_manatee_primary_resolver::ManateePrimaryResolver;
+use cueball_postgres_connection::{PostgresConnection, PostgresConnectionConfig};
 use rust_fast::client as fast_client;
 use rust_fast::protocol::{FastMessage, FastMessageId};
 use sapi::{ZoneConfig, SAPI};
@@ -18,7 +22,6 @@ use utils::config;
 use utils::schema;
 
 /* TODO
-    - Dynamic lookup of boray shard IP instad of checking config.
     - make boray config file, schema file and fast arg
       command line args for overriding.
 */
@@ -57,7 +60,7 @@ fn init_sapi_client(sapi_address: &str, log: &Logger) -> Result<SAPI, Error> {
 // Iterated through the vnodes returned from electric-boray and create the
 // associated schemas on the shards
 fn parse_vnodes(
-    config: &config::ConfigDatabase,
+    conn: &mut PostgresConnection,
     log: &Logger,
     msg: &FastMessage,
 ) -> Result<(), Error> {
@@ -66,7 +69,7 @@ fn parse_vnodes(
         for v in vnode.as_array().unwrap() {
             let vn = v.as_str().unwrap();
             info!(log, "processing vnode: {:#?}", vn);
-            schema::create_bucket_schemas(config, TEMPLATE_DIR, vn, log)?;
+            schema::create_bucket_schemas(conn, TEMPLATE_DIR, vn, log)?;
         }
     }
     Ok(())
@@ -89,13 +92,13 @@ fn parse_opts<'a>(app: String) -> ArgMatches<'a> {
 
 // Callback function handed in to the fast::recieve call.
 fn vnode_response_handler(
-    config: &config::ConfigDatabase,
+    conn: &mut PostgresConnection,
     log: &Logger,
     msg: &FastMessage,
 ) -> Result<(), Error> {
     match msg.data.m.name.as_str() {
         "getvnodes" => {
-            parse_vnodes(config, log, msg)?;
+            parse_vnodes(conn, log, msg)?;
         }
         _ => warn!(log, "Received unrecognized {} response", msg.data.m.name),
     }
@@ -121,6 +124,7 @@ fn run(log: &Logger) -> Result<(), Box<dyn std::error::Error>> {
         boray_port.to_string(),
     ]
     .concat();
+
     info!(log, "pnode argument to electric-boray:{}", fast_arg);
     let eb_endpoint = [eb_address, String::from(":"), DEFAULT_EB_PORT.to_string()].concat();
     info!(log, "electric-boray endpoint:{}", eb_endpoint);
@@ -129,8 +133,54 @@ fn run(log: &Logger) -> Result<(), Box<dyn std::error::Error>> {
         process::exit(1)
     });
 
+    let tls_config = utils::config::tls::tls_config(
+        boray_config.database.tls_mode,
+        boray_config.database.certificate,
+    )
+    .unwrap_or_else(|e| {
+        crit!(log, "TLS configuration error"; "err" => %e);
+        std::process::exit(1);
+    });
+
+    // Create a connection pool using the admin user
+    let pg_config = PostgresConnectionConfig {
+        user: Some(boray_config.database.user),
+        password: None,
+        host: None,
+        port: None,
+        database: Some(boray_config.database.database),
+        application_name: Some(boray_config.database.application_name),
+        tls_config,
+    };
+
+    let connection_creator = PostgresConnection::connection_creator(pg_config);
+
+    let pool_opts = ConnectionPoolOptions {
+        max_connections: Some(boray_config.cueball.max_connections),
+        claim_timeout: Some(10000),
+        log: Some(log.new(o!(
+            "component" => "CueballConnectionPool"
+        ))),
+        rebalancer_action_delay: boray_config.cueball.rebalancer_action_delay,
+        decoherence_interval: None,
+    };
+
+    let resolver = ManateePrimaryResolver::new(
+        boray_config.zookeeper.connection_string,
+        boray_config.zookeeper.path,
+        Some(log.new(o!(
+            "component" => "ManateePrimaryResolver"
+        ))),
+    );
+
+    let pool = ConnectionPool::new(pool_opts, resolver, connection_creator);
+
+    let mut conn = pool
+        .claim()
+        .expect("failed to acquire postgres connection for vnode schema setup");
+
     let mut msg_id = FastMessageId::new();
-    let recv_cb = |msg: &FastMessage| vnode_response_handler(&boray_config.database, &log, msg);
+    let recv_cb = |msg: &FastMessage| vnode_response_handler(&mut conn, &log, msg);
     let vnode_method = String::from("getvnodes");
 
     fast_client::send(vnode_method, json!([fast_arg]), &mut msg_id, &mut stream)

@@ -19,10 +19,9 @@ use boray::bucket;
 use boray::error::{BorayError, BorayErrorType};
 use boray::object;
 use boray::util;
-use utils::config;
 use utils::schema;
 
-// This test suite requres PostgreSQL and pg_tmp
+// This test suite requires PostgreSQL and pg_tmp
 // (http://eradman.com/ephemeralpg/) to be installed on the test system.
 #[test]
 
@@ -62,29 +61,10 @@ fn verify_rpc_handlers() {
     let pg_url = Url::parse(&pg_connect_str).expect("failed to parse postgres connection string");
 
     ////////////////////////////////////////////////////////////////////////////
-    // Setup the vnode schemas
-    //
-    // Use the schema-manager functions to create the vnode schemas in the
-    // postgres database. This sets up two vnode schemas (vnodes 0 and 1).
+    // Create connection pool
     ////////////////////////////////////////////////////////////////////////////
     let pg_port = pg_url.port().expect("failed to parse postgres port");
     let pg_db = "test";
-    let template_dir = "../schema_templates";
-
-    let config = config::ConfigDatabase {
-        port: pg_port,
-        database: pg_db.to_owned(),
-        ..Default::default()
-    };
-    for vnode in &["0", "1"] {
-        info!(log, "processing vnode: {}", vnode);
-        schema::create_bucket_schemas(&config, template_dir, vnode, &log)
-            .expect("failed to create vnode schemas");
-    }
-
-    ////////////////////////////////////////////////////////////////////////////
-    // Create connection pool
-    ////////////////////////////////////////////////////////////////////////////
     let user = "postgres";
     let application_name = "boray-test";
 
@@ -111,6 +91,26 @@ fn verify_rpc_handlers() {
     let resolver = StaticIpResolver::new(vec![primary_backend]);
 
     let pool = ConnectionPool::new(pool_opts, resolver, connection_creator);
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Setup the vnode schemas
+    //
+    // Use the schema-manager functions to create the vnode schemas in the
+    // postgres database. This sets up two vnode schemas (vnodes 0 and 1).
+    ////////////////////////////////////////////////////////////////////////////
+
+    let template_dir = "../schema_templates";
+
+    let mut conn = pool
+        .claim()
+        .expect("failed to acquire postgres connection for vnode schema setup");
+
+    for vnode in &["0", "1"] {
+        info!(log, "processing vnode: {}", vnode);
+        schema::create_bucket_schemas(&mut conn, template_dir, vnode, &log)
+            .expect("failed to create vnode schemas");
+    }
+    drop(conn);
 
     ////////////////////////////////////////////////////////////////////////////
     // Exercise RPC handlers

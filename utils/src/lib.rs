@@ -5,12 +5,10 @@ pub mod schema {
     use std::fs;
     use std::io::{Error, ErrorKind};
 
-    use diesel::connection::SimpleConnection;
-    use diesel::prelude::*;
     use slog::{error, info, Logger};
     use string_template::Template;
 
-    use crate::config::ConfigDatabase;
+    use cueball_postgres_connection::PostgresConnection;
 
     const SCHEMA_TEMPLATE: &str = "schema.in";
     const ADMIN_TEMPLATE: &str = "admin.in";
@@ -18,7 +16,7 @@ pub mod schema {
 
     // create users, role, database and schemas
     pub fn create_bucket_schemas(
-        config: &ConfigDatabase,
+        conn: &mut PostgresConnection,
         template_dir: &str,
         vnode: &str,
         log: &Logger,
@@ -26,7 +24,6 @@ pub mod schema {
         let schema_template_path = [template_dir, "/", SCHEMA_TEMPLATE].concat();
         let admin_template_path = [template_dir, "/", ADMIN_TEMPLATE].concat();
         let db_template_path = [template_dir, "/", DB_TEMPLATE].concat();
-        let admin_url = format_admin_db_url(config);
         let schema_template = read_schema_template(&schema_template_path)?;
 
         let template = Template::new(&schema_template);
@@ -34,27 +31,21 @@ pub mod schema {
         args.insert("vnode", vnode);
         let schema_str = template.render(&args);
 
-        info!(
-            log,
-            "Creating boray user and role if they don't exist on {}", admin_url
-        );
-        create_user_role(&admin_url, &admin_template_path)
+        info!(log, "Creating boray user and role if they don't exist");
+
+        create_user_role(conn, &admin_template_path)
             .and_then(|_| {
-                info!(
-                    log,
-                    "Creating boray database if it doesn't exist on {}", admin_url
-                );
-                create_database(&admin_url, &db_template_path)
+                info!(log, "Creating boray database if it doesn't exist");
+                create_database(conn, &db_template_path)
             })
             .and_then(|_| {
-                let boray_url = format_boray_db_url(config);
-                let boray_conn = establish_db_connection(&boray_url);
-                info!(log, "Creating boray schemas on {}", boray_url);
-                boray_conn.batch_execute(&schema_str).map_err(|e| {
+                info!(log, "Creating boray schemas");
+                conn.simple_query(&schema_str).map_err(|e| {
                     let err_str = format!("error on schema creation: {}, vnode: {}", e, vnode);
                     std::io::Error::new(ErrorKind::Other, err_str)
                 })
             })
+            .and_then(|_| Ok(()))
             .or_else(|e| {
                 error!(log, "{}", e);
                 Err(e)
@@ -62,56 +53,33 @@ pub mod schema {
     }
 
     // create the db in its own transaction
-    fn create_database(db_url: &str, db_template: &str) -> Result<(), Error> {
+    fn create_database(conn: &mut PostgresConnection, db_template: &str) -> Result<(), Error> {
         let db_str = read_db_template(db_template)?;
-        db_create_object(&db_url, &db_str).map_err(|e| {
+        db_create_object(conn, &db_str).map_err(|e| {
             let err_str = format!("error on database creation: {}", e);
             std::io::Error::new(ErrorKind::Other, err_str)
         })
     }
 
     // create the role in its own transaction
-    fn create_user_role(db_url: &str, admin_template: &str) -> Result<(), Error> {
+    fn create_user_role(conn: &mut PostgresConnection, admin_template: &str) -> Result<(), Error> {
         let admin_str = read_admin_template(admin_template)?;
-        db_create_object(&db_url, &admin_str).map_err(|e| {
+        db_create_object(conn, &admin_str).map_err(|e| {
             let err_str = format!("error on role creation: {}", e);
             std::io::Error::new(ErrorKind::Other, err_str)
         })
     }
 
     // Generic DB create function
-    fn db_create_object(db_url: &str, sql: &str) -> Result<(), diesel::result::Error> {
-        let conn = establish_db_connection(&db_url);
-        conn.batch_execute(&sql).or_else(|e| {
-            if e.to_string().contains("already exists") {
+    fn db_create_object(conn: &mut PostgresConnection, sql: &str) -> Result<(), String> {
+        conn.simple_query(&sql).and_then(|_| Ok(())).or_else(|e| {
+            let err_str = e.to_string();
+            if err_str.contains("already exists") {
                 Ok(())
             } else {
-                Err(e)
+                Err(err_str)
             }
         })
-    }
-
-    // This uses SimpleConnection, which is discouraged, but we need to
-    // run batch_execute, only available there.
-    pub fn establish_db_connection(database_url: &str) -> PgConnection {
-        PgConnection::establish(database_url)
-            .unwrap_or_else(|_| panic!("Error connecting to {}", database_url))
-    }
-
-    // For use connecting to the shard Postgres server
-    fn format_admin_db_url(config: &ConfigDatabase) -> String {
-        format!(
-            "postgres://{}:{}@{}:{}",
-            config.admin_user, config.admin_user, config.host, config.port
-        )
-    }
-
-    // For use connecting to the shard Postgres server
-    fn format_boray_db_url(config: &ConfigDatabase) -> String {
-        format!(
-            "postgres://{}:{}@{}:{}/{}",
-            config.user, config.user, config.host, config.port, config.database
-        )
     }
 
     fn read_schema_template(schema_str: &str) -> Result<String, Error> {
