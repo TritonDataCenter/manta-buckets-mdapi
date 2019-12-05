@@ -172,8 +172,10 @@ fn create_sql(vnode: u64) -> String {
 // actually be called. See the invocation in this module for more information.
 fn object_create_failed() -> Value {
     json!({
-        "name": "PostgresError",
-        "message": "Create statement failed to return any results"
+        "error": {
+            "name": "PostgresError",
+            "message": "Create statement failed to return any results"
+        }
     })
 }
 
