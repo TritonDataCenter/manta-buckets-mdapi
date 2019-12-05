@@ -5,22 +5,32 @@ pub mod schema {
     use std::fs;
     use std::io::{Error, ErrorKind};
 
-    use slog::{error, info, Logger};
+    use slog::{error, info, o, Logger};
     use string_template::Template;
 
-    use cueball_postgres_connection::PostgresConnection;
+    use cueball::connection_pool::types::ConnectionPoolOptions;
+    use cueball::connection_pool::ConnectionPool;
+    use cueball::resolver::Resolver;
+    use cueball_postgres_connection::{PostgresConnection, PostgresConnectionConfig};
+
+    use crate::config::{tls, ConfigDatabase};
 
     const SCHEMA_TEMPLATE: &str = "schema.in";
     const ADMIN_TEMPLATE: &str = "admin.in";
     const DB_TEMPLATE: &str = "db.in";
 
     // create users, role, database and schemas
-    pub fn create_bucket_schemas(
-        conn: &mut PostgresConnection,
+    pub fn create_bucket_schemas<R>(
+        admin_conn: &mut PostgresConnection,
+        database_config: &ConfigDatabase,
+        resolver: R,
         template_dir: &str,
         vnode: &str,
         log: &Logger,
-    ) -> Result<(), Error> {
+    ) -> Result<(), Error>
+    where
+        R: Resolver,
+    {
         let schema_template_path = [template_dir, "/", SCHEMA_TEMPLATE].concat();
         let admin_template_path = [template_dir, "/", ADMIN_TEMPLATE].concat();
         let db_template_path = [template_dir, "/", DB_TEMPLATE].concat();
@@ -33,16 +43,58 @@ pub mod schema {
 
         info!(log, "Creating boray user and role if they don't exist");
 
-        create_user_role(conn, &admin_template_path)
+        create_user_role(admin_conn, &admin_template_path)
             .and_then(|_| {
                 info!(log, "Creating boray database if it doesn't exist");
-                create_database(conn, &db_template_path)
+                create_database(admin_conn, &db_template_path)
             })
             .and_then(|_| {
+                // Attempt to construct the TLS configuration for postgres
+                info!(log, "Constructing postgres TLS configuration");
+
+                tls::tls_config(
+                    database_config.tls_mode.clone(),
+                    database_config.certificate.clone(),
+                )
+                .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))
+            })
+            .and_then(|tls_config| {
+                // Create the connection pool to the boray database using the
+                // boray role
+                info!(log, "Creating a connection pool to the boray database");
+
+                let pg_config = PostgresConnectionConfig {
+                    user: Some(database_config.user.clone()),
+                    password: None,
+                    host: None,
+                    port: None,
+                    database: Some(database_config.database.clone()),
+                    application_name: Some("schema-manager".into()),
+                    tls_config,
+                };
+
+                let connection_creator = PostgresConnection::connection_creator(pg_config);
+
+                let pool_opts = ConnectionPoolOptions {
+                    max_connections: Some(1),
+                    claim_timeout: Some(10000),
+                    log: Some(log.new(o!(
+                        "component" => "CueballConnectionPool"
+                    ))),
+                    rebalancer_action_delay: None,
+                    decoherence_interval: None,
+                };
+
+                let pool = ConnectionPool::new(pool_opts, resolver, connection_creator);
+
+                pool.claim()
+                    .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))
+            })
+            .and_then(|mut conn| {
                 info!(log, "Creating boray schemas");
                 conn.simple_query(&schema_str).map_err(|e| {
                     let err_str = format!("error on schema creation: {}, vnode: {}", e, vnode);
-                    std::io::Error::new(ErrorKind::Other, err_str)
+                    Error::new(ErrorKind::Other, err_str)
                 })
             })
             .and_then(|_| Ok(()))

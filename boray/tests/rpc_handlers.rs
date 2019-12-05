@@ -19,7 +19,7 @@ use boray::bucket;
 use boray::error::{BorayError, BorayErrorType};
 use boray::object;
 use boray::util;
-use utils::schema;
+use utils::{config, schema};
 
 // This test suite requires PostgreSQL and pg_tmp
 // (http://eradman.com/ephemeralpg/) to be installed on the test system.
@@ -105,10 +105,25 @@ fn verify_rpc_handlers() {
         .claim()
         .expect("failed to acquire postgres connection for vnode schema setup");
 
+    let config = config::ConfigDatabase {
+        port: pg_port,
+        database: pg_db.to_owned(),
+        ..Default::default()
+    };
+
     for vnode in &["0", "1"] {
         info!(log, "processing vnode: {}", vnode);
-        schema::create_bucket_schemas(&mut conn, template_dir, vnode, &log)
-            .expect("failed to create vnode schemas");
+        let vnode_resolver = StaticIpResolver::new(vec![primary_backend]);
+
+        schema::create_bucket_schemas(
+            &mut conn,
+            &config,
+            vnode_resolver,
+            template_dir,
+            vnode,
+            &log,
+        )
+        .expect("failed to create vnode schemas");
     }
     drop(conn);
 
