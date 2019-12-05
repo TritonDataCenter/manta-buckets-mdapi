@@ -44,8 +44,10 @@ pub(crate) fn action(
             // Database errors are returned to as regular Fast messages
             // to be handled by the calling application
             let value = array_wrap(json!({
-                "name": "PostgresError",
-                "message": e
+                "error": {
+                    "name": "PostgresError",
+                    "message": e
+                }
             }));
 
             let msg_data = FastMessageData::new(method.into(), value);
