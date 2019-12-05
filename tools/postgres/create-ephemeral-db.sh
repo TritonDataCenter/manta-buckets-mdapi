@@ -8,8 +8,6 @@ export BASEDIR=$(cd `dirname "$0"` && pwd)
 
 setup_database() {
     psql $PG_TMP -c 'CREATE ROLE postgres SUPERUSER LOGIN;'
-    psql -U postgres $PG_TMP -c 'CREATE EXTENSION "pgcrypto"; CREATE EXTENSION "uuid-ossp"; CREATE EXTENSION "hstore"'
-    psql -U postgres $PG_TMP -f $BASEDIR/ephemeral-db-schema.sql 2>&1
     psql -U postgres $PG_TMP -c 'ALTER DATABASE test SET timezone TO "UTC";'
 
 }
