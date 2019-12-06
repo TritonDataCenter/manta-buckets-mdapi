@@ -176,10 +176,7 @@ fn run(log: &Logger) -> Result<(), Box<dyn std::error::Error>> {
         decoherence_interval: None,
     };
 
-    // Create two resolvers. One for the admin connection pool used to create
-    // the application role and database and another to create the schemas
-    // within the application database.
-    let resolver1 = ManateePrimaryResolver::new(
+    let resolver = ManateePrimaryResolver::new(
         boray_config.zookeeper.connection_string.clone(),
         boray_config.zookeeper.path.clone(),
         Some(log.new(o!(
@@ -187,7 +184,7 @@ fn run(log: &Logger) -> Result<(), Box<dyn std::error::Error>> {
         ))),
     );
 
-    let pool = ConnectionPool::new(pool_opts, resolver1, connection_creator);
+    let pool = ConnectionPool::new(pool_opts, resolver, connection_creator);
 
     let mut conn = pool
         .claim()
