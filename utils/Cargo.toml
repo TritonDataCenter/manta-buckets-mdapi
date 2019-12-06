@@ -7,6 +7,7 @@ edition = "2018"
 
 [dependencies]
 clap = "2.32"
+cueball = { git = "https://github.com/joyent/rust-cueball", tag = "v0.2.1" }
 cueball-manatee-primary-resolver = { git = "https://github.com/joyent/rust-cueball-manatee-primary-resolver", tag = "v0.1.0" }
 cueball-postgres-connection = { git = "https://github.com/joyent/rust-cueball-postgres-connection", tag = "v0.1.1" }
 num_cpus = { version = "1.8.0" }

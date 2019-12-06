@@ -61,15 +61,24 @@ fn init_sapi_client(sapi_address: &str, log: &Logger) -> Result<SAPI, Error> {
 // associated schemas on the shards
 fn parse_vnodes(
     conn: &mut PostgresConnection,
+    database_config: &config::ConfigDatabase,
+    zk_config: &config::ConfigZookeeper,
     log: &Logger,
     msg: &FastMessage,
 ) -> Result<(), Error> {
     let v: Vec<Value> = msg.data.d.as_array().unwrap().to_vec();
     for vnode in v {
         for v in vnode.as_array().unwrap() {
+            let resolver = ManateePrimaryResolver::new(
+                zk_config.connection_string.clone(),
+                zk_config.path.clone(),
+                Some(log.new(o!(
+                    "component" => "ManateePrimaryResolver"
+                ))),
+            );
             let vn = v.as_str().unwrap();
-            info!(log, "processing vnode: {:#?}", vn);
-            schema::create_bucket_schemas(conn, TEMPLATE_DIR, vn, log)?;
+            info!(log, "processing vnode: {}", vn);
+            schema::create_bucket_schemas(conn, database_config, resolver, TEMPLATE_DIR, vn, log)?;
         }
     }
     Ok(())
@@ -93,12 +102,14 @@ fn parse_opts<'a>(app: String) -> ArgMatches<'a> {
 // Callback function handed in to the fast::recieve call.
 fn vnode_response_handler(
     conn: &mut PostgresConnection,
+    database_config: &config::ConfigDatabase,
+    zk_config: &config::ConfigZookeeper,
     log: &Logger,
     msg: &FastMessage,
 ) -> Result<(), Error> {
     match msg.data.m.name.as_str() {
         "getvnodes" => {
-            parse_vnodes(conn, log, msg)?;
+            parse_vnodes(conn, database_config, zk_config, log, msg)?;
         }
         _ => warn!(log, "Received unrecognized {} response", msg.data.m.name),
     }
@@ -134,8 +145,8 @@ fn run(log: &Logger) -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let tls_config = utils::config::tls::tls_config(
-        boray_config.database.tls_mode,
-        boray_config.database.certificate,
+        boray_config.database.tls_mode.clone(),
+        boray_config.database.certificate.clone(),
     )
     .unwrap_or_else(|e| {
         crit!(log, "TLS configuration error"; "err" => %e);
@@ -144,19 +155,19 @@ fn run(log: &Logger) -> Result<(), Box<dyn std::error::Error>> {
 
     // Create a connection pool using the admin user
     let pg_config = PostgresConnectionConfig {
-        user: Some(boray_config.database.user),
+        user: Some(boray_config.database.admin_user.clone()),
         password: None,
         host: None,
         port: None,
-        database: Some(boray_config.database.database),
-        application_name: Some(boray_config.database.application_name),
+        database: Some("postgres".into()),
+        application_name: Some("schema-manager".into()),
         tls_config,
     };
 
     let connection_creator = PostgresConnection::connection_creator(pg_config);
 
     let pool_opts = ConnectionPoolOptions {
-        max_connections: Some(boray_config.cueball.max_connections),
+        max_connections: Some(1),
         claim_timeout: Some(10000),
         log: Some(log.new(o!(
             "component" => "CueballConnectionPool"
@@ -166,8 +177,8 @@ fn run(log: &Logger) -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let resolver = ManateePrimaryResolver::new(
-        boray_config.zookeeper.connection_string,
-        boray_config.zookeeper.path,
+        boray_config.zookeeper.connection_string.clone(),
+        boray_config.zookeeper.path.clone(),
         Some(log.new(o!(
             "component" => "ManateePrimaryResolver"
         ))),
@@ -180,7 +191,16 @@ fn run(log: &Logger) -> Result<(), Box<dyn std::error::Error>> {
         .expect("failed to acquire postgres connection for vnode schema setup");
 
     let mut msg_id = FastMessageId::new();
-    let recv_cb = |msg: &FastMessage| vnode_response_handler(&mut conn, &log, msg);
+    let recv_cb = |msg: &FastMessage| {
+        vnode_response_handler(
+            &mut conn,
+            &boray_config.database,
+            &boray_config.zookeeper,
+            &log,
+            msg,
+        )
+    };
+
     let vnode_method = String::from("getvnodes");
 
     fast_client::send(vnode_method, json!([fast_arg]), &mut msg_id, &mut stream)
