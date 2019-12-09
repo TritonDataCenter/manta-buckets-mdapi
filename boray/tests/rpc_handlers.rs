@@ -19,8 +19,9 @@ use boray::bucket;
 use boray::error::{BorayError, BorayErrorType};
 use boray::object;
 use boray::util;
+use utils::{config, schema};
 
-// This test suite requres PostgreSQL and pg_tmp
+// This test suite requires PostgreSQL and pg_tmp
 // (http://eradman.com/ephemeralpg/) to be installed on the test system.
 #[test]
 
@@ -45,9 +46,7 @@ fn verify_rpc_handlers() {
 
     ////////////////////////////////////////////////////////////////////////////
     // Create pg_tmp database. This requires that pg_tmp be installed on the
-    // system running the test. The create-ephemeral-db.sh script sets up two
-    // vnode schemas (vnodes 0 and 1) for use in testing. This is controlled by
-    // the ephermeral-db-schema.sql file in ./tools/postgres.
+    // system running the test.
     ////////////////////////////////////////////////////////////////////////////
     let create_db_output = Command::new("../tools/postgres/create-ephemeral-db.sh")
         .output()
@@ -64,9 +63,9 @@ fn verify_rpc_handlers() {
     ////////////////////////////////////////////////////////////////////////////
     // Create connection pool
     ////////////////////////////////////////////////////////////////////////////
-    let user = "postgres";
     let pg_port = pg_url.port().expect("failed to parse postgres port");
     let pg_db = "test";
+    let user = "postgres";
     let application_name = "boray-test";
 
     let pg_config = PostgresConnectionConfig {
@@ -85,13 +84,48 @@ fn verify_rpc_handlers() {
         claim_timeout: None,
         log: Some(log.clone()),
         rebalancer_action_delay: None,
-        decoherence_interval: None
+        decoherence_interval: None,
     };
 
     let primary_backend = (IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), pg_port);
     let resolver = StaticIpResolver::new(vec![primary_backend]);
 
     let pool = ConnectionPool::new(pool_opts, resolver, connection_creator);
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Setup the vnode schemas
+    //
+    // Use the schema-manager functions to create the vnode schemas in the
+    // postgres database. This sets up two vnode schemas (vnodes 0 and 1).
+    ////////////////////////////////////////////////////////////////////////////
+
+    let template_dir = "../schema_templates";
+
+    let mut conn = pool
+        .claim()
+        .expect("failed to acquire postgres connection for vnode schema setup");
+
+    let config = config::ConfigDatabase {
+        port: pg_port,
+        database: pg_db.to_owned(),
+        ..Default::default()
+    };
+
+    for vnode in &["0", "1"] {
+        info!(log, "processing vnode: {}", vnode);
+        let vnode_resolver = StaticIpResolver::new(vec![primary_backend]);
+
+        schema::create_bucket_schemas(
+            &mut conn,
+            &config,
+            vnode_resolver,
+            template_dir,
+            vnode,
+            &log,
+        )
+        .expect("failed to create vnode schemas");
+    }
+    drop(conn);
 
     ////////////////////////////////////////////////////////////////////////////
     // Exercise RPC handlers
