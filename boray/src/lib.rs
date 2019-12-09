@@ -144,8 +144,10 @@ pub mod util {
                         warn!(log, "timed out claiming connection";
                             "error" => CueballError::ClaimFailure.to_string());
                         let value = array_wrap(json!({
-                            "name": "OverloadedError",
-                            "message": CueballError::ClaimFailure.to_string()
+                            "error": {
+                                "name": "OverloadedError",
+                                "message": CueballError::ClaimFailure.to_string()
+                            }
                         }));
 
                         let msg_data = FastMessageData::new(method.into(), value);
