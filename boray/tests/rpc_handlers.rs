@@ -111,20 +111,18 @@ fn verify_rpc_handlers() {
         ..Default::default()
     };
 
-    for vnode in &["0", "1"] {
-        info!(log, "processing vnode: {}", vnode);
-        let vnode_resolver = StaticIpResolver::new(vec![primary_backend]);
+    let vnode_resolver = StaticIpResolver::new(vec![primary_backend]);
 
-        schema::create_bucket_schemas(
-            &mut conn,
-            &config,
-            vnode_resolver,
-            template_dir,
-            vnode,
-            &log,
-        )
-        .expect("failed to create vnode schemas");
-    }
+    schema::create_bucket_schemas(
+        &mut conn,
+        &config,
+        vnode_resolver,
+        template_dir,
+        ["0", "1"].to_vec(),
+        &log,
+    )
+    .expect("failed to create vnode schemas");
+
     drop(conn);
 
     ////////////////////////////////////////////////////////////////////////////

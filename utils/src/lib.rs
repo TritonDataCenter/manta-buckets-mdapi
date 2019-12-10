@@ -25,7 +25,7 @@ pub mod schema {
         database_config: &ConfigDatabase,
         resolver: R,
         template_dir: &str,
-        vnode: &str,
+        vnodes: Vec<&str>,
         log: &Logger,
     ) -> Result<(), Error>
     where
@@ -37,9 +37,6 @@ pub mod schema {
         let schema_template = read_schema_template(&schema_template_path)?;
 
         let template = Template::new(&schema_template);
-        let mut args = HashMap::new();
-        args.insert("vnode", vnode);
-        let schema_str = template.render(&args);
 
         info!(log, "Creating boray user and role if they don't exist");
 
@@ -92,12 +89,23 @@ pub mod schema {
             })
             .and_then(|mut conn| {
                 info!(log, "Creating boray schemas");
-                conn.simple_query(&schema_str).map_err(|e| {
-                    let err_str = format!("error on schema creation: {}, vnode: {}", e, vnode);
-                    Error::new(ErrorKind::Other, err_str)
-                })
+                let mut result: Result<(), Error> = Ok(());
+                for vnode in vnodes {
+                    info!(log, "processing vnode: {}", vnode);
+                    let mut args = HashMap::new();
+                    args.insert("vnode", vnode);
+                    let schema_str = template.render(&args);
+                    result = conn
+                        .simple_query(&schema_str)
+                        .map_err(|e| {
+                            let err_str =
+                                format!("error on schema creation: {}, vnode: {}", e, vnode);
+                            Error::new(ErrorKind::Other, err_str)
+                        })
+                        .map(|_| ());
+                }
+                result
             })
-            .and_then(|_| Ok(()))
             .or_else(|e| {
                 error!(log, "{}", e);
                 Err(e)

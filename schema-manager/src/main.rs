@@ -1,13 +1,13 @@
 // Copyright 2019 Joyent, Inc.
 
-use std::io::Error;
+use std::io::{Error, ErrorKind};
 use std::net::TcpStream;
 use std::process;
 use std::sync::Mutex;
 
 use clap::{crate_version, App, Arg, ArgMatches};
 use cmd_lib::{run_fun, FunResult};
-use serde_json::{json, Value};
+use serde_json::json;
 use slog::{crit, error, info, o, warn, Drain, Logger};
 
 use cueball::connection_pool::types::ConnectionPoolOptions;
@@ -57,33 +57,6 @@ fn init_sapi_client(sapi_address: &str, log: &Logger) -> Result<SAPI, Error> {
     Ok(SAPI::new(&sapi_address, 60, log.clone()))
 }
 
-// Iterated through the vnodes returned from electric-boray and create the
-// associated schemas on the shards
-fn parse_vnodes(
-    conn: &mut PostgresConnection,
-    database_config: &config::ConfigDatabase,
-    zk_config: &config::ConfigZookeeper,
-    log: &Logger,
-    msg: &FastMessage,
-) -> Result<(), Error> {
-    let v: Vec<Value> = msg.data.d.as_array().unwrap().to_vec();
-    for vnode in v {
-        for v in vnode.as_array().unwrap() {
-            let resolver = ManateePrimaryResolver::new(
-                zk_config.connection_string.clone(),
-                zk_config.path.clone(),
-                Some(log.new(o!(
-                    "component" => "ManateePrimaryResolver"
-                ))),
-            );
-            let vn = v.as_str().unwrap();
-            info!(log, "processing vnode: {}", vn);
-            schema::create_bucket_schemas(conn, database_config, resolver, TEMPLATE_DIR, vn, log)?;
-        }
-    }
-    Ok(())
-}
-
 // Not really used for anything yet
 fn parse_opts<'a>(app: String) -> ArgMatches<'a> {
     App::new(app)
@@ -109,12 +82,71 @@ fn vnode_response_handler(
 ) -> Result<(), Error> {
     match msg.data.m.name.as_str() {
         "getvnodes" => {
-            parse_vnodes(conn, database_config, zk_config, log, msg)?;
+            msg.data
+                .d
+                .as_array()
+                .ok_or_else(|| {
+                    // Convert the Option type from the `as_array` call into a
+                    // Result type
+                    let err_str = "Invalid data response received from \
+                                   getvnodes call: the data was not a JSON \
+                                   array";
+                    Error::new(ErrorKind::Other, err_str)
+                })
+                .and_then(|values| {
+                    // At this stage we have a vector of JSON Value types that
+                    // should all be strings, but can't guarantee that is the
+                    // case so we have to deal with errors that could occur
+                    // trying to convert the Value types to strings. Iterate
+                    // over the vector and use fold to reduce the result down to
+                    // a vector of strings or an error.
+                    let value_strs = Vec::with_capacity(values.len());
+                    let result: Result<Vec<&str>, Error> = Ok(value_strs);
+                    values.iter().fold(result, |acc, value| {
+                        if let Ok(mut strs) = acc {
+                            if let Some(value_str) = value.as_str() {
+                                strs.push(value_str);
+                                Ok(strs)
+                            } else {
+                                let err_str = "Invalid data response received \
+                                               from getvnodes call: the vnode \
+                                               data was not represented as JSON \
+                                               strings";
+                                Err(Error::new(ErrorKind::Other, err_str))
+                            }
+                        } else {
+                            acc
+                        }
+                    })
+                })
+                .and_then(|vnodes| {
+                    let resolver = ManateePrimaryResolver::new(
+                        zk_config.connection_string.clone(),
+                        zk_config.path.clone(),
+                        Some(log.new(o!(
+                            "component" => "ManateePrimaryResolver"
+                        ))),
+                    );
+                    schema::create_bucket_schemas(
+                        conn,
+                        database_config,
+                        resolver,
+                        TEMPLATE_DIR,
+                        vnodes,
+                        log,
+                    )
+                })
         }
-        _ => warn!(log, "Received unrecognized {} response", msg.data.m.name),
+        _ => {
+            let err_str = format!(
+                "Received unrecognized response to \
+                 getvnodes call: {}",
+                msg.data.m.name
+            );
+            warn!(log, "{}", err_str);
+            Err(Error::new(ErrorKind::Other, err_str))
+        }
     }
-
-    Ok(())
 }
 
 // Do the deed
@@ -128,13 +160,7 @@ fn run(log: &Logger) -> Result<(), Box<dyn std::error::Error>> {
     let boray_config = get_boray_config();
     let boray_port = boray_config.server.port;
 
-    let fast_arg = [
-        String::from("tcp://"),
-        boray_host,
-        String::from(":"),
-        boray_port.to_string(),
-    ]
-    .concat();
+    let fast_arg = ["tcp://", &boray_host, ":", &boray_port.to_string()].concat();
 
     info!(log, "pnode argument to electric-boray:{}", fast_arg);
     let eb_endpoint = [eb_address, String::from(":"), DEFAULT_EB_PORT.to_string()].concat();
