@@ -27,7 +27,7 @@ impl HasRequestId for GetGarbagePayload {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct GetGarbageResponse {
-    pub batch_id: Uuid,
+    pub batch_id: Option<Uuid>,
     pub garbage: Vec<ObjectResponse>,
 }
 
@@ -97,8 +97,6 @@ fn get_sql() -> &'static str {
 }
 
 pub(self) fn response(_method: &str, rows: &RowSlice) -> Result<GetGarbageResponse, String> {
-    let batch_id = Uuid::new_v4();
-
     let mut garbage: Vec<ObjectResponse> = Vec::with_capacity(1024);
     for row in rows {
         let content_md5_bytes: Vec<u8> = row.get("content_md5");
@@ -119,6 +117,12 @@ pub(self) fn response(_method: &str, rows: &RowSlice) -> Result<GetGarbageRespon
         };
         garbage.push(garbage_item);
     }
+
+    let batch_id = if rows.len() > 0 {
+        Some(Uuid::new_v4())
+    } else {
+        None
+    };
 
     Ok(GetGarbageResponse { batch_id, garbage })
 }
