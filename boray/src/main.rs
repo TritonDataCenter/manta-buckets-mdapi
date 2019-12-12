@@ -15,7 +15,9 @@ use tokio::runtime;
 use cueball::connection_pool::types::ConnectionPoolOptions;
 use cueball::connection_pool::ConnectionPool;
 use cueball_manatee_primary_resolver::ManateePrimaryResolver;
-use cueball_postgres_connection::{PostgresConnection, PostgresConnectionConfig};
+use cueball_postgres_connection::{
+    PostgresConnection, PostgresConnectionConfig,
+};
 use rust_fast::server;
 
 use utils::config::Config;
@@ -44,7 +46,8 @@ fn main() {
     // Configure and start metrics server
     let metrics_host = config.metrics.host.clone();
     let metrics_port = config.metrics.port;
-    let metrics_thread_builder = thread::Builder::new().name("metrics-server".into());
+    let metrics_thread_builder =
+        thread::Builder::new().name("metrics-server".into());
     let m = log.clone();
     let _mtb_handler = metrics_thread_builder
         .spawn(move || {
@@ -52,19 +55,25 @@ fn main() {
                 "component" => "MetricsServer",
                 "thread" => boray::util::get_thread_name()
             ));
-            boray::metrics::start_server(&metrics_host, metrics_port, &metrics_log)
+            boray::metrics::start_server(
+                &metrics_host,
+                metrics_port,
+                &metrics_log,
+            )
         })
         .unwrap_or_else(|e| {
             crit!(log, "failed to start metrics server"; "err" => %e);
             std::process::exit(1);
         });
 
-    let tls_config =
-        utils::config::tls::tls_config(config.database.tls_mode, config.database.certificate)
-            .unwrap_or_else(|e| {
-                crit!(log, "TLS configuration error"; "err" => %e);
-                std::process::exit(1);
-            });
+    let tls_config = utils::config::tls::tls_config(
+        config.database.tls_mode,
+        config.database.certificate,
+    )
+    .unwrap_or_else(|e| {
+        crit!(log, "TLS configuration error"; "err" => %e);
+        std::process::exit(1);
+    });
 
     let pg_config = PostgresConnectionConfig {
         user: Some(config.database.user),
@@ -104,23 +113,8 @@ fn main() {
 
     info!(log, "established postgres connection pool");
 
-    // Create the infrastructure in postgres necessary to gather the deleted
-    // objects across the local vnodes. This is only a temporary approach to get
-    // some testing off the ground.
-    let mut conn = pool.claim().expect("failed to acquire postgres connection");
-
-    match boray::gc::create_garbage_infra(&mut conn, &log) {
-        Ok(()) => info!(log, "gc infra setup complete"),
-        Err(e) => {
-            info!(
-                log,
-                "failed to create garbage infra, but it may just already exist: {}", e
-            );
-        }
-    }
-    drop(conn);
-
-    let addr = [&config.server.host, ":", &config.server.port.to_string()].concat();
+    let addr =
+        [&config.server.host, ":", &config.server.port.to_string()].concat();
     let addr = addr.parse::<SocketAddr>().unwrap();
 
     let listener = TcpListener::bind(&addr).expect("failed to bind");
@@ -129,7 +123,9 @@ fn main() {
     let err_log = log.clone();
     let server = listener
         .incoming()
-        .map_err(move |e| error!(&err_log, "failed to accept socket"; "err" => %e))
+        .map_err(
+            move |e| error!(&err_log, "failed to accept socket"; "err" => %e),
+        )
         .for_each(move |socket| {
             let pool_clone = pool.clone();
             let task_log = log.new(o!(

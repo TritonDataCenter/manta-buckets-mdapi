@@ -2,6 +2,7 @@
 
 use std::io::{Error, ErrorKind};
 use std::net::TcpStream;
+use std::path::Path;
 use std::process;
 use std::sync::Mutex;
 
@@ -13,7 +14,9 @@ use slog::{crit, error, info, o, warn, Drain, Logger};
 use cueball::connection_pool::types::ConnectionPoolOptions;
 use cueball::connection_pool::ConnectionPool;
 use cueball_manatee_primary_resolver::ManateePrimaryResolver;
-use cueball_postgres_connection::{PostgresConnection, PostgresConnectionConfig};
+use cueball_postgres_connection::{
+    PostgresConnection, PostgresConnectionConfig,
+};
 use rust_fast::client as fast_client;
 use rust_fast::protocol::{FastMessage, FastMessageId};
 use sapi::{ZoneConfig, SAPI};
@@ -29,6 +32,7 @@ use utils::schema;
 const APP: &str = "schema-manager";
 const BORAY_CONFIG_FILE_PATH: &str = "/opt/smartdc/boray/etc/config.toml";
 const TEMPLATE_DIR: &str = "/opt/smartdc/boray/schema_templates";
+const MIGRATIONS_DIR: &str = "/opt/smartdc/boray/migrations";
 const DEFAULT_EB_PORT: u32 = 2020;
 
 // Get the boray config on the local boray zone
@@ -42,7 +46,9 @@ fn get_sapi_url() -> FunResult {
 }
 
 // Call out to the sapi endpoint and get this zone's configuration
-fn get_zone_config(sapi: &SAPI) -> Result<ZoneConfig, Box<dyn std::error::Error>> {
+fn get_zone_config(
+    sapi: &SAPI,
+) -> Result<ZoneConfig, Box<dyn std::error::Error>> {
     let zone_uuid = get_zone_uuid()?;
     sapi.get_zone_config(&zone_uuid)
 }
@@ -108,10 +114,11 @@ fn vnode_response_handler(
                                 strs.push(value_str);
                                 Ok(strs)
                             } else {
-                                let err_str = "Invalid data response received \
-                                               from getvnodes call: the vnode \
-                                               data was not represented as JSON \
-                                               strings";
+                                let err_str =
+                                    "Invalid data response received \
+                                     from getvnodes call: the vnode \
+                                     data was not represented as JSON \
+                                     strings";
                                 Err(Error::new(ErrorKind::Other, err_str))
                             }
                         } else {
@@ -132,6 +139,7 @@ fn vnode_response_handler(
                         database_config,
                         resolver,
                         TEMPLATE_DIR,
+                        Path::new(MIGRATIONS_DIR),
                         vnodes,
                         log,
                     )
@@ -160,10 +168,12 @@ fn run(log: &Logger) -> Result<(), Box<dyn std::error::Error>> {
     let boray_config = get_boray_config();
     let boray_port = boray_config.server.port;
 
-    let fast_arg = ["tcp://", &boray_host, ":", &boray_port.to_string()].concat();
+    let fast_arg =
+        ["tcp://", &boray_host, ":", &boray_port.to_string()].concat();
 
     info!(log, "pnode argument to electric-boray:{}", fast_arg);
-    let eb_endpoint = [eb_address, String::from(":"), DEFAULT_EB_PORT.to_string()].concat();
+    let eb_endpoint =
+        [eb_address, String::from(":"), DEFAULT_EB_PORT.to_string()].concat();
     info!(log, "electric-boray endpoint:{}", eb_endpoint);
     let mut stream = TcpStream::connect(&eb_endpoint).unwrap_or_else(|e| {
         error!(log, "failed to connect to electric-boray: {}", e);
@@ -229,8 +239,13 @@ fn run(log: &Logger) -> Result<(), Box<dyn std::error::Error>> {
 
     let vnode_method = String::from("getvnodes");
 
-    fast_client::send(vnode_method, json!([fast_arg]), &mut msg_id, &mut stream)
-        .and_then(|_| fast_client::receive(&mut stream, recv_cb))?;
+    fast_client::send(
+        vnode_method,
+        json!([fast_arg]),
+        &mut msg_id,
+        &mut stream,
+    )
+    .and_then(|_| fast_client::receive(&mut stream, recv_cb))?;
     info!(log, "Done.");
     Ok(())
 }
