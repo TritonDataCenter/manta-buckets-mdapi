@@ -30,6 +30,7 @@ pub mod util {
     use crate::metrics;
     use crate::object;
     use crate::types::{HandlerError, HandlerResponse, HasRequestId};
+    use crate::error::{BorayError, BorayErrorType};
 
     pub fn handle_msg(
         msg: &FastMessage,
@@ -207,6 +208,13 @@ pub mod util {
 
                 Err(ret_err)
             })
+    }
+
+    // Create a LimitConstraintError error object
+    pub fn limit_constraint_error(msg: String) -> Value {
+        serde_json::to_value(BorayError::with_message(
+            BorayErrorType::LimitConstraintError, msg))
+            .expect("failed to encode a LimitConstraintError error")
     }
 
     #[allow(clippy::cast_precision_loss)]

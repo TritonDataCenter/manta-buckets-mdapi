@@ -5,6 +5,8 @@ pub enum BorayErrorType {
     BucketAlreadyExists,
     BucketNotFound,
     ObjectNotFound,
+    PostgresError,
+    LimitConstraintError,
 }
 
 impl ToString for BorayErrorType {
@@ -13,6 +15,8 @@ impl ToString for BorayErrorType {
             BorayErrorType::BucketAlreadyExists => "BucketAlreadyExists".into(),
             BorayErrorType::BucketNotFound => "BucketNotFound".into(),
             BorayErrorType::ObjectNotFound => "ObjectNotFound".into(),
+            BorayErrorType::PostgresError => "PostgresError".into(),
+            BorayErrorType::LimitConstraintError => "LimitConstraintError".into(),
         }
     }
 }
@@ -23,6 +27,8 @@ impl BorayErrorType {
             BorayErrorType::BucketAlreadyExists => "requested bucket already exists".into(),
             BorayErrorType::BucketNotFound => "requested bucket not found".into(),
             BorayErrorType::ObjectNotFound => "requested object not found".into(),
+            BorayErrorType::PostgresError => "postgres encountered an error".into(),
+            BorayErrorType::LimitConstraintError => "a limit constraint was violated".into(),
         }
     }
 }
@@ -40,8 +46,12 @@ pub struct BorayInnerError {
 
 impl BorayError {
     pub fn new(error: BorayErrorType) -> Self {
+        Self::with_message(error, error.message())
+    }
+
+    pub fn with_message(error: BorayErrorType, msg: String) -> Self {
         let inner = BorayInnerError {
-            name: error.to_string(),
+            name: msg,
             message: error.message(),
         };
         Self { error: inner }

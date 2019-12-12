@@ -2,7 +2,7 @@
 
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Error as SerdeError;
-use serde_json::{json, Value};
+use serde_json::Value;
 use slog::{debug, error, Logger};
 use uuid::Uuid;
 
@@ -59,13 +59,7 @@ pub(crate) fn action(
 
             // Database errors are returned to as regular Fast messages
             // to be handled by the calling application
-            let value = array_wrap(json!({
-                "error": {
-                    "name": "PostgresError",
-                    "message": e
-                }
-            }));
-
+            let value = sql::postgres_error(e);
             let msg_data = FastMessageData::new(method.into(), value);
             let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
             Ok(msg)
