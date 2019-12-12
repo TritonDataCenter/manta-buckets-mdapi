@@ -51,8 +51,8 @@ impl BorayError {
 
     pub fn with_message(error: BorayErrorType, msg: String) -> Self {
         let inner = BorayInnerError {
-            name: msg,
-            message: error.message(),
+            name: error.to_string(),
+            message: msg,
         };
         Self { error: inner }
     }
