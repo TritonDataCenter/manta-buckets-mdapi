@@ -5,7 +5,7 @@ use std::vec::Vec;
 use base64;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Error as SerdeError;
-use serde_json::{json, Value};
+use serde_json::Value;
 use slog::{debug, error, Logger};
 use uuid::Uuid;
 
@@ -79,12 +79,8 @@ pub(crate) fn action(
 
             // Database errors are returned to as regular Fast messages
             // to be handled by the calling application
-            let value = array_wrap(json!({
-                "name": "PostgresError",
-                "message": e
-            }));
-
-            let msg_data = FastMessageData::new(method.into(), value);
+            let value = sql::postgres_error(e);
+            let msg_data = FastMessageData::new(method.into(), array_wrap(value));
             let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
             Ok(msg)
         })
@@ -169,10 +165,7 @@ fn create_sql(vnode: u64) -> String {
 // This error is only here for completeness. In practice it should never
 // actually be called. See the invocation in this module for more information.
 fn object_create_failed() -> Value {
-    json!({
-        "name": "PostgresError",
-        "message": "Create statement failed to return any results"
-    })
+    sql::postgres_error("Create statement failed to return any results".into())
 }
 
 #[cfg(test)]

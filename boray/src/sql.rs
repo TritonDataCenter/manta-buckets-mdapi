@@ -6,6 +6,7 @@ use std::vec::Vec;
 
 use postgres::types::ToSql;
 use postgres::{Client, ToStatement, Transaction};
+use serde_json::Value;
 use tokio_postgres::Error as PGError;
 use tokio_postgres::Row as PGRow;
 
@@ -13,6 +14,7 @@ use slog::{o, trace, Logger};
 
 use crate::metrics;
 use crate::util;
+use crate::error::{BorayError, BorayErrorType};
 
 #[derive(Clone, Copy)]
 pub enum Method {
@@ -47,6 +49,13 @@ impl Method {
             Method::ObjectUpdate => "ObjectUpdate",
         }
     }
+}
+
+// Create a postgres error object
+pub fn postgres_error(msg: String) -> Value {
+    serde_json::to_value(BorayError::with_message(
+        BorayErrorType::PostgresError, msg))
+        .expect("failed to encode a PostgresError error")
 }
 
 // conn.execute wrapper that posts metrics
