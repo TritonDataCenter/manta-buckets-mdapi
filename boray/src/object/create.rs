@@ -80,7 +80,7 @@ pub(crate) fn action(
             // Database errors are returned to as regular Fast messages
             // to be handled by the calling application
             let value = sql::postgres_error(e);
-            let msg_data = FastMessageData::new(method.into(), value);
+            let msg_data = FastMessageData::new(method.into(), array_wrap(value));
             let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
             Ok(msg)
         })
