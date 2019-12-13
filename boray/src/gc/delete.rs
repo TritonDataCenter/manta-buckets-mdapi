@@ -10,6 +10,7 @@ use cueball_postgres_connection::PostgresConnection;
 use rust_fast::protocol::{FastMessage, FastMessageData};
 use tokio_postgres::Error as PGError;
 
+use crate::gc;
 use crate::sql;
 use crate::types::{HandlerResponse, HasRequestId};
 use crate::util::array_wrap;
@@ -26,7 +27,9 @@ impl HasRequestId for DeleteGarbagePayload {
     }
 }
 
-pub(crate) fn decode_msg(value: &Value) -> Result<Vec<DeleteGarbagePayload>, SerdeError> {
+pub(crate) fn decode_msg(
+    value: &Value,
+) -> Result<Vec<DeleteGarbagePayload>, SerdeError> {
     serde_json::from_value::<Vec<DeleteGarbagePayload>>(value.clone())
 }
 
@@ -46,8 +49,10 @@ pub(crate) fn action(
 
             let value = json!("ok");
 
-            let msg_data = FastMessageData::new(method.into(), array_wrap(value));
-            let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
+            let msg_data =
+                FastMessageData::new(method.into(), array_wrap(value));
+            let msg: HandlerResponse =
+                FastMessage::data(msg_id, msg_data).into();
             Ok(msg)
         })
         .or_else(|e| {
@@ -64,7 +69,8 @@ pub(crate) fn action(
             }));
 
             let msg_data = FastMessageData::new(method.into(), value);
-            let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
+            let msg: HandlerResponse =
+                FastMessage::data(msg_id, msg_data).into();
             Ok(msg)
         })
 }
@@ -116,7 +122,7 @@ fn do_delete(
         sql::txn_execute(
             sql::Method::GarbageRefresh,
             &mut txn,
-            refresh_garbage_view_sql(),
+            gc::refresh_garbage_view_sql(),
             &[],
             log,
         )
@@ -140,7 +146,7 @@ fn do_delete(
 }
 
 fn get_garbage_records_sql() -> &'static str {
-    "SELECT schma, id, name, owner, bucket_id FROM GARBAGE_BATCH"
+    "SELECT * FROM GARBAGE_BATCH"
 }
 
 fn delete_garbage_sql(schema: String) -> String {
@@ -153,10 +159,74 @@ fn delete_garbage_sql(schema: String) -> String {
     .concat()
 }
 
-fn refresh_garbage_view_sql() -> &'static str {
-    "REFRESH MATERIALIZED VIEW GARBAGE_BATCH"
-}
-
 fn update_garbage_batch_id_sql() -> &'static str {
     "UPDATE garbage_batch_id SET batch_id = $1 WHERE id = 1"
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    use quickcheck::{quickcheck, Arbitrary, Gen};
+    use serde_json;
+    use serde_json::Map;
+
+    #[derive(Clone, Debug)]
+    struct DeleteGarbageJson(Value);
+
+    impl Arbitrary for DeleteGarbageJson {
+        fn arbitrary<G: Gen>(_g: &mut G) -> Self {
+            let batch_id = serde_json::to_value(Uuid::new_v4())
+                .expect("failed to convert batch_id field to Value");
+            let request_id = serde_json::to_value(Uuid::new_v4())
+                .expect("failed to convert request_id field to Value");
+
+            let mut obj = Map::new();
+            obj.insert("batch_id".into(), batch_id);
+            obj.insert("request_id".into(), request_id);
+            DeleteGarbageJson(Value::Object(obj))
+        }
+    }
+
+    impl Arbitrary for DeleteGarbagePayload {
+        fn arbitrary<G: Gen>(_g: &mut G) -> Self {
+            let request_id = Uuid::new_v4();
+            let batch_id = Uuid::new_v4();
+
+            DeleteGarbagePayload {
+                batch_id,
+                request_id,
+            }
+        }
+    }
+
+    quickcheck! {
+        fn prop_delete_garbage_payload_roundtrip(msg: DeleteGarbagePayload) -> bool {
+            match serde_json::to_string(&msg) {
+                Ok(get_str) => {
+                    let decode_result: Result<DeleteGarbagePayload, _> =
+                        serde_json::from_str(&get_str);
+                    match decode_result {
+                        Ok(decoded_msg) => decoded_msg == msg,
+                        Err(_) => false
+                    }
+                },
+                Err(_) => false
+            }
+        }
+    }
+
+    quickcheck! {
+        fn prop_delete_garbage_payload_from_json(json: DeleteGarbageJson) -> bool {
+            let decode_result1: Result<DeleteGarbagePayload, _> =
+                serde_json::from_value(json.0.clone());
+            let res1 = decode_result1.is_ok();
+
+            let decode_result2: Result<Vec<DeleteGarbagePayload>, _> =
+                serde_json::from_value(Value::Array(vec![json.0]));
+            let res2 = decode_result2.is_ok();
+
+            res1 && res2
+        }
+    }
 }

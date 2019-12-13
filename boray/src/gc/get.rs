@@ -9,6 +9,7 @@ use cueball_postgres_connection::PostgresConnection;
 use rust_fast::protocol::{FastMessage, FastMessageData};
 use uuid::Uuid;
 
+use crate::gc;
 use crate::object::ObjectResponse;
 use crate::sql;
 use crate::types::{HandlerResponse, HasRequestId, RowSlice};
@@ -40,7 +41,9 @@ pub(self) fn to_json(gr: GetGarbageResponse) -> Value {
     serde_json::to_value(gr).expect("failed to serialize GetGarbageResponse")
 }
 
-pub(crate) fn decode_msg(value: &Value) -> Result<Vec<GetGarbagePayload>, SerdeError> {
+pub(crate) fn decode_msg(
+    value: &Value,
+) -> Result<Vec<GetGarbagePayload>, SerdeError> {
     serde_json::from_value::<Vec<GetGarbagePayload>>(value.clone())
 }
 
@@ -59,8 +62,10 @@ pub(crate) fn action(
             debug!(log, "{} operation was successful", &method);
 
             let value = to_json(resp);
-            let msg_data = FastMessageData::new(method.into(), array_wrap(value));
-            let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
+            let msg_data =
+                FastMessageData::new(method.into(), array_wrap(value));
+            let msg: HandlerResponse =
+                FastMessage::data(msg_id, msg_data).into();
             Ok(msg)
         })
         .or_else(|e| {
@@ -75,7 +80,8 @@ pub(crate) fn action(
             }));
 
             let msg_data = FastMessageData::new(method.into(), value);
-            let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
+            let msg: HandlerResponse =
+                FastMessage::data(msg_id, msg_data).into();
             Ok(msg)
         })
 }
@@ -89,14 +95,41 @@ fn do_get(
 
     sql::query(sql::Method::GarbageGet, &mut conn, sql, &[], log)
         .map_err(|e| e.to_string())
+        .and_then(|rows| {
+            if rows.is_empty() {
+                // Try to refresh the garbage view in case the view is stale
+                sql::execute(
+                    sql::Method::GarbageRefresh,
+                    &mut conn,
+                    gc::refresh_garbage_view_sql(),
+                    &[],
+                    log,
+                )
+                .and_then(|_| {
+                    sql::query(
+                        sql::Method::GarbageGet,
+                        &mut conn,
+                        sql,
+                        &[],
+                        log,
+                    )
+                })
+                .map_err(|e| e.to_string())
+            } else {
+                Ok(rows)
+            }
+        })
         .and_then(|rows| response(method, &rows))
 }
 
 fn get_sql() -> &'static str {
-    "SELECT * FROM get_garbage()"
+    "SELECT * FROM GARBAGE_BATCH"
 }
 
-pub(self) fn response(_method: &str, rows: &RowSlice) -> Result<GetGarbageResponse, String> {
+pub(self) fn response(
+    _method: &str,
+    rows: &RowSlice,
+) -> Result<GetGarbageResponse, String> {
     let mut garbage: Vec<ObjectResponse> = Vec::with_capacity(1024);
     for row in rows {
         let content_md5_bytes: Vec<u8> = row.get("content_md5");
@@ -125,4 +158,87 @@ pub(self) fn response(_method: &str, rows: &RowSlice) -> Result<GetGarbageRespon
     };
 
     Ok(GetGarbageResponse { batch_id, garbage })
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    use quickcheck::{quickcheck, Arbitrary, Gen};
+    use serde_json;
+    use serde_json::Map;
+
+    #[derive(Clone, Debug)]
+    struct GetGarbageJson(Value);
+
+    impl Arbitrary for GetGarbageJson {
+        fn arbitrary<G: Gen>(_g: &mut G) -> Self {
+            let request_id = serde_json::to_value(Uuid::new_v4())
+                .expect("failed to convert request_id field to Value");
+
+            let mut obj = Map::new();
+            obj.insert("request_id".into(), request_id);
+            GetGarbageJson(Value::Object(obj))
+        }
+    }
+
+    impl Arbitrary for GetGarbagePayload {
+        fn arbitrary<G: Gen>(_g: &mut G) -> Self {
+            let request_id = Uuid::new_v4();
+
+            GetGarbagePayload { request_id }
+        }
+    }
+
+    impl Arbitrary for GetGarbageResponse {
+        fn arbitrary<G: Gen>(g: &mut G) -> Self {
+            let garbage = Vec::<ObjectResponse>::arbitrary(g);
+            let batch_id = if garbage.is_empty() {
+                None
+            } else {
+                Some(Uuid::new_v4())
+            };
+
+            GetGarbageResponse { batch_id, garbage }
+        }
+    }
+
+    quickcheck! {
+        fn prop_get_garbage_payload_roundtrip(msg: GetGarbagePayload) -> bool {
+            match serde_json::to_string(&msg) {
+                Ok(get_str) => {
+                    let decode_result: Result<GetGarbagePayload, _> =
+                        serde_json::from_str(&get_str);
+                    match decode_result {
+                        Ok(decoded_msg) => decoded_msg == msg,
+                        Err(_) => false
+                    }
+                },
+                Err(_) => false
+            }
+        }
+    }
+
+    quickcheck! {
+        fn prop_get_garbage_payload_from_json(json: GetGarbageJson) -> bool {
+            let decode_result1: Result<GetGarbagePayload, _> =
+                serde_json::from_value(json.0.clone());
+            let res1 = decode_result1.is_ok();
+
+            let decode_result2: Result<Vec<GetGarbagePayload>, _> =
+                serde_json::from_value(Value::Array(vec![json.0]));
+            let res2 = decode_result2.is_ok();
+
+            res1 && res2
+        }
+    }
+
+    quickcheck! {
+        fn prop_get_garbage_response_to_json(objr: GetGarbageResponse) -> bool {
+            // Test the conversion to JSON. A lack of a panic in the call the
+            // `to_json` indicates success.
+            let _ = to_json(objr);
+            true
+        }
+    }
 }
