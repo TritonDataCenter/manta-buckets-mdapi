@@ -151,7 +151,7 @@ pub(self) fn response(
         garbage.push(garbage_item);
     }
 
-    let batch_id = if rows.len() > 0 {
+    let batch_id = if rows.is_empty() {
         Some(Uuid::new_v4())
     } else {
         None
