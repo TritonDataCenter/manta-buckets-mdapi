@@ -12,9 +12,9 @@ use tokio_postgres::Row as PGRow;
 
 use slog::{o, trace, Logger};
 
+use crate::error::{BucketsMdapiError, BucketsMdapiErrorType};
 use crate::metrics;
 use crate::util;
-use crate::error::{BorayError, BorayErrorType};
 
 #[derive(Clone, Copy)]
 pub enum Method {
@@ -53,9 +53,11 @@ impl Method {
 
 // Create a postgres error object
 pub fn postgres_error(msg: String) -> Value {
-    serde_json::to_value(BorayError::with_message(
-        BorayErrorType::PostgresError, msg))
-        .expect("failed to encode a PostgresError error")
+    serde_json::to_value(BucketsMdapiError::with_message(
+        BucketsMdapiErrorType::PostgresError,
+        msg,
+    ))
+    .expect("failed to encode a PostgresError error")
 }
 
 // conn.execute wrapper that posts metrics

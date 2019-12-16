@@ -1,39 +1,50 @@
-# boray
+# manta-buckets-mdapi: The Manta buckets metadata API
 
-A component of the manta buckets storage system for communicating with [Manatee](https://github.com/joyent/manatee).
+This repository comprises a rust workspace with two different binary project and
+a library project. The binaries are `buckets-mdapi` and `schema-manager`.
+
+`buckets-mdapi` is a component of the manta buckets storage system that exposes
+an API for interacting with Manta object metadata using the
+[Fast](https:/github.com/joyent/node-fast) protocol.
+
+`schema-manager` is a tool that performs the necessary database configuration
+to ensure the database is properly prepared for `buckets-mdapi`. Each time it
+executes it only does the necessary work to ensure the database correctly
+prepared. It will not overwrite or destroy existing structures in the database.
 
 ## Quick start
 
+The following steps
     cp config.toml.dist config.toml
     vi config.toml
-    cargo run -- -c config.toml
+    cargo run --bin buckets_mdapi -- -c config.toml
 
 ## Configuration
 
-Boray features a variety of configuration option to tailor the behavior to
+There are a variety of configuration options to tailor the behavior to
 particular environments. The configuration options are organized into categories
 and each are described below.
 
 ### Logging
 
-The logging configuration entries pertaining the boray's logging behavior.
+The logging configuration entries pertaining the `'s logging behavior.
 
-* `level` - The logging level for boray to use. Possible values are `Critical`,
+* `level` - The logging level for buckets-mdapi to use. Possible values are `Critical`,
   `Error`, `Warning`, `Info`, `Debug`, and `Trace`. The default value is `Info`.
 
 ### Server
 
-The configuration entries controlling the boray server behavior.
+The configuration entries controlling the buckets-mdapi server behavior.
 
-* `host` - The IP address boray should use to listen for incoming connections.
-* `port` - The port number boray should listen on for incoming connections.
+* `host` - The IP address buckets-mdapi should use to listen for incoming connections.
+* `port` - The port number buckets-mdapi should listen on for incoming connections.
 
 ### Metrics
 
-The configuraiton entries controlling the boray metrics server.
+The configuration entries controlling the buckets-mdapi metrics server.
 
-* `host` - The IP address boray should use to listen for metrics requests.
-* `port` - The port number boray should listen on for incoming metrics request
+* `host` - The IP address buckets-mdapi should use to listen for metrics requests.
+* `port` - The port number buckets-mdapi should listen on for incoming metrics request
   connections.
 
 ### Database
@@ -64,13 +75,13 @@ The database connection pool configuration entries.
   error. The default is 500 ms.
 * `rebalancer_action_delay` - The time in milliseconds to wait prior to
   rebalancing the connection pool when a notification is received from the
-  resolver regarding a change in the service topology. For the case of boray
+  resolver regarding a change in the service topology. For the case of buckets-mdapi
   using the postgres primary resolver this delay should not be very high. The
   default value is 20 ms.
 
 ### Tokio
 
-Tokio provides the runtime for boray and these are configuration options to
+Tokio provides the runtime for buckets-mdapi and these are configuration options to
 control the behavior of the Tokio runtime.
 
 * `core_threads` - The maximum number of worker threads for the Tokio Runtime's
@@ -92,7 +103,7 @@ control the behavior of the Tokio runtime.
 * `thread_stack_size` - The stack size (in bytes) for worker threads. The
   default is 2 MiB.
 * `thread_name_prefix` - The name prefix of threads spawned by the Tokio
-  Runtime's thread pool. The default is `boray-woker-`.
+  Runtime's thread pool. The default is `buckets-mdapi-worker-`.
 
 ## Testing
 

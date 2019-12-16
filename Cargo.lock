@@ -136,7 +136,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "boray"
+name = "buckets-mdapi"
 version = "0.1.0"
 dependencies = [
  "base64 0.10.1 (registry+https://github.com/rust-lang/crates.io-index)",

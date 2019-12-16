@@ -22,18 +22,18 @@ use utils::config;
 use utils::schema;
 
 /* TODO
-    - make boray config file, schema file and fast arg
+    - make config file, schema file and fast arg
       command line args for overriding.
 */
 
 const APP: &str = "schema-manager";
-const BORAY_CONFIG_FILE_PATH: &str = "/opt/smartdc/boray/etc/config.toml";
-const TEMPLATE_DIR: &str = "/opt/smartdc/boray/schema_templates";
+const BUCKETS_MDAPI_CONFIG_FILE_PATH: &str = "/opt/smartdc/buckets-mdapi/etc/config.toml";
+const TEMPLATE_DIR: &str = "/opt/smartdc/buckets-mdapi/schema_templates";
 const DEFAULT_EB_PORT: u32 = 2020;
 
-// Get the boray config on the local boray zone
-fn get_boray_config() -> config::Config {
-    config::read_file(BORAY_CONFIG_FILE_PATH)
+// Get the config on the local buckets-mdapi zone
+fn get_buckets_mdapi_config() -> config::Config {
+    config::read_file(BUCKETS_MDAPI_CONFIG_FILE_PATH)
 }
 
 // Get the sapi URL from the local zone
@@ -47,7 +47,7 @@ fn get_zone_config(sapi: &SAPI) -> Result<ZoneConfig, Box<dyn std::error::Error>
     sapi.get_zone_config(&zone_uuid)
 }
 
-// Get the boray zone UUID for use in the sapi config request
+// Get the buckets-mdapi zone UUID for use in the sapi config request
 fn get_zone_uuid() -> FunResult {
     run_fun!("/usr/bin/zonename")
 }
@@ -57,7 +57,7 @@ fn init_sapi_client(sapi_address: &str, log: &Logger) -> Result<SAPI, Error> {
     Ok(SAPI::new(&sapi_address, 60, log.clone()))
 }
 
-// Iterated through the vnodes returned from electric-boray and create the
+// Iterate through the vnodes returned from buckets-mdplacement and create the
 // associated schemas on the shards
 fn parse_vnodes(
     conn: &mut PostgresConnection,
@@ -88,7 +88,7 @@ fn parse_vnodes(
 fn parse_opts<'a>(app: String) -> ArgMatches<'a> {
     App::new(app)
         .version(crate_version!())
-        .about("Tool to manage postgres schemas for boray")
+        .about("Tool to manage postgres schemas for buckets-mdapi")
         .arg(
             Arg::with_name("fast_args")
                 .help("JSON-encoded arguments for RPC method call")
@@ -123,30 +123,35 @@ fn run(log: &Logger) -> Result<(), Box<dyn std::error::Error>> {
     info!(log, "sapi_url:{}", sapi_url);
     let sapi = init_sapi_client(&sapi_url, &log)?;
     let zone_config = get_zone_config(&sapi)?;
-    let eb_address = zone_config.metadata.electric_boray;
-    let boray_host = zone_config.metadata.service_name;
-    let boray_config = get_boray_config();
-    let boray_port = boray_config.server.port;
+    let mdplacement_address = zone_config.metadata.electric_boray;
+    let buckets_mdapi_host = zone_config.metadata.service_name;
+    let buckets_mdapi_config = get_buckets_mdapi_config();
+    let buckets_mdapi_port = buckets_mdapi_config.server.port;
 
     let fast_arg = [
         String::from("tcp://"),
-        boray_host,
+        buckets_mdapi_host,
         String::from(":"),
-        boray_port.to_string(),
+        buckets_mdapi_port.to_string(),
     ]
     .concat();
 
-    info!(log, "pnode argument to electric-boray:{}", fast_arg);
-    let eb_endpoint = [eb_address, String::from(":"), DEFAULT_EB_PORT.to_string()].concat();
-    info!(log, "electric-boray endpoint:{}", eb_endpoint);
-    let mut stream = TcpStream::connect(&eb_endpoint).unwrap_or_else(|e| {
-        error!(log, "failed to connect to electric-boray: {}", e);
+    info!(log, "pnode argument to buckets-mdplacement:{}", fast_arg);
+    let mdplacement_endpoint = [
+        mdplacement_address,
+        String::from(":"),
+        DEFAULT_EB_PORT.to_string(),
+    ]
+    .concat();
+    info!(log, "buckets-mdplacement endpoint:{}", mdplacement_endpoint);
+    let mut stream = TcpStream::connect(&mdplacement_endpoint).unwrap_or_else(|e| {
+        error!(log, "failed to connect to buckets-mdplacement: {}", e);
         process::exit(1)
     });
 
     let tls_config = utils::config::tls::tls_config(
-        boray_config.database.tls_mode.clone(),
-        boray_config.database.certificate.clone(),
+        buckets_mdapi_config.database.tls_mode.clone(),
+        buckets_mdapi_config.database.certificate.clone(),
     )
     .unwrap_or_else(|e| {
         crit!(log, "TLS configuration error"; "err" => %e);
@@ -155,7 +160,7 @@ fn run(log: &Logger) -> Result<(), Box<dyn std::error::Error>> {
 
     // Create a connection pool using the admin user
     let pg_config = PostgresConnectionConfig {
-        user: Some(boray_config.database.admin_user.clone()),
+        user: Some(buckets_mdapi_config.database.admin_user.clone()),
         password: None,
         host: None,
         port: None,
@@ -172,13 +177,13 @@ fn run(log: &Logger) -> Result<(), Box<dyn std::error::Error>> {
         log: Some(log.new(o!(
             "component" => "CueballConnectionPool"
         ))),
-        rebalancer_action_delay: boray_config.cueball.rebalancer_action_delay,
+        rebalancer_action_delay: buckets_mdapi_config.cueball.rebalancer_action_delay,
         decoherence_interval: None,
     };
 
     let resolver = ManateePrimaryResolver::new(
-        boray_config.zookeeper.connection_string.clone(),
-        boray_config.zookeeper.path.clone(),
+        buckets_mdapi_config.zookeeper.connection_string.clone(),
+        buckets_mdapi_config.zookeeper.path.clone(),
         Some(log.new(o!(
             "component" => "ManateePrimaryResolver"
         ))),
@@ -194,8 +199,8 @@ fn run(log: &Logger) -> Result<(), Box<dyn std::error::Error>> {
     let recv_cb = |msg: &FastMessage| {
         vnode_response_handler(
             &mut conn,
-            &boray_config.database,
-            &boray_config.zookeeper,
+            &buckets_mdapi_config.database,
+            &buckets_mdapi_config.zookeeper,
             &log,
             msg,
         )
