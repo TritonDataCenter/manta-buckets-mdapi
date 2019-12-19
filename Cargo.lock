@@ -143,7 +143,7 @@ dependencies = [
  "chrono 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.32.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "cueball 0.2.1 (git+https://github.com/joyent/rust-cueball?tag=v0.2.1)",
- "cueball-manatee-primary-resolver 0.1.0 (git+https://github.com/joyent/rust-cueball-manatee-primary-resolver?tag=v0.1.0)",
+ "cueball-manatee-primary-resolver 0.1.0 (git+https://github.com/joyent/rust-cueball-manatee-primary-resolver?tag=v0.1.1)",
  "cueball-postgres-connection 0.1.1 (git+https://github.com/joyent/rust-cueball-postgres-connection?tag=v0.1.1)",
  "cueball-static-resolver 0.2.0 (git+https://github.com/joyent/rust-cueball-static-resolver)",
  "hyper 0.12.25 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -393,7 +393,7 @@ dependencies = [
 [[package]]
 name = "cueball-manatee-primary-resolver"
 version = "0.1.0"
-source = "git+https://github.com/joyent/rust-cueball-manatee-primary-resolver?tag=v0.1.0#211ea0bb9424743bda9e83db2f0168d8f2eac0f0"
+source = "git+https://github.com/joyent/rust-cueball-manatee-primary-resolver?tag=v0.1.1#59dcaac6c42105d171f02bb4c28d37236bf07058"
 dependencies = [
  "cueball 0.2.1 (git+https://github.com/joyent/rust-cueball?tag=v0.2.1)",
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -405,7 +405,7 @@ dependencies = [
  "slog 2.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "slog-stdlog 3.0.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio 0.1.22 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio-zookeeper 0.1.3 (git+https://github.com/joyent/tokio-zookeeper?branch=temp-fix)",
+ "tokio-zookeeper 0.1.3 (git+https://github.com/joyent/tokio-zookeeper?tag=v0.1.0)",
  "url 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -1741,7 +1741,7 @@ dependencies = [
  "clap 2.32.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "cmd_lib 0.7.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "cueball 0.2.1 (git+https://github.com/joyent/rust-cueball?tag=v0.2.1)",
- "cueball-manatee-primary-resolver 0.1.0 (git+https://github.com/joyent/rust-cueball-manatee-primary-resolver?tag=v0.1.0)",
+ "cueball-manatee-primary-resolver 0.1.0 (git+https://github.com/joyent/rust-cueball-manatee-primary-resolver?tag=v0.1.1)",
  "cueball-postgres-connection 0.1.1 (git+https://github.com/joyent/rust-cueball-postgres-connection?tag=v0.1.1)",
  "dotenv 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rust_fast 0.1.0 (git+https://github.com/joyent/rust-fast?tag=v0.1.0)",
@@ -2299,7 +2299,7 @@ dependencies = [
 [[package]]
 name = "tokio-zookeeper"
 version = "0.1.3"
-source = "git+https://github.com/joyent/tokio-zookeeper?branch=temp-fix#b7dfa0fc38f8b88e1a3add0a33c1c7889ca54a50"
+source = "git+https://github.com/joyent/tokio-zookeeper?tag=v0.1.0#1353a0b3b81916983684f77af1aa01e83f92f654"
 dependencies = [
  "byteorder 1.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2415,7 +2415,7 @@ version = "0.1.0"
 dependencies = [
  "clap 2.32.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "cueball 0.2.1 (git+https://github.com/joyent/rust-cueball?tag=v0.2.1)",
- "cueball-manatee-primary-resolver 0.1.0 (git+https://github.com/joyent/rust-cueball-manatee-primary-resolver?tag=v0.1.0)",
+ "cueball-manatee-primary-resolver 0.1.0 (git+https://github.com/joyent/rust-cueball-manatee-primary-resolver?tag=v0.1.1)",
  "cueball-postgres-connection 0.1.1 (git+https://github.com/joyent/rust-cueball-postgres-connection?tag=v0.1.1)",
  "num_cpus 1.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.103 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2560,7 +2560,7 @@ dependencies = [
 "checksum crossbeam-utils 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ce446db02cdc3165b94ae73111e570793400d0794e46125cc4056c81cbb039f4"
 "checksum crypto-mac 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "4434400df11d95d556bac068ddfedd482915eb18fe8bea89bc80b6e4b1c179e5"
 "checksum cueball 0.2.1 (git+https://github.com/joyent/rust-cueball?tag=v0.2.1)" = "<none>"
-"checksum cueball-manatee-primary-resolver 0.1.0 (git+https://github.com/joyent/rust-cueball-manatee-primary-resolver?tag=v0.1.0)" = "<none>"
+"checksum cueball-manatee-primary-resolver 0.1.0 (git+https://github.com/joyent/rust-cueball-manatee-primary-resolver?tag=v0.1.1)" = "<none>"
 "checksum cueball-postgres-connection 0.1.1 (git+https://github.com/joyent/rust-cueball-postgres-connection?tag=v0.1.1)" = "<none>"
 "checksum cueball-static-resolver 0.2.0 (git+https://github.com/joyent/rust-cueball-static-resolver)" = "<none>"
 "checksum darling 0.8.6 (registry+https://github.com/rust-lang/crates.io-index)" = "9158d690bc62a3a57c3e45b85e4d50de2008b39345592c64efd79345c7e24be0"
@@ -2764,7 +2764,7 @@ dependencies = [
 "checksum tokio-tls 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "354b8cd83825b3c20217a9dc174d6a0c67441a2fae5c41bcb1ea6679f6ae0f7c"
 "checksum tokio-udp 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)" = "66268575b80f4a4a710ef83d087fdfeeabdce9b74c797535fbac18a2cb906e92"
 "checksum tokio-uds 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)" = "037ffc3ba0e12a0ab4aca92e5234e0dedeb48fddf6ccd260f1f150a36a9f2445"
-"checksum tokio-zookeeper 0.1.3 (git+https://github.com/joyent/tokio-zookeeper?branch=temp-fix)" = "<none>"
+"checksum tokio-zookeeper 0.1.3 (git+https://github.com/joyent/tokio-zookeeper?tag=v0.1.0)" = "<none>"
 "checksum toml 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)" = "87c5890a989fa47ecdc7bcb4c63a77a82c18f306714104b1decfd722db17b39e"
 "checksum try-lock 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "e604eb7b43c06650e854be16a2a03155743d3752dd1c943f6829e26b7a36e382"
 "checksum try_from 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)" = "283d3b89e1368717881a9d51dad843cc435380d8109c9e47d38780a324698d8b"
