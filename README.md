@@ -27,7 +27,7 @@ and each are described below.
 
 ### Logging
 
-The logging configuration entries pertaining the `'s logging behavior.
+The logging configuration entries pertaining the bucket-mdapi's logging behavior.
 
 * `level` - The logging level for buckets-mdapi to use. Possible values are `Critical`,
   `Error`, `Warning`, `Info`, `Debug`, and `Trace`. The default value is `Info`.
