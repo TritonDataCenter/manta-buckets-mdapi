@@ -7,7 +7,7 @@
       "service": {
         "srvce": "_buckets_mdapi",
         "proto": "_tcp",
-        "port": 2030
+        "port": 2020
       },
       "ttl": 60
     },
