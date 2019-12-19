@@ -1,7 +1,0 @@
-[package]
-name = "boray"
-version = "0.1.0"
-authors = ["bowrocker <jon.anderson@joyent.com>"]
-edition = "2018"
-
-[dependencies]
