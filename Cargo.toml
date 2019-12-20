@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "boray",
+    "buckets-mdapi",
     "schema-manager",
     "utils",
 ]

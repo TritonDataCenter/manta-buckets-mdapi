@@ -4,10 +4,10 @@
 
 pub mod bucket;
 pub mod error;
-pub mod sql;
 pub mod metrics;
 pub mod object;
 pub mod opts;
+pub mod sql;
 
 pub mod util {
     use std::io::Error as IOError;
@@ -27,10 +27,10 @@ pub mod util {
     use rust_fast::protocol::{FastMessage, FastMessageData};
 
     use crate::bucket;
+    use crate::error::{BucketsMdapiError, BucketsMdapiErrorType};
     use crate::metrics;
     use crate::object;
     use crate::types::{HandlerError, HandlerResponse, HasRequestId};
-    use crate::error::{BorayError, BorayErrorType};
 
     pub fn handle_msg(
         msg: &FastMessage,
@@ -212,9 +212,11 @@ pub mod util {
 
     // Create a LimitConstraintError error object
     pub fn limit_constraint_error(msg: String) -> Value {
-        serde_json::to_value(BorayError::with_message(
-            BorayErrorType::LimitConstraintError, msg))
-            .expect("failed to encode a LimitConstraintError error")
+        serde_json::to_value(BucketsMdapiError::with_message(
+            BucketsMdapiErrorType::LimitConstraintError,
+            msg,
+        ))
+        .expect("failed to encode a LimitConstraintError error")
     }
 
     #[allow(clippy::cast_precision_loss)]
@@ -297,7 +299,10 @@ pub mod util {
     }
 
     pub fn get_thread_name() -> String {
-        thread::current().name().unwrap_or_else(|| "unnamed").to_string()
+        thread::current()
+            .name()
+            .unwrap_or_else(|| "unnamed")
+            .to_string()
     }
 }
 

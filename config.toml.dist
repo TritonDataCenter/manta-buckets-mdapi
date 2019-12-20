@@ -13,8 +13,8 @@ port = 3020
 user = "postgres"
 host = "127.0.0.1"
 port = 5432
-database = "boray"
-application_name = "boray"
+database = "buckets_metadata"
+application_name = "buckets_mdapi"
 tls_mode = "disable"
 
 [cueball]
@@ -36,4 +36,4 @@ blocking_threads = 200
 # default behavior is to disable keep alive for threads.
 thread_keep_alive = 60
 thread_stack_size = 2097152
-thread_name_prefix = "boray-worker-"
+thread_name_prefix = "buckets-mdapi-worker-"

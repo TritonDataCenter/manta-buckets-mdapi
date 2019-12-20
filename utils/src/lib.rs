@@ -41,11 +41,14 @@ pub mod schema {
         args.insert("vnode", vnode);
         let schema_str = template.render(&args);
 
-        info!(log, "Creating boray user and role if they don't exist");
+        info!(
+            log,
+            "Creating buckets-mdapi user and role if they don't exist"
+        );
 
         create_user_role(admin_conn, &admin_template_path)
             .and_then(|_| {
-                info!(log, "Creating boray database if it doesn't exist");
+                info!(log, "Creating buckets-mdapi database if it doesn't exist");
                 create_database(admin_conn, &db_template_path)
             })
             .and_then(|_| {
@@ -59,9 +62,12 @@ pub mod schema {
                 .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))
             })
             .and_then(|tls_config| {
-                // Create the connection pool to the boray database using the
-                // boray role
-                info!(log, "Creating a connection pool to the boray database");
+                // Create the connection pool to the buckets-mdapi database using the
+                // buckets-mdapi role
+                info!(
+                    log,
+                    "Creating a connection pool to the buckets-mdapi database"
+                );
 
                 let pg_config = PostgresConnectionConfig {
                     user: Some(database_config.user.clone()),
@@ -91,7 +97,7 @@ pub mod schema {
                     .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))
             })
             .and_then(|mut conn| {
-                info!(log, "Creating boray schemas");
+                info!(log, "Creating buckets-mdapi schemas");
                 conn.simple_query(&schema_str).map_err(|e| {
                     let err_str = format!("error on schema creation: {}, vnode: {}", e, vnode);
                     Error::new(ErrorKind::Other, err_str)
@@ -151,7 +157,7 @@ pub mod config {
 
     #![allow(clippy::module_name_repetitions)]
 
-    /// Data structures and helper functions for boray configuration.
+    /// Data structures and helper functions for buckets-mdapi configuration.
     ///
     /// Default configuration parameters are set in the different `Default` trait
     /// implementations in this module.  These can first be overridden by a config
@@ -170,7 +176,7 @@ pub mod config {
     use cueball_manatee_primary_resolver::ZkConnectString;
     use cueball_postgres_connection::TlsConnectMode;
 
-    /// A type representing the valid logging levels in a boray configuration.
+    /// A type representing the valid logging levels in a buckets-mdapi configuration.
     ///
     /// This is necessary only because of there is not a serde `Derserialize`
     /// implementation available for the `slog::Level` type.
@@ -248,9 +254,9 @@ pub mod config {
     pub struct Config {
         /// The logging configuration entries
         pub log: ConfigLog,
-        /// The configuration entries controlling the boray server behavior
+        /// The configuration entries controlling the buckets-mdapi server behavior
         pub server: ConfigServer,
-        /// The configuraiton entries controlling the boray metrics server
+        /// The configuration entries controlling the buckets-mdapi metrics server
         pub metrics: ConfigMetrics,
         /// The database connection configuration entries
         pub database: ConfigDatabase,
@@ -259,13 +265,13 @@ pub mod config {
         /// The database connection pool configuration entries
         pub cueball: ConfigCueball,
         /// The configuration entries controlling the behavior of the tokio runtime
-        /// used by boray.
+        /// used by buckets-mdapi.
         pub tokio: ConfigTokio,
     }
 
     #[derive(Clone, Deserialize)]
     pub struct ConfigLog {
-        /// The logging level for boray to use.
+        /// The logging level for buckets-mdapi to use.
         pub level: LogLevel,
     }
 
@@ -279,9 +285,9 @@ pub mod config {
 
     #[derive(Clone, Deserialize)]
     pub struct ConfigServer {
-        /// The IP address boray should use to listen for incoming connections.
+        /// The IP address buckets-mdapi should use to listen for incoming connections.
         pub host: String,
-        /// The port number boray should listen on for incoming connections.
+        /// The port number buckets-mdapi should listen on for incoming connections.
         pub port: u16,
     }
 
@@ -296,9 +302,9 @@ pub mod config {
 
     #[derive(Clone, Deserialize)]
     pub struct ConfigMetrics {
-        /// The IP address boray should use to listen for metrics requests
+        /// The IP address buckets-mdapi should use to listen for metrics requests
         pub host: String,
-        /// The port number boray should listen on for incoming metrics request connections.
+        /// The port number buckets-mdapi should listen on for incoming metrics request connections.
         pub port: u16,
     }
 
@@ -338,8 +344,8 @@ pub mod config {
                 user: "postgres".into(),
                 host: "127.0.0.1".to_owned(),
                 port: 5432,
-                database: "boray".to_owned(),
-                application_name: "boray".into(),
+                database: "buckets_metadata".to_owned(),
+                application_name: "buckets_mdapi".into(),
                 tls_mode: TlsConnectMode::Disable,
                 certificate: None,
             }
@@ -355,7 +361,7 @@ pub mod config {
     impl Default for ConfigZookeeper {
         fn default() -> Self {
             ConfigZookeeper {
-                path: "/manatee/1.boray.example.com".into(),
+                path: "/manatee/1.buckets-mdapi.example.com".into(),
                 connection_string: ZkConnectString::from_str("127.0.0.1").unwrap(),
             }
         }
@@ -369,7 +375,7 @@ pub mod config {
         pub claim_timeout: Option<u64>,
         /// The time in milliseconds to wait prior to rebalancing the connection
         /// pool when a notification is received from the resolver regarding a
-        /// change in the service topology. For the case of boray using the postgres
+        /// change in the service topology. For the case of buckets-mdapi using the postgres
         /// primary resolver this delay should not be very high. The default value
         /// is 20 ms.
         pub rebalancer_action_delay: Option<u64>,
@@ -410,7 +416,7 @@ pub mod config {
         /// The stack size (in bytes) for worker threads. The default is 2 MiB.
         pub thread_stack_size: usize,
         /// The name prefix of threads spawned by the Tokio Runtime's thread
-        /// pool. The default is `boray-woker-`.
+        /// pool. The default is `buckets-mdapi-woker-`.
         pub thread_name_prefix: String,
     }
 
@@ -421,7 +427,7 @@ pub mod config {
                 blocking_threads: 200,
                 thread_keep_alive: None,
                 thread_stack_size: 2 * 1024 * 1024,
-                thread_name_prefix: "boray-worker-".into(),
+                thread_name_prefix: "buckets-mdapi-worker-".into(),
             }
         }
     }

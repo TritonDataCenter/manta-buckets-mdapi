@@ -15,10 +15,10 @@ use cueball_postgres_connection::{PostgresConnection, PostgresConnectionConfig, 
 use cueball_static_resolver::StaticIpResolver;
 use rust_fast::protocol::{FastMessage, FastMessageData};
 
-use boray::bucket;
-use boray::error::{BorayError, BorayErrorType};
-use boray::object;
-use boray::util;
+use buckets_mdapi::bucket;
+use buckets_mdapi::error::{BucketsMdapiError, BucketsMdapiErrorType};
+use buckets_mdapi::object;
+use buckets_mdapi::util;
 use utils::{config, schema};
 
 // This test suite requires PostgreSQL and pg_tmp
@@ -66,7 +66,7 @@ fn verify_rpc_handlers() {
     let pg_port = pg_url.port().expect("failed to parse postgres port");
     let pg_db = "test";
     let user = "postgres";
-    let application_name = "boray-test";
+    let application_name = "buckets_mdapi_test";
 
     let pg_config = PostgresConnectionConfig {
         user: Some(user.into()),
@@ -152,12 +152,12 @@ fn verify_rpc_handlers() {
     let get_bucket_response = get_bucket_result.unwrap();
     assert_eq!(get_bucket_response.len(), 1);
 
-    let get_bucket_response_result: Result<BorayError, _> =
+    let get_bucket_response_result: Result<BucketsMdapiError, _> =
         serde_json::from_value(get_bucket_response[0].data.d[0].clone());
     assert!(get_bucket_response_result.is_ok());
     assert_eq!(
         get_bucket_response_result.unwrap(),
-        BorayError::new(BorayErrorType::BucketNotFound)
+        BucketsMdapiError::new(BucketsMdapiErrorType::BucketNotFound)
     );
 
     // Create a bucket
@@ -203,12 +203,12 @@ fn verify_rpc_handlers() {
     let create_bucket_response = create_bucket_result.unwrap();
     assert_eq!(create_bucket_response.len(), 1);
 
-    let create_bucket_response_result: Result<BorayError, _> =
+    let create_bucket_response_result: Result<BucketsMdapiError, _> =
         serde_json::from_value(create_bucket_response[0].data.d[0].clone());
     assert!(create_bucket_response_result.is_ok());
     assert_eq!(
         create_bucket_response_result.unwrap(),
-        BorayError::new(BorayErrorType::BucketAlreadyExists)
+        BucketsMdapiError::new(BucketsMdapiErrorType::BucketAlreadyExists)
     );
 
     // Delete bucket
@@ -241,12 +241,12 @@ fn verify_rpc_handlers() {
     let get_bucket_response = get_bucket_result.unwrap();
     assert_eq!(get_bucket_response.len(), 1);
 
-    let get_bucket_response_result: Result<BorayError, _> =
+    let get_bucket_response_result: Result<BucketsMdapiError, _> =
         serde_json::from_value(get_bucket_response[0].data.d[0].clone());
     assert!(get_bucket_response_result.is_ok());
     assert_eq!(
         get_bucket_response_result.unwrap(),
-        BorayError::new(BorayErrorType::BucketNotFound)
+        BucketsMdapiError::new(BucketsMdapiErrorType::BucketNotFound)
     );
 
     // Attempt to delete a nonexistent bucket and verify an error is returned
@@ -256,12 +256,12 @@ fn verify_rpc_handlers() {
     let delete_bucket_response = delete_bucket_result.unwrap();
     assert_eq!(delete_bucket_response.len(), 1);
 
-    let delete_bucket_response_result: Result<BorayError, _> =
+    let delete_bucket_response_result: Result<BucketsMdapiError, _> =
         serde_json::from_value(delete_bucket_response[0].data.d[0].clone());
     assert!(delete_bucket_response_result.is_ok());
     assert_eq!(
         delete_bucket_response_result.unwrap(),
-        BorayError::new(BorayErrorType::BucketNotFound)
+        BucketsMdapiError::new(BucketsMdapiErrorType::BucketNotFound)
     );
 
     // Try to read an object
@@ -284,12 +284,12 @@ fn verify_rpc_handlers() {
     let get_object_response = get_object_result.unwrap();
     assert_eq!(get_object_response.len(), 1);
 
-    let get_object_response_result: Result<BorayError, _> =
+    let get_object_response_result: Result<BucketsMdapiError, _> =
         serde_json::from_value(get_object_response[0].data.d[0].clone());
     assert!(get_object_response_result.is_ok());
     assert_eq!(
         get_object_response_result.unwrap(),
-        BorayError::new(BorayErrorType::ObjectNotFound)
+        BucketsMdapiError::new(BucketsMdapiErrorType::ObjectNotFound)
     );
 
     // Try to update an nonexistent object's metadata
@@ -327,12 +327,12 @@ fn verify_rpc_handlers() {
     let mut update_object_response = update_object_result.unwrap();
     assert_eq!(update_object_response.len(), 1);
 
-    let update_object_response_result: Result<BorayError, _> =
+    let update_object_response_result: Result<BucketsMdapiError, _> =
         serde_json::from_value(update_object_response[0].data.d[0].clone());
     assert!(update_object_response_result.is_ok());
     assert_eq!(
         update_object_response_result.unwrap(),
-        BorayError::new(BorayErrorType::ObjectNotFound)
+        BucketsMdapiError::new(BucketsMdapiErrorType::ObjectNotFound)
     );
 
     // Create an object
@@ -446,12 +446,12 @@ fn verify_rpc_handlers() {
     let get_object_response = get_object_result.unwrap();
     assert_eq!(get_object_response.len(), 1);
 
-    let get_object_response_result: Result<BorayError, _> =
+    let get_object_response_result: Result<BucketsMdapiError, _> =
         serde_json::from_value(get_object_response[0].data.d[0].clone());
     assert!(get_object_response_result.is_ok());
     assert_eq!(
         get_object_response_result.unwrap(),
-        BorayError::new(BorayErrorType::ObjectNotFound)
+        BucketsMdapiError::new(BucketsMdapiErrorType::ObjectNotFound)
     );
 
     // Delete the object again and verify it is not found
@@ -461,12 +461,12 @@ fn verify_rpc_handlers() {
     let delete_object_response = delete_object_result.unwrap();
     assert_eq!(delete_object_response.len(), 1);
 
-    let delete_object_response_result: Result<BorayError, _> =
+    let delete_object_response_result: Result<BucketsMdapiError, _> =
         serde_json::from_value(delete_object_response[0].data.d[0].clone());
     assert!(delete_object_response_result.is_ok());
     assert_eq!(
         delete_object_response_result.unwrap(),
-        BorayError::new(BorayErrorType::ObjectNotFound)
+        BucketsMdapiError::new(BucketsMdapiErrorType::ObjectNotFound)
     );
 
     // List buckets and confirm none are found

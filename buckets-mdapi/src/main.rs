@@ -1,6 +1,5 @@
 // Copyright 2019 Joyent, Inc.
 
-
 use std::default::Default;
 use std::net::SocketAddr;
 use std::sync::Mutex;
@@ -15,14 +14,14 @@ use tokio::runtime;
 
 use cueball::connection_pool::types::ConnectionPoolOptions;
 use cueball::connection_pool::ConnectionPool;
-use cueball_postgres_connection::{PostgresConnection, PostgresConnectionConfig};
 use cueball_manatee_primary_resolver::ManateePrimaryResolver;
+use cueball_postgres_connection::{PostgresConnection, PostgresConnectionConfig};
 use rust_fast::server;
 
 use utils::config::Config;
 
 fn main() {
-    let matches = boray::opts::parse(crate_name!());
+    let matches = buckets_mdapi::opts::parse(crate_name!());
 
     // Optionally read config file
     let mut config: Config = match matches.value_of("config") {
@@ -51,20 +50,21 @@ fn main() {
         .spawn(move || {
             let metrics_log = m.new(o!(
                 "component" => "MetricsServer",
-                "thread" => boray::util::get_thread_name()
+                "thread" => buckets_mdapi::util::get_thread_name()
             ));
-            boray::metrics::start_server(&metrics_host, metrics_port, &metrics_log)
+            buckets_mdapi::metrics::start_server(&metrics_host, metrics_port, &metrics_log)
         })
         .unwrap_or_else(|e| {
             crit!(log, "failed to start metrics server"; "err" => %e);
             std::process::exit(1);
         });
 
-    let tls_config = utils::config::tls::tls_config(config.database.tls_mode, config.database.certificate)
-        .unwrap_or_else(|e| {
-            crit!(log, "TLS configuration error"; "err" => %e);
-            std::process::exit(1);
-        });
+    let tls_config =
+        utils::config::tls::tls_config(config.database.tls_mode, config.database.certificate)
+            .unwrap_or_else(|e| {
+                crit!(log, "TLS configuration error"; "err" => %e);
+                std::process::exit(1);
+            });
 
     let pg_config = PostgresConnectionConfig {
         user: Some(config.database.user),
@@ -89,7 +89,7 @@ fn main() {
             "component" => "CueballConnectionPool"
         ))),
         rebalancer_action_delay: config.cueball.rebalancer_action_delay,
-        decoherence_interval: None
+        decoherence_interval: None,
     };
 
     let resolver = ManateePrimaryResolver::new(
@@ -97,7 +97,7 @@ fn main() {
         config.zookeeper.path,
         Some(log.new(o!(
             "component" => "ManateePrimaryResolver"
-        )))
+        ))),
     );
 
     let pool = ConnectionPool::new(pool_opts, resolver, connection_creator);
@@ -116,10 +116,10 @@ fn main() {
             let pool_clone = pool.clone();
             let task_log = log.new(o!(
                 "component" => "FastServer",
-                "thread" => boray::util::get_thread_name()));
+                "thread" => buckets_mdapi::util::get_thread_name()));
             let task = server::make_task(
                 socket,
-                move |a, c| boray::util::handle_msg(a, &pool_clone, c),
+                move |a, c| buckets_mdapi::util::handle_msg(a, &pool_clone, c),
                 Some(&task_log),
             );
             tokio::spawn(task);
