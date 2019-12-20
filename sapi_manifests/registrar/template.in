@@ -5,7 +5,7 @@
     "service": {
       "type": "service",
       "service": {
-        "srvce": "_boray",
+        "srvce": "_buckets_mdapi",
         "proto": "_tcp",
         "port": 2020
       },

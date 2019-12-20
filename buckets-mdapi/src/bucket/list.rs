@@ -2,7 +2,7 @@
 
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Error as SerdeError;
-use serde_json::{json, Value};
+use serde_json::Value;
 use slog::{debug, error, Logger};
 use uuid::Uuid;
 
@@ -12,7 +12,7 @@ use rust_fast::protocol::{FastMessage, FastMessageData};
 use crate::bucket::{to_json, BucketResponse};
 use crate::sql;
 use crate::types::{HandlerResponse, HasRequestId};
-use crate::util::array_wrap;
+use crate::util::{array_wrap, limit_constraint_error};
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ListBucketsPayload {
@@ -55,11 +55,8 @@ pub(crate) fn action(
 
                 // Database errors are returned to as regular Fast messages
                 // to be handled by the calling application
-                let value = array_wrap(json!({
-                    "name": "PostgresError",
-                    "message": e
-                }));
-                let msg_data = FastMessageData::new(method.into(), value);
+                let value = sql::postgres_error(e);
+                let msg_data = FastMessageData::new(method.into(), array_wrap(value));
                 let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
                 Ok(msg)
             })
@@ -71,11 +68,8 @@ pub(crate) fn action(
              and 1024. the requested limit was {}",
             &method, &payload.limit
         );
-        let value = array_wrap(json!({
-            "name": "LimitConstraintError",
-            "message": e
-        }));
-        let msg_data = FastMessageData::new(method.into(), value);
+        let value = limit_constraint_error(e);
+        let msg_data = FastMessageData::new(method.into(), array_wrap(value));
         let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
         Ok(msg)
     }

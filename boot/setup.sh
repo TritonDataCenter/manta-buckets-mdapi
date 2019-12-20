@@ -13,15 +13,14 @@
 export PS4='[\D{%FT%TZ}] ${BASH_SOURCE}:${LINENO}: ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
 set -o xtrace
 
-role=boray
 SOURCE="${BASH_SOURCE[0]}"
 if [[ -h $SOURCE ]]; then
     SOURCE="$(readlink "$SOURCE")"
 fi
 DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
 PROFILE=/root/.bashrc
-PG_USER=boray
-SVC_ROOT=/opt/smartdc/boray
+PG_USER=buckets_mdapi
+SVC_ROOT=/opt/smartdc/buckets-mdapi
 ZONE_UUID=$(/usr/bin/zonename)
 SAPI_CONFIG=
 SAPI_URL=$(mdata-get SAPI_URL)
@@ -44,7 +43,7 @@ function get_sapi_config {
     # "mdata:execute" service.
     #
     # We do this because we need to access SAPI config variables in this script,
-    # and it's more difficult to get them from the boray config toml file.
+    # and it's more difficult to get them from the buckets-mdapi config toml file.
     #
     while :; do
         if ! sapi_res=$(curl --max-time 60 --ipv4 -sSf \
@@ -67,15 +66,15 @@ function get_sapi_config {
     done
 }
 
-function setup_boray {
+function setup_buckets_mdapi {
     local port
     local RTPL
 
     #
     # The default port value here must be kept in sync with the default value of
-    # BORAY_SERVER_PORT in sapi_manifests/boray/template and the Makefile.
+    # BUCKETS_MDAPI_SERVER_PORT in sapi_manifests/buckets-mdapi/template and the Makefile.
     #
-    port=$(json metadata.BORAY_SERVER_PORT <<< "${SAPI_CONFIG}")
+    port=$(json metadata.BUCKETS_MDAPI_SERVER_PORT <<< "${SAPI_CONFIG}")
     [[ -n "${port}" ]] || port='2030'
 
     #
@@ -93,18 +92,18 @@ function setup_boray {
     svcadm enable -s config-agent
     svcadm restart registrar
 
-    svccfg import /opt/smartdc/boray/smf/manifests/boray.xml
-    svcadm enable boray || fatal "unable to start boray"
+    svccfg import /opt/smartdc/buckets-mdapi/smf/manifests/buckets-mdapi.xml
+    svcadm enable buckets-mdapi || fatal "unable to start buckets-mdapi"
 }
 
 #
-# manta_setup_boray_schemas: run the schema-manager to define the boray
-# schemas on the associated shards if they do not yet exist.
+# manta_setup_buckets_mdapi_schemas: run the schema-manager to define the
+# buckets-mdapi schemas on the associated shards if they do not yet exist.
 #
-function manta_setup_boray_schemas {
-    if [[ -x /opt/smartdc/boray/bin/schema-manager ]] ; then
-        echo "Setting up boray schemas"
-        /opt/smartdc/boray/bin/schema-manager || echo "unable to set up boray schemas"
+function manta_setup_buckets_mdapi_schemas {
+    if [[ -x /opt/smartdc/buckets-mdapi/bin/schema-manager ]] ; then
+        echo "Setting up buckets-mdapi schemas"
+        /opt/smartdc/buckets-mdapi/bin/schema-manager || echo "unable to set up buckets-mdapi schemas"
     else
         fatal "schema-manager executable not found."
     fi
@@ -117,16 +116,16 @@ echo "Running common setup scripts"
 manta_common_presetup
 
 echo "Adding local manifest directories"
-manta_add_manifest_dir "/opt/smartdc/boray"
+manta_add_manifest_dir "/opt/smartdc/buckets-mdapi"
 
-manta_common_setup "boray" 0
+manta_common_setup "buckets-mdapi" 0
 
 manta_ensure_zk
 
-echo "Setting up Boray"
+echo "setting up buckets-ddapi"
 get_sapi_config
-setup_boray
-manta_setup_boray_schemas
+setup_buckets_mdapi
+manta_setup_buckets_mdapi_schemas
 
 manta_common_setup_end
 

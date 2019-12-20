@@ -5,10 +5,10 @@
 pub mod bucket;
 pub mod error;
 pub mod gc;
-pub mod sql;
 pub mod metrics;
 pub mod object;
 pub mod opts;
+pub mod sql;
 
 pub mod util {
     use std::io::Error as IOError;
@@ -28,6 +28,7 @@ pub mod util {
     use rust_fast::protocol::{FastMessage, FastMessageData};
 
     use crate::bucket;
+    use crate::error::{BucketsMdapiError, BucketsMdapiErrorType};
     use crate::gc;
     use crate::metrics;
     use crate::object;
@@ -162,8 +163,10 @@ pub mod util {
                         warn!(log, "timed out claiming connection";
                             "error" => CueballError::ClaimFailure.to_string());
                         let value = array_wrap(json!({
-                            "name": "OverloadedError",
-                            "message": CueballError::ClaimFailure.to_string()
+                            "error": {
+                                "name": "OverloadedError",
+                                "message": CueballError::ClaimFailure.to_string()
+                            }
                         }));
 
                         let msg_data = FastMessageData::new(method.into(), value);
@@ -223,6 +226,15 @@ pub mod util {
 
                 Err(ret_err)
             })
+    }
+
+    // Create a LimitConstraintError error object
+    pub fn limit_constraint_error(msg: String) -> Value {
+        serde_json::to_value(BucketsMdapiError::with_message(
+            BucketsMdapiErrorType::LimitConstraintError,
+            msg,
+        ))
+        .expect("failed to encode a LimitConstraintError error")
     }
 
     #[allow(clippy::cast_precision_loss)]
@@ -305,7 +317,10 @@ pub mod util {
     }
 
     pub fn get_thread_name() -> String {
-        thread::current().name().unwrap_or_else(|| "unnamed").to_string()
+        thread::current()
+            .name()
+            .unwrap_or_else(|| "unnamed")
+            .to_string()
     }
 }
 

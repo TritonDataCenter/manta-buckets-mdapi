@@ -10,8 +10,8 @@
     Copyright 2019 Joyent, Inc.
 -->
 
-<service_bundle type="manifest" name="boray">
-    <service name="manta/application/boray" type="service" version="1">
+<service_bundle type="manifest" name="buckets-mdapi">
+    <service name="manta/application/buckets-mdapi" type="service" version="1">
         <create_default_instance enabled="true" />
 
         <dependency name="network"
@@ -43,8 +43,8 @@
         </dependency>
 
         <exec_method type="method" name="start" timeout_seconds="10"
-          exec="./bin/boray -c ./etc/config.toml &amp;">
-          <method_context working_directory="/opt/smartdc/boray">
+          exec="./bin/buckets-mdapi -c ./etc/config.toml &amp;">
+          <method_context working_directory="/opt/smartdc/buckets-mdapi">
                   <method_credential user="nobody"
                                    group="nobody"
                                    privileges="basic,net_privaddr"/>
@@ -56,7 +56,7 @@
 
         <template>
             <common_name>
-                <loctext xml:lang="C">Joyent Boray Service</loctext>
+                <loctext xml:lang="C">Manta Buckets Metadata API Service</loctext>
             </common_name>
         </template>
     </service>

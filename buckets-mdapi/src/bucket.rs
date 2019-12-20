@@ -5,7 +5,7 @@ use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::error::{BorayError, BorayErrorType};
+use crate::error::{BucketsMdapiError, BucketsMdapiErrorType};
 use crate::types::{HasRequestId, RowSlice};
 
 pub mod create;
@@ -51,15 +51,19 @@ pub(self) fn to_json(br: BucketResponse) -> Value {
 pub(self) fn bucket_not_found() -> Value {
     // The data for this JSON conversion is locally controlled
     // so unwrapping the result is ok here.
-    serde_json::to_value(BorayError::new(BorayErrorType::BucketNotFound))
-        .expect("failed to encode a BucketNotFound error")
+    serde_json::to_value(BucketsMdapiError::new(
+        BucketsMdapiErrorType::BucketNotFound,
+    ))
+    .expect("failed to encode a BucketNotFound error")
 }
 
 pub(self) fn bucket_already_exists() -> Value {
     // The data for this JSON conversion is locally controlled
     // so unwrapping the result is ok here.
-    serde_json::to_value(BorayError::new(BorayErrorType::BucketAlreadyExists))
-        .expect("failed to encode a BucketAlreadyExists error")
+    serde_json::to_value(BucketsMdapiError::new(
+        BucketsMdapiErrorType::BucketAlreadyExists,
+    ))
+    .expect("failed to encode a BucketAlreadyExists error")
 }
 
 pub(self) fn response(method: &str, rows: &RowSlice) -> Result<Option<BucketResponse>, String> {

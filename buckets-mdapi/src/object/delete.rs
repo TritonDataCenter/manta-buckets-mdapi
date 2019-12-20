@@ -3,7 +3,7 @@
 use std::vec::Vec;
 
 use serde_json::Error as SerdeError;
-use serde_json::{json, Value};
+use serde_json::Value;
 use slog::{debug, error, Logger};
 
 use cueball_postgres_connection::PostgresConnection;
@@ -52,12 +52,8 @@ pub(crate) fn action(
 
             // Database errors are returned to as regular Fast messages
             // to be handled by the calling application
-            let value = array_wrap(json!({
-                "name": "PostgresError",
-                "message": e
-            }));
-
-            let msg_data = FastMessageData::new(method.into(), value);
+            let value = sql::postgres_error(e);
+            let msg_data = FastMessageData::new(method.into(), array_wrap(value));
             let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
             Ok(msg)
         })

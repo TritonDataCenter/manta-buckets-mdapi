@@ -98,6 +98,7 @@ fn do_get(
         .and_then(|rows| {
             if rows.is_empty() {
                 // Try to refresh the garbage view in case the view is stale
+                println!("refreshing garbage view");
                 sql::execute(
                     sql::Method::GarbageRefresh,
                     &mut conn,

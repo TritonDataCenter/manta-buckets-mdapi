@@ -1,5 +1,5 @@
 [package]
-name = "boray"
+name = "buckets-mdapi"
 version = "0.1.0"
 authors = ["Kelly McLaughlin <kelly.mclaughlin@joyent.com>",
            "Jon Anderson <jon.anderson@joyent.com"]
@@ -15,7 +15,7 @@ md5 = "0.5.0"
 postgres = {version = "0.16.0-rc.1", features=["with-chrono-0_4", "with-serde_json-1", "with-uuid-0_7"]}
 prometheus = "0.5.0"
 cueball = { git = "https://github.com/joyent/rust-cueball", tag = "v0.2.1" }
-cueball-manatee-primary-resolver = { git = "https://github.com/joyent/rust-cueball-manatee-primary-resolver", tag = "v0.1.0" }
+cueball-manatee-primary-resolver = { git = "https://github.com/joyent/rust-cueball-manatee-primary-resolver", tag = "v0.1.1" }
 cueball-postgres-connection = { git = "https://github.com/joyent/rust-cueball-postgres-connection", tag = "v0.1.1" }
 rust_fast = { git = "https://github.com/joyent/rust-fast", tag = "v0.1.0" }
 serde = "1.0.84"

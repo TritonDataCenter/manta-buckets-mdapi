@@ -2,11 +2,11 @@
 # Copyright 2019 Joyent, Inc.
 #
 
-NAME = manta-boray
+NAME = manta-buckets-mdapi
 
 RUST_CODE = 1
 
-SMF_MANIFESTS_IN = smf/manifests/boray.xml.in
+SMF_MANIFESTS_IN = smf/manifests/buckets-mdapi.xml.in
 
 ENGBLD_USE_BUILDIMAGE =	true
 ENGBLD_REQUIRE := 	$(shell git submodule update --init deps/eng)
@@ -30,7 +30,7 @@ ROOT :=			$(shell pwd)
 RELSTAGEDIR :=		/tmp/$(NAME)-$(STAMP)
 
 BASE_IMAGE_UUID   = cbf116a0-43a5-447c-ad8c-8fa57787351c
-BUILDIMAGE_NAME   = mantav2-boray
+BUILDIMAGE_NAME   = mantav2-buckets-mdapi
 BUILDIMAGE_DESC   = Manta buckets metadata API
 AGENTS		  = amon config registrar
 
@@ -38,7 +38,7 @@ AGENTS		  = amon config registrar
 # Repo-specific targets
 #
 .PHONY: all
-all: build-boray manta-scripts
+all: build-buckets-mdapi manta-scripts
 
 .PHONY: manta-scripts
 manta-scripts: deps/manta-scripts/.git
@@ -48,8 +48,8 @@ manta-scripts: deps/manta-scripts/.git
 .PHONY: release
 release: all deps docs $(SMF_MANIFESTS)
 	@echo "Building $(RELEASE_TARBALL)"
-	@mkdir -p $(RELSTAGEDIR)/root/opt/smartdc/boray/deps
-	@mkdir -p $(RELSTAGEDIR)/root/opt/smartdc/boray/bin
+	@mkdir -p $(RELSTAGEDIR)/root/opt/smartdc/buckets-mdapi/deps
+	@mkdir -p $(RELSTAGEDIR)/root/opt/smartdc/buckets-mdapi/bin
 	@mkdir -p $(RELSTAGEDIR)/root/opt/smartdc/boot
 	@mkdir -p $(RELSTAGEDIR)/site
 	@touch $(RELSTAGEDIR)/site/.do-not-delete-me
@@ -60,13 +60,13 @@ release: all deps docs $(SMF_MANIFESTS)
 	    $(ROOT)/schema_templates \
 	    $(ROOT)/migrations \
 	    $(ROOT)/smf \
-	    $(RELSTAGEDIR)/root/opt/smartdc/boray/
-	cp target/release/boray $(RELSTAGEDIR)/root/opt/smartdc/boray/bin/
-	cp target/release/schema-manager $(RELSTAGEDIR)/root/opt/smartdc/boray/bin/
+	    $(RELSTAGEDIR)/root/opt/smartdc/buckets-mdapi/
+	cp target/release/buckets-mdapi $(RELSTAGEDIR)/root/opt/smartdc/buckets-mdapi/bin/
+	cp target/release/schema-manager $(RELSTAGEDIR)/root/opt/smartdc/buckets-mdapi/bin/
 	cp -r $(ROOT)/deps/manta-scripts \
-	    $(RELSTAGEDIR)/root/opt/smartdc/boray/deps
+	    $(RELSTAGEDIR)/root/opt/smartdc/buckets-mdapi/deps
 	mkdir -p $(RELSTAGEDIR)/root/opt/smartdc/boot/scripts
-	cp -R $(RELSTAGEDIR)/root/opt/smartdc/boray/build/scripts/* \
+	cp -R $(RELSTAGEDIR)/root/opt/smartdc/buckets-mdapi/build/scripts/* \
 	    $(RELSTAGEDIR)/root/opt/smartdc/boot/scripts/
 	cp -R $(ROOT)/boot/* \
 	    $(RELSTAGEDIR)/root/opt/smartdc/boot/
@@ -81,7 +81,7 @@ release: all deps docs $(SMF_MANIFESTS)
 # with the real port.
 #
 # This default value should be kept in sync with the default value in
-# boot/setup.sh and sapi_manifests/boray/template
+# boot/setup.sh and sapi_manifests/buckets-mdapi/template
 #
 #
 sapi_manifests/registrar/template: sapi_manifests/registrar/template.in
@@ -93,8 +93,8 @@ publish: release
 	cp $(ROOT)/$(RELEASE_TARBALL) \
 	    $(ENGBLD_BITS_DIR)/$(NAME)/$(RELEASE_TARBALL)
 
-.PHONY: build-boray
-build-boray:
+.PHONY: build-buckets-mdapi
+build-buckets-mdapi:
 	$(CARGO) build --release
 
 .PHONY: test-unit

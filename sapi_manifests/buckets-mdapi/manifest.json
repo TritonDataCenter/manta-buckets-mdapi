@@ -1,0 +1,5 @@
+{
+    "name": "buckets-mdapi",
+    "path": "/opt/smartdc/buckets-mdapi/etc/config.toml",
+    "master": true
+}

@@ -10,7 +10,7 @@ use serde_json::Value;
 use tokio_postgres::{accepts, to_sql_checked};
 use uuid::Uuid;
 
-use crate::error::{BorayError, BorayErrorType};
+use crate::error::{BucketsMdapiError, BucketsMdapiErrorType};
 use crate::types::{HasRequestId, Hstore, RowSlice, Timestamptz};
 
 pub mod create;
@@ -144,8 +144,10 @@ pub(self) fn to_json(objr: ObjectResponse) -> Value {
 pub(self) fn object_not_found() -> Value {
     // The data for this JSON conversion is locally controlled
     // so unwrapping the result is ok here.
-    serde_json::to_value(BorayError::new(BorayErrorType::ObjectNotFound))
-        .expect("failed to encode a ObjectNotFound error")
+    serde_json::to_value(BucketsMdapiError::new(
+        BucketsMdapiErrorType::ObjectNotFound,
+    ))
+    .expect("failed to encode a ObjectNotFound error")
 }
 
 pub(self) fn response(

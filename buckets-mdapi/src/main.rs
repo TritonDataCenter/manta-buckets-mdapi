@@ -23,7 +23,7 @@ use rust_fast::server;
 use utils::config::Config;
 
 fn main() {
-    let matches = boray::opts::parse(crate_name!());
+    let matches = buckets_mdapi::opts::parse(crate_name!());
 
     // Optionally read config file
     let mut config: Config = match matches.value_of("config") {
@@ -53,9 +53,9 @@ fn main() {
         .spawn(move || {
             let metrics_log = m.new(o!(
                 "component" => "MetricsServer",
-                "thread" => boray::util::get_thread_name()
+                "thread" => buckets_mdapi::util::get_thread_name()
             ));
-            boray::metrics::start_server(
+            buckets_mdapi::metrics::start_server(
                 &metrics_host,
                 metrics_port,
                 &metrics_log,
@@ -130,10 +130,10 @@ fn main() {
             let pool_clone = pool.clone();
             let task_log = log.new(o!(
                 "component" => "FastServer",
-                "thread" => boray::util::get_thread_name()));
+                "thread" => buckets_mdapi::util::get_thread_name()));
             let task = server::make_task(
                 socket,
-                move |a, c| boray::util::handle_msg(a, &pool_clone, c),
+                move |a, c| buckets_mdapi::util::handle_msg(a, &pool_clone, c),
                 Some(&task_log),
             );
             tokio::spawn(task);
