@@ -123,7 +123,7 @@ fn run(log: &Logger) -> Result<(), Box<dyn std::error::Error>> {
     info!(log, "sapi_url:{}", sapi_url);
     let sapi = init_sapi_client(&sapi_url, &log)?;
     let zone_config = get_zone_config(&sapi)?;
-    let mdplacement_address = zone_config.metadata.electric_boray;
+    let mdplacement_address = zone_config.metadata.buckets_mdplacement;
     let buckets_mdapi_host = zone_config.metadata.service_name;
     let buckets_mdapi_config = get_buckets_mdapi_config();
     let buckets_mdapi_port = buckets_mdapi_config.server.port;
