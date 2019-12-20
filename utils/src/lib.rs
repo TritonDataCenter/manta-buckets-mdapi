@@ -256,7 +256,7 @@ pub mod config {
         pub log: ConfigLog,
         /// The configuration entries controlling the buckets-mdapi server behavior
         pub server: ConfigServer,
-        /// The configuraiton entries controlling the buckets-mdapi metrics server
+        /// The configuration entries controlling the buckets-mdapi metrics server
         pub metrics: ConfigMetrics,
         /// The database connection configuration entries
         pub database: ConfigDatabase,
