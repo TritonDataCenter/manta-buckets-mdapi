@@ -98,7 +98,6 @@ fn do_get(
         .and_then(|rows| {
             if rows.is_empty() {
                 // Try to refresh the garbage view in case the view is stale
-                println!("refreshing garbage view");
                 sql::execute(
                     sql::Method::GarbageRefresh,
                     &mut conn,
@@ -152,7 +151,7 @@ pub(self) fn response(
         garbage.push(garbage_item);
     }
 
-    let batch_id = if rows.is_empty() {
+    let batch_id = if !rows.is_empty() {
         Some(Uuid::new_v4())
     } else {
         None
