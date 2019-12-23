@@ -64,6 +64,14 @@ version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
+name = "backoff"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "rand 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "backtrace"
 version = "0.3.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -142,7 +150,7 @@ dependencies = [
  "base64 0.10.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "chrono 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.32.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "cueball 0.2.1 (git+https://github.com/joyent/rust-cueball?tag=v0.2.1)",
+ "cueball 0.3.0",
  "cueball-manatee-primary-resolver 0.1.0 (git+https://github.com/joyent/rust-cueball-manatee-primary-resolver?tag=v0.1.1)",
  "cueball-postgres-connection 0.1.1 (git+https://github.com/joyent/rust-cueball-postgres-connection?tag=v0.1.1)",
  "cueball-static-resolver 0.2.0 (git+https://github.com/joyent/rust-cueball-static-resolver)",
@@ -377,17 +385,17 @@ dependencies = [
 
 [[package]]
 name = "cueball"
-version = "0.2.1"
-source = "git+https://github.com/joyent/rust-cueball?tag=v0.2.1#8c97aaabbff956a76a9990ba1031f3f3b4f09ef9"
+version = "0.3.0"
 dependencies = [
+ "backoff 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "base64 0.10.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "chrono 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "derive_more 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "periodic 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "sha1 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "slog 2.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "slog-stdlog 3.0.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "timer 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -395,7 +403,7 @@ name = "cueball-manatee-primary-resolver"
 version = "0.1.0"
 source = "git+https://github.com/joyent/rust-cueball-manatee-primary-resolver?tag=v0.1.1#59dcaac6c42105d171f02bb4c28d37236bf07058"
 dependencies = [
- "cueball 0.2.1 (git+https://github.com/joyent/rust-cueball?tag=v0.2.1)",
+ "cueball 0.3.0",
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.29 (registry+https://github.com/rust-lang/crates.io-index)",
  "itertools 0.8.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -414,7 +422,7 @@ name = "cueball-postgres-connection"
 version = "0.1.1"
 source = "git+https://github.com/joyent/rust-cueball-postgres-connection?tag=v0.1.1#742b584fdaef51e89e906896a17d96facaee4215"
 dependencies = [
- "cueball 0.2.1 (git+https://github.com/joyent/rust-cueball?tag=v0.2.1)",
+ "cueball 0.3.0",
  "native-tls 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "postgres 0.16.0-rc.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.103 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -427,7 +435,7 @@ name = "cueball-static-resolver"
 version = "0.2.0"
 source = "git+https://github.com/joyent/rust-cueball-static-resolver#6f94eaad005d91390b59be4b0a064cbae5cf9bb2"
 dependencies = [
- "cueball 0.2.1 (git+https://github.com/joyent/rust-cueball?tag=v0.2.1)",
+ "cueball 0.3.0",
 ]
 
 [[package]]
@@ -1211,11 +1219,6 @@ version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
-name = "periodic"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-
-[[package]]
 name = "petgraph"
 version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1740,7 +1743,7 @@ version = "0.1.0"
 dependencies = [
  "clap 2.32.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "cmd_lib 0.7.8 (registry+https://github.com/rust-lang/crates.io-index)",
- "cueball 0.2.1 (git+https://github.com/joyent/rust-cueball?tag=v0.2.1)",
+ "cueball 0.3.0",
  "cueball-manatee-primary-resolver 0.1.0 (git+https://github.com/joyent/rust-cueball-manatee-primary-resolver?tag=v0.1.1)",
  "cueball-postgres-connection 0.1.1 (git+https://github.com/joyent/rust-cueball-postgres-connection?tag=v0.1.1)",
  "dotenv 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2080,6 +2083,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "timer"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "chrono 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "tokio"
 version = "0.1.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2414,7 +2425,7 @@ name = "utils"
 version = "0.1.0"
 dependencies = [
  "clap 2.32.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "cueball 0.2.1 (git+https://github.com/joyent/rust-cueball?tag=v0.2.1)",
+ "cueball 0.3.0",
  "cueball-manatee-primary-resolver 0.1.0 (git+https://github.com/joyent/rust-cueball-manatee-primary-resolver?tag=v0.1.1)",
  "cueball-postgres-connection 0.1.1 (git+https://github.com/joyent/rust-cueball-postgres-connection?tag=v0.1.1)",
  "num_cpus 1.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2526,6 +2537,7 @@ dependencies = [
 "checksum arrayvec 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)" = "92c7fb76bc8826a8b33b4ee5bb07a247a81e76764ab4d55e8f73e3a4d8808c71"
 "checksum atty 0.2.11 (registry+https://github.com/rust-lang/crates.io-index)" = "9a7d5b8723950951411ee34d271d99dddcc2035a16ab25310ea2c8cfd4369652"
 "checksum autocfg 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)" = "1d49d90015b3c36167a20fe2810c5cd875ad504b39cff3d4eae7977e6b7c1cb2"
+"checksum backoff 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "afe2eef13bc0f5a77e7c2fec6d863fa59eea6901e4949830b67f0c348d720100"
 "checksum backtrace 0.3.15 (registry+https://github.com/rust-lang/crates.io-index)" = "f106c02a3604afcdc0df5d36cc47b44b55917dbaf3d808f71c163a0ddba64637"
 "checksum backtrace-sys 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)" = "797c830ac25ccc92a7f8a7b9862bde440715531514594a6154e3d4a54dd769b6"
 "checksum base64 0.10.1 (registry+https://github.com/rust-lang/crates.io-index)" = "0b25d992356d2eb0ed82172f5248873db5560c4721f564b13cb5193bda5e668e"
@@ -2559,7 +2571,6 @@ dependencies = [
 "checksum crossbeam-utils 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)" = "f8306fcef4a7b563b76b7dd949ca48f52bc1141aa067d2ea09565f3e2652aa5c"
 "checksum crossbeam-utils 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ce446db02cdc3165b94ae73111e570793400d0794e46125cc4056c81cbb039f4"
 "checksum crypto-mac 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "4434400df11d95d556bac068ddfedd482915eb18fe8bea89bc80b6e4b1c179e5"
-"checksum cueball 0.2.1 (git+https://github.com/joyent/rust-cueball?tag=v0.2.1)" = "<none>"
 "checksum cueball-manatee-primary-resolver 0.1.0 (git+https://github.com/joyent/rust-cueball-manatee-primary-resolver?tag=v0.1.1)" = "<none>"
 "checksum cueball-postgres-connection 0.1.1 (git+https://github.com/joyent/rust-cueball-postgres-connection?tag=v0.1.1)" = "<none>"
 "checksum cueball-static-resolver 0.2.0 (git+https://github.com/joyent/rust-cueball-static-resolver)" = "<none>"
@@ -2654,7 +2665,6 @@ dependencies = [
 "checksum parking_lot_core 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "94c8c7923936b28d546dfd14d4472eaf34c99b14e1c973a32b3e6d4eb04298c9"
 "checksum percent-encoding 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)" = "31010dd2e1ac33d5b46a5b413495239882813e0369f8ed8a5e266f173602f831"
 "checksum percent-encoding 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "d4fd5641d01c8f18a23da7b6fe29298ff4b55afcccdf78973b24cf3175fee32e"
-"checksum periodic 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "3078871d84bbf2d85e4a69527169df35df811aa86e1abf77af6be496888026aa"
 "checksum petgraph 0.4.13 (registry+https://github.com/rust-lang/crates.io-index)" = "9c3659d1ee90221741f65dd128d9998311b0e40c5d3c23a62445938214abce4f"
 "checksum phf 0.7.24 (registry+https://github.com/rust-lang/crates.io-index)" = "b3da44b85f8e8dfaec21adae67f95d93244b2ecf6ad2a692320598dcc8e6dd18"
 "checksum phf_shared 0.7.24 (registry+https://github.com/rust-lang/crates.io-index)" = "234f71a15de2288bcb7e3b6515828d22af7ec8598ee6d24c3b526fa0a80b67a0"
@@ -2748,6 +2758,7 @@ dependencies = [
 "checksum textwrap 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)" = "307686869c93e71f94da64286f9a9524c0f308a9e1c87a583de8e9c9039ad3f6"
 "checksum thread_local 0.3.6 (registry+https://github.com/rust-lang/crates.io-index)" = "c6b53e329000edc2b34dbe8545fd20e55a333362d0a321909685a19bd28c3f1b"
 "checksum time 0.1.42 (registry+https://github.com/rust-lang/crates.io-index)" = "db8dcfca086c1143c9270ac42a2bbd8a7ee477b78ac8e45b19abfb0cbede4b6f"
+"checksum timer 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "31d42176308937165701f50638db1c31586f183f1aab416268216577aec7306b"
 "checksum tokio 0.1.22 (registry+https://github.com/rust-lang/crates.io-index)" = "5a09c0b5bb588872ab2f09afa13ee6e9dac11e10a0ec9e8e3ba39a5a5d530af6"
 "checksum tokio-codec 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "5c501eceaf96f0e1793cf26beb63da3d11c738c4a943fdf3746d81d64684c39f"
 "checksum tokio-current-thread 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)" = "d16217cad7f1b840c5a97dfb3c43b0c871fef423a6e8d2118c604e843662a443"

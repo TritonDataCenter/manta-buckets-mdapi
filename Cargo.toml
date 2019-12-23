@@ -4,3 +4,6 @@ members = [
     "schema-manager",
     "utils",
 ]
+[patch."https://github.com/joyent/rust-cueball"]
+cueball = { path = "../rust-cueball" }
+

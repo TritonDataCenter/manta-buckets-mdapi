@@ -89,6 +89,7 @@ pub mod schema {
                     ))),
                     rebalancer_action_delay: None,
                     decoherence_interval: None,
+                    connection_check_interval: None,
                 };
 
                 let pool = ConnectionPool::new(pool_opts, resolver, connection_creator);
