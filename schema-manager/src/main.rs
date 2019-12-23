@@ -179,6 +179,7 @@ fn run(log: &Logger) -> Result<(), Box<dyn std::error::Error>> {
         ))),
         rebalancer_action_delay: buckets_mdapi_config.cueball.rebalancer_action_delay,
         decoherence_interval: None,
+        connection_check_interval: None,
     };
 
     let resolver = ManateePrimaryResolver::new(
