@@ -105,6 +105,16 @@ control the behavior of the Tokio runtime.
 * `thread_name_prefix` - The name prefix of threads spawned by the Tokio
   Runtime's thread pool. The default is `buckets-mdapi-worker-`.
 
+## Database schema setup and migrations
+
+The `schema-manager` binary is included in this repo as a tool to create and
+configure the expected database schemas, tables, and other necssary aspects of
+the database.
+
+The details of the database setup may change over time along with the code and
+so the `schema-manager` tool includes the ability to add database
+migrations. More details about database migrations can be found [here](./migrations/MIGRATIONS.md).
+
 ## Testing
 
 The tests can be run with:
@@ -113,8 +123,10 @@ The tests can be run with:
 cargo test
 ```
 
-There are quickcheck tests and also some functional tests for the RPC handlers
-that require a functioning postgresql installation as well as
+There are quickcheck tests and also some functional tests for the RPC handlers.
+
+The functional tests require that postgresql is installed as well as
 [`pg_tmp`](http://eradman.com/ephemeralpg/). The test uses `pg_tmp` to create
 and configure a temporary postgres database and once the test has completed the
-temporary database is removed within a few seconds.
+temporary database is removed within a few seconds. The tests use the same code
+used by the `schema-manager` to prepare the database for use by the test suite.
