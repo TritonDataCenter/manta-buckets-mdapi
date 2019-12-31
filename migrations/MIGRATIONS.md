@@ -64,20 +64,22 @@ would include the most recent migration.
 
 ### Major version change
 
-1. Make and commit changes needed to feature gate the buckets-mdapi code.
-1. Build and deploy image with the changes
-1. Make commit with new migration with a properly incremented major version
-   number (both in the file name and in the migration itself). Reset the minor
-   version to zero for each new major version.
-1. Deploy new image with the migration
-1. Commit change removing featured gated code
-1. Deploy the new image (though there is not necessarily urgency to this step)
+1. Make and commit changes needed to feature gate the `buckets-mdapi` code.
+1. Build and deploy an image with the feature-gated changes.
+1. Make a commit containing the new migration. Ensure the migration has a
+   properly incremented major version number (both in the file name and in the
+   migration itself). Reset the minor version to zero for each new major
+   version.
+1. Deploy the new image with the migration.
+1. Commit the change removing featured-gated code.
+1. Deploy the updated image without the feature-gated code (though there is not
+   necessarily urgency to this step).
 
 ### Minor version change
 
-1. Make commit with new migration with a properly incremented minor version
-   number (both in the file name and in the migration itself).
-1. Deploy new image with the migration
+1. Make a commit containing the new migration with a properly incremented minor
+   version number (both in the file name and in the migration itself).
+1. Deploy the new image containing the migration
 
 ## Downgrades
 
