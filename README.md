@@ -52,8 +52,6 @@ The configuration entries controlling the buckets-mdapi metrics server.
 The database connection configuration entries.
 
 * `user` - The database username.
-* `host` - The database IP address.
-* `port` - The database port number.
 * `database` - The name of the database to issue requests against.
 * `application_name` - The name of the application to use when connecting to the
   database.
