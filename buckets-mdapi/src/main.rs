@@ -99,6 +99,7 @@ fn main() {
         ))),
         rebalancer_action_delay: config.cueball.rebalancer_action_delay,
         decoherence_interval: None,
+        connection_check_interval: None,
     };
 
     let resolver = ManateePrimaryResolver::new(

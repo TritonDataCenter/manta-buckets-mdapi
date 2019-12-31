@@ -223,6 +223,7 @@ fn run(log: &Logger) -> Result<(), Box<dyn std::error::Error>> {
             .cueball
             .rebalancer_action_delay,
         decoherence_interval: None,
+        connection_check_interval: None,
     };
 
     let resolver = ManateePrimaryResolver::new(

@@ -84,6 +84,7 @@ where
                 ))),
                 rebalancer_action_delay: None,
                 decoherence_interval: None,
+                connection_check_interval: None,
             };
 
             let pool =
