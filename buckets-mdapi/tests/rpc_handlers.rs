@@ -85,6 +85,7 @@ fn verify_rpc_handlers() {
         log: Some(log.clone()),
         rebalancer_action_delay: None,
         decoherence_interval: None,
+        connection_check_interval: None,
     };
 
     let primary_backend = (IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), pg_port);
