@@ -71,7 +71,11 @@ impl From<String> for StorageNodeIdentifier {
 }
 
 impl ToSql for StorageNodeIdentifier {
-    fn to_sql(&self, ty: &Type, w: &mut Vec<u8>) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
+    fn to_sql(
+        &self,
+        ty: &Type,
+        w: &mut Vec<u8>,
+    ) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
         <String as ToSql>::to_sql(&self.to_string(), ty, w)
     }
 
@@ -81,7 +85,10 @@ impl ToSql for StorageNodeIdentifier {
 }
 
 impl<'a> FromSql<'a> for StorageNodeIdentifier {
-    fn from_sql(ty: &Type, raw: &'a [u8]) -> Result<Self, Box<dyn Error + Sync + Send>> {
+    fn from_sql(
+        ty: &Type,
+        raw: &'a [u8],
+    ) -> Result<Self, Box<dyn Error + Sync + Send>> {
         String::from_sql(ty, raw).and_then(|s| Ok(Self::from(s)))
     }
 
@@ -104,7 +111,8 @@ impl DeleteObjectResponse {
         // implementation of Serialize decideds to fail. We have JSON roundtrip
         // quickcheck testing to verify we can serialize and deserialize the same
         // object safely and correctly.
-        serde_json::to_value(self).expect("failed to serialize DeleteObjectResponse")
+        serde_json::to_value(self)
+            .expect("failed to serialize DeleteObjectResponse")
     }
 }
 
@@ -142,7 +150,10 @@ pub(self) fn object_not_found() -> Value {
     .expect("failed to encode a ObjectNotFound error")
 }
 
-pub(self) fn response(method: &str, rows: &RowSlice) -> Result<Option<ObjectResponse>, String> {
+pub(self) fn response(
+    method: &str,
+    rows: &RowSlice,
+) -> Result<Option<ObjectResponse>, String> {
     if rows.is_empty() {
         Ok(None)
     } else if rows.len() == 1 {
@@ -208,7 +219,7 @@ pub(self) fn insert_delete_table_sql(vnode: u64) -> String {
 }
 
 #[cfg(test)]
-mod test {
+pub mod test {
     use super::*;
 
     use std::collections::HashMap;
@@ -277,8 +288,10 @@ mod test {
             let content_md5 = random::string(g, 32);
             let content_type = random::string(g, 32);
             let mut headers = HashMap::new();
-            let _ = headers.insert(random::string(g, 32), Some(random::string(g, 32)));
-            let _ = headers.insert(random::string(g, 32), Some(random::string(g, 32)));
+            let _ = headers
+                .insert(random::string(g, 32), Some(random::string(g, 32)));
+            let _ = headers
+                .insert(random::string(g, 32), Some(random::string(g, 32)));
 
             let shark_1 = StorageNodeIdentifier {
                 datacenter: random::string(g, 32),

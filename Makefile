@@ -58,6 +58,7 @@ release: all deps docs $(SMF_MANIFESTS)
 	    $(ROOT)/build \
 	    $(ROOT)/sapi_manifests \
 	    $(ROOT)/schema_templates \
+	    $(ROOT)/migrations \
 	    $(ROOT)/smf \
 	    $(RELSTAGEDIR)/root/opt/smartdc/buckets-mdapi/
 	cp target/release/buckets-mdapi $(RELSTAGEDIR)/root/opt/smartdc/buckets-mdapi/bin/

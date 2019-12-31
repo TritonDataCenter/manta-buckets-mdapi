@@ -30,6 +30,11 @@ pub enum Method {
     ObjectDelete,
     ObjectDeleteMove,
     ObjectUpdate,
+    GarbageGet,
+    GarbageDelete,
+    GarbageRecordDelete,
+    GarbageBatchIdUpdate,
+    GarbageRefresh,
 }
 
 impl Method {
@@ -47,6 +52,11 @@ impl Method {
             Method::ObjectDelete => "ObjectDelete",
             Method::ObjectDeleteMove => "ObjectDeleteMove",
             Method::ObjectUpdate => "ObjectUpdate",
+            Method::GarbageGet => "GarbageGet",
+            Method::GarbageDelete => "GarbageDelete",
+            Method::GarbageRecordDelete => "GarbageRecordDelete",
+            Method::GarbageBatchIdUpdate => "GarbageBatchIdUpdate",
+            Method::GarbageRefresh => "GarbageRefresh",
         }
     }
 }

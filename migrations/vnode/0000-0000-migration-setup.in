@@ -1,0 +1,13 @@
+START TRANSACTION;
+
+CREATE TABLE IF NOT EXISTS manta_bucket_{{vnode}}.migrations (
+    major               integer,
+    minor               integer,
+    applied             timestamptz NOT NULL DEFAULT current_timestamp,
+    -- an optional note about why this migration is needed
+    note                text,
+
+    PRIMARY KEY (major, minor)
+);
+
+COMMIT;

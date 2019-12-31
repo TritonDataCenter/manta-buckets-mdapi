@@ -2429,6 +2429,7 @@ dependencies = [
  "cueball 0.3.0 (git+https://github.com/joyent/rust-cueball?tag=v0.3.0)",
  "cueball-manatee-primary-resolver 0.3.0 (git+https://github.com/joyent/rust-cueball-manatee-primary-resolver?tag=v0.3.0)",
  "cueball-postgres-connection 0.3.0 (git+https://github.com/joyent/rust-cueball-postgres-connection?tag=v0.3.0)",
+ "itertools 0.8.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "num_cpus 1.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.103 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.103 (registry+https://github.com/rust-lang/crates.io-index)",

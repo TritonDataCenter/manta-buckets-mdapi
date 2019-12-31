@@ -10,6 +10,7 @@ clap = "2.32"
 cueball = { git = "https://github.com/joyent/rust-cueball", tag = "v0.3.0" }
 cueball-manatee-primary-resolver = { git = "https://github.com/joyent/rust-cueball-manatee-primary-resolver", tag = "v0.3.0" }
 cueball-postgres-connection = { git = "https://github.com/joyent/rust-cueball-postgres-connection", tag = "v0.3.0" }
+itertools = "0.8.2"
 num_cpus = { version = "1.8.0" }
 slog = { version = "2.4.1", features = [ "max_level_trace" ] }
 slog-stdlog = "3"
