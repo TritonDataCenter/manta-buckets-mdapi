@@ -215,7 +215,9 @@ fn run(log: &Logger) -> Result<(), Box<dyn std::error::Error>> {
 
     let pool_opts = ConnectionPoolOptions {
         max_connections: Some(1),
-        claim_timeout: Some(10000),
+        // Set the claim timeout to None, which causes cueball to use the condvar wait call with no timeout,
+        // schema-manager should continually retry for a postgres connection.
+        claim_timeout: None,
         log: Some(log.new(o!(
             "component" => "CueballConnectionPool"
         ))),
