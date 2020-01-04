@@ -9,7 +9,7 @@ use std::sync::Mutex;
 use clap::{crate_version, App, Arg, ArgMatches};
 use cmd_lib::{run_fun, FunResult};
 use serde_json::json;
-use slog::{crit, error, info, o, warn, Drain, Logger};
+use slog::{crit, error, info, o, trace, warn, Drain, Logger};
 
 use cueball::connection_pool::types::ConnectionPoolOptions;
 use cueball::connection_pool::ConnectionPool;
@@ -101,8 +101,32 @@ fn vnode_response_handler(
                     Error::new(ErrorKind::Other, err_str)
                 })
                 .and_then(|values| {
+                    // At this stage we have a vector of JSON Value types. This
+                    // should consist of a single JSON array containing a list
+                    // of vnode strings, but we can't guarantee that is the case
+                    // so we have to deal with the possibility the value is
+                    // something other than an array.
+                    if values.len() == 1 {
+                        let a = values.get(0).expect(
+                            "failed to access vnode value array member",
+                        );
+                        a.as_array().ok_or_else(|| {
+                            let err_str =
+                                "Invalid data response received from \
+                                 getvnodes call: the vnode data was not \
+                                 represented as a JSON array";
+                            Error::new(ErrorKind::Other, err_str)
+                        })
+                    } else {
+                        let err_str = "Invalid data response received from \
+                                       getvnodes call: expected a single array \
+                                       of vnode data";
+                        Err(Error::new(ErrorKind::Other, err_str))
+                    }
+                })
+                .and_then(|values| {
                     // At this stage we have a vector of JSON Value types that
-                    // should all be strings, but can't guarantee that is the
+                    // should all be strings, but we can't guarantee that is the
                     // case so we have to deal with errors that could occur
                     // trying to convert the Value types to strings. Iterate
                     // over the vector and use fold to reduce the result down to
@@ -111,6 +135,7 @@ fn vnode_response_handler(
                     let result: Result<Vec<&str>, Error> = Ok(value_strs);
                     values.iter().fold(result, |acc, value| {
                         if let Ok(mut strs) = acc {
+                            trace!(log, "Handling vnode value: {}", value);
                             if let Some(value_str) = value.as_str() {
                                 strs.push(value_str);
                                 Ok(strs)

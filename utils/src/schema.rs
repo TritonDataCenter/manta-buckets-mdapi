@@ -41,11 +41,14 @@ where
 
     let template = Template::new(&schema_template);
 
-    info!(log, "Creating boray user and role if they don't exist");
+    info!(log, "Creating buckets_mdapi role if it doesn't exist");
 
     create_user_role(admin_conn, &admin_template_path)
         .and_then(|_| {
-            info!(log, "Creating boray database if it doesn't exist");
+            info!(
+                log,
+                "Creating buckets_metadata database if it doesn't exist"
+            );
             create_database(admin_conn, &db_template_path)
         })
         .and_then(|_| {
@@ -59,9 +62,12 @@ where
             .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))
         })
         .and_then(|tls_config| {
-            // Create the connection pool to the boray database using the
-            // boray role
-            info!(log, "Creating a connection pool to the boray database");
+            // Create the connection pool to the buckets_metadata database using
+            // the buckets_mdapi role
+            info!(
+                log,
+                "Creating a connection pool to the buckets_metadata database"
+            );
 
             let pg_config = PostgresConnectionConfig {
                 user: Some(database_config.user.clone()),
@@ -94,7 +100,7 @@ where
                 .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))
         })
         .and_then(|mut conn| {
-            info!(log, "Creating boray schemas");
+            info!(log, "Creating buckets-mdapi schemas");
             let mut result: Result<(), Error> = Ok(());
             for vnode in &vnodes {
                 info!(log, "processing vnode: {}", vnode);
