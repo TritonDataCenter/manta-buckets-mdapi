@@ -1,0 +1,52 @@
+#!/bin/bash
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+#
+
+#
+# Copyright 2019 Joyent, Inc.
+#
+
+#
+# "buckets-mdapi-setup" service for doing one-time initial setup work that
+# cannot be done in "boot/setup.sh". The "buckets-mdapi" service will
+# depend on this so that it need not worry about being run before the postgres
+# DB is setup.
+#
+
+set -o xtrace
+set -o errexit
+set -o pipefail
+
+. /lib/svc/share/smf_include.sh
+
+SENTINEL=/var/svc/.ran-buckets-mdapi-setup
+
+function setup_run_schema_manager {
+    # Run the schema-manager to setup the buckets-mdapi database in postgres.
+    #
+    # This relies on (a) the buckets-mdplacement service being up and ready,
+    # and (b) the buckets-postgres cluster for this shard being ready and
+    # accessible. The later can take a while:
+    #
+    # - Access to the postgres cluster is guarded by the "waferlock" service
+    #   in the postgres zones. It needs to notice the IP of this newly
+    #   provisioned buckets-mdapi instance and allow it. On a slow system or
+    #   with unlucky polling intervals, this can take longer than the 300s
+    #   mdata:execute timeout.
+    # - Theoretically buckets-postgres could be unexpectedly down, or not yet
+    #   setup.
+    /opt/smartdc/buckets-mdapi/bin/schema-manager
+}
+
+
+# ---- mainline
+
+if [[ ! -e ${SENTINEL} ]]; then
+    setup_run_schema_manager
+    touch $SENTINEL
+fi
+
+exit $SMF_EXIT_OK

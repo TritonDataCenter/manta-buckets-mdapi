@@ -7,7 +7,7 @@
 -->
 
 <!--
-    Copyright 2019 Joyent, Inc.
+    Copyright 2020 Joyent, Inc.
 -->
 
 <service_bundle type="manifest" name="buckets-mdapi">
@@ -35,11 +35,11 @@
             <service_fmri value="svc:/smartdc/mdata:execute" />
         </dependency>
 
-        <dependency name="config-agent"
+        <dependency name="buckets-mdapi-setup"
                     grouping="optional_all"
                     restart_on="none"
                     type="service">
-            <service_fmri value="svc:/smartdc/application/config-agent" />
+            <service_fmri value="svc:/manta/application/buckets-mdapi-setup" />
         </dependency>
 
         <exec_method type="method" name="start" timeout_seconds="10"

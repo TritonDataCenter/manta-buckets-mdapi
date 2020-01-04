@@ -92,22 +92,12 @@ function setup_buckets_mdapi {
     svcadm enable -s config-agent
     svcadm restart registrar
 
+    svccfg import /opt/smartdc/buckets-mdapi/smf/manifests/buckets-mdapi-setup.xml
     svccfg import /opt/smartdc/buckets-mdapi/smf/manifests/buckets-mdapi.xml
-    svcadm enable buckets-mdapi || fatal "unable to start buckets-mdapi"
 }
 
-#
-# manta_setup_buckets_mdapi_schemas: run the schema-manager to define the
-# buckets-mdapi schemas on the associated shards if they do not yet exist.
-#
-function manta_setup_buckets_mdapi_schemas {
-    if [[ -x /opt/smartdc/buckets-mdapi/bin/schema-manager ]] ; then
-        echo "Setting up buckets-mdapi schemas"
-        /opt/smartdc/buckets-mdapi/bin/schema-manager || echo "unable to set up buckets-mdapi schemas"
-    else
-        fatal "schema-manager executable not found."
-    fi
-}
+
+# ---- mainline
 
 source ${DIR}/scripts/util.sh
 source ${DIR}/scripts/services.sh
@@ -125,7 +115,6 @@ manta_ensure_zk
 echo "setting up buckets-ddapi"
 get_sapi_config
 setup_buckets_mdapi
-manta_setup_buckets_mdapi_schemas
 
 manta_common_setup_end
 
