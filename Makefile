@@ -1,12 +1,12 @@
 #
-# Copyright 2019 Joyent, Inc.
+# Copyright 2020 Joyent, Inc.
 #
 
 NAME = manta-buckets-mdapi
 
 RUST_CODE = 1
 
-SMF_MANIFESTS_IN = smf/manifests/buckets-mdapi.xml.in
+SMF_MANIFESTS = smf/manifests/buckets-mdapi.xml smf/manifests/buckets-mdapi-setup.xml
 
 ENGBLD_USE_BUILDIMAGE =	true
 ENGBLD_REQUIRE := 	$(shell git submodule update --init deps/eng)
