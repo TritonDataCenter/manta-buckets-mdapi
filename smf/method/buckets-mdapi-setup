@@ -6,7 +6,7 @@
 #
 
 #
-# Copyright 2019 Joyent, Inc.
+# Copyright 2020 Joyent, Inc.
 #
 
 #
@@ -29,7 +29,7 @@ function setup_run_schema_manager {
     #
     # This relies on (a) the buckets-mdplacement service being up and ready,
     # and (b) the buckets-postgres cluster for this shard being ready and
-    # accessible. The later can take a while:
+    # accessible. The latter can take a while:
     #
     # - Access to the postgres cluster is guarded by the "waferlock" service
     #   in the postgres zones. It needs to notice the IP of this newly
