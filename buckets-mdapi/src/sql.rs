@@ -1,4 +1,4 @@
-// Copyright 2019 Joyent, Inc.
+// Copyright 2020 Joyent, Inc.
 
 use std::fmt::Display;
 use std::time::Instant;
@@ -76,6 +76,7 @@ pub fn execute<T: Display>(
     conn: &mut Client,
     sql: &T,
     items: &[&dyn ToSql],
+    metrics: &metrics::RegisteredMetrics,
     log: &Logger,
 ) -> Result<u64, PGError>
 where
@@ -86,7 +87,7 @@ where
         "sql" => sql.to_string(),
         "items" => format!("{:?}", items),
     );
-    sql_with_metrics(method, &log, || conn.execute(sql, items))
+    sql_with_metrics(method, metrics, &q_log, || conn.execute(sql, items))
 }
 
 // txn.execute wrapper that posts metrics
@@ -95,6 +96,7 @@ pub fn txn_execute<T: Display>(
     txn: &mut Transaction,
     sql: &T,
     items: &[&dyn ToSql],
+    metrics: &metrics::RegisteredMetrics,
     log: &Logger,
 ) -> Result<u64, PGError>
 where
@@ -105,7 +107,7 @@ where
         "sql" => sql.to_string(),
         "items" => format!("{:?}", items),
     );
-    sql_with_metrics(method, &log, || txn.execute(sql, items))
+    sql_with_metrics(method, metrics, &q_log, || txn.execute(sql, items))
 }
 
 // conn.query wrapper that posts metrics
@@ -114,6 +116,7 @@ pub fn query<T: Display>(
     conn: &mut Client,
     sql: &T,
     items: &[&dyn ToSql],
+    metrics: &metrics::RegisteredMetrics,
     log: &Logger,
 ) -> Result<Vec<PGRow>, PGError>
 where
@@ -124,7 +127,7 @@ where
         "sql" => sql.to_string(),
         "items" => format!("{:?}", items),
     );
-    sql_with_metrics(method, &q_log, || conn.query(sql, items))
+    sql_with_metrics(method, metrics, &q_log, || conn.query(sql, items))
 }
 
 // txn.query wrapper that posts metrics
@@ -133,6 +136,7 @@ pub fn txn_query<T: Display>(
     txn: &mut Transaction,
     sql: &T,
     items: &[&dyn ToSql],
+    metrics: &metrics::RegisteredMetrics,
     log: &Logger,
 ) -> Result<Vec<PGRow>, PGError>
 where
@@ -143,10 +147,15 @@ where
         "sql" => sql.to_string(),
         "items" => format!("{:?}", items),
     );
-    sql_with_metrics(method, &q_log, || txn.query(sql, items))
+    sql_with_metrics(method, metrics, &q_log, || txn.query(sql, items))
 }
 
-fn sql_with_metrics<F, T>(method: Method, log: &Logger, f: F) -> Result<T, PGError>
+fn sql_with_metrics<F, T>(
+    method: Method,
+    metrics: &metrics::RegisteredMetrics,
+    log: &Logger,
+    f: F,
+) -> Result<T, PGError>
 where
     F: FnOnce() -> Result<T, PGError>,
 {
@@ -154,12 +163,18 @@ where
 
     let res = f();
 
-    post_timer_metrics(method, &log, now, &res);
+    post_timer_metrics(method, metrics, log, now, &res);
 
     res
 }
 
-fn post_timer_metrics<T>(method: Method, log: &Logger, now: Instant, res: &Result<T, PGError>) {
+fn post_timer_metrics<T>(
+    method: Method,
+    metrics: &metrics::RegisteredMetrics,
+    log: &Logger,
+    now: Instant,
+    res: &Result<T, PGError>,
+) {
     // Generate metrics for the request
     let duration = now.elapsed();
     let t = util::duration_to_seconds(duration);
@@ -171,7 +186,8 @@ fn post_timer_metrics<T>(method: Method, log: &Logger, now: Instant, res: &Resul
 
     let success = if res.is_ok() { "true" } else { "false" };
 
-    metrics::POSTGRES_REQUESTS
+    metrics
+        .postgres_requests
         .with_label_values(&[&method.as_str(), success])
         .observe(t);
 }

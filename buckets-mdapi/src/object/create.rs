@@ -1,4 +1,4 @@
-// Copyright 2019 Joyent, Inc.
+// Copyright 2020 Joyent, Inc.
 
 use std::vec::Vec;
 
@@ -12,8 +12,10 @@ use uuid::Uuid;
 use cueball_postgres_connection::PostgresConnection;
 use rust_fast::protocol::{FastMessage, FastMessageData};
 
+use crate::metrics::RegisteredMetrics;
 use crate::object::{
-    insert_delete_table_sql, response, to_json, ObjectResponse, StorageNodeIdentifier,
+    insert_delete_table_sql, response, to_json, ObjectResponse,
+    StorageNodeIdentifier,
 };
 use crate::sql;
 use crate::types::{HandlerResponse, HasRequestId, Hstore};
@@ -41,7 +43,9 @@ impl HasRequestId for CreateObjectPayload {
     }
 }
 
-pub(crate) fn decode_msg(value: &Value) -> Result<Vec<CreateObjectPayload>, SerdeError> {
+pub(crate) fn decode_msg(
+    value: &Value,
+) -> Result<Vec<CreateObjectPayload>, SerdeError> {
     serde_json::from_value::<Vec<CreateObjectPayload>>(value.clone())
 }
 
@@ -49,12 +53,13 @@ pub(crate) fn decode_msg(value: &Value) -> Result<Vec<CreateObjectPayload>, Serd
 pub(crate) fn action(
     msg_id: u32,
     method: &str,
+    metrics: &RegisteredMetrics,
     log: &Logger,
     payload: CreateObjectPayload,
     conn: &mut PostgresConnection,
 ) -> Result<HandlerResponse, String> {
     // Make database request
-    do_create(method, &payload, conn, log)
+    do_create(method, &payload, conn, metrics, log)
         .and_then(|maybe_resp| {
             // Handle the successful database response
             debug!(log, "operation successful");
@@ -69,8 +74,10 @@ pub(crate) fn action(
                 Some(resp) => to_json(resp),
                 None => object_create_failed(),
             };
-            let msg_data = FastMessageData::new(method.into(), array_wrap(value));
-            let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
+            let msg_data =
+                FastMessageData::new(method.into(), array_wrap(value));
+            let msg: HandlerResponse =
+                FastMessage::data(msg_id, msg_data).into();
             Ok(msg)
         })
         .or_else(|e| {
@@ -80,8 +87,10 @@ pub(crate) fn action(
             // Database errors are returned to as regular Fast messages
             // to be handled by the calling application
             let value = sql::postgres_error(e);
-            let msg_data = FastMessageData::new(method.into(), array_wrap(value));
-            let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
+            let msg_data =
+                FastMessageData::new(method.into(), array_wrap(value));
+            let msg: HandlerResponse =
+                FastMessage::data(msg_id, msg_data).into();
             Ok(msg)
         })
 }
@@ -90,24 +99,27 @@ fn do_create(
     method: &str,
     payload: &CreateObjectPayload,
     conn: &mut PostgresConnection,
+    metrics: &RegisteredMetrics,
     log: &Logger,
 ) -> Result<Option<ObjectResponse>, String> {
     let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
     let create_sql = create_sql(payload.vnode);
     let move_sql = insert_delete_table_sql(payload.vnode);
-    let content_md5_bytes = base64::decode(&payload.content_md5).map_err(|e| {
-        format!(
-            "content_md5 is not valid base64 encoded data: {}",
-            e.to_string()
-        )
-    })?;
+    let content_md5_bytes =
+        base64::decode(&payload.content_md5).map_err(|e| {
+            format!(
+                "content_md5 is not valid base64 encoded data: {}",
+                e.to_string()
+            )
+        })?;
 
     sql::txn_execute(
         sql::Method::ObjectCreateMove,
         &mut txn,
         move_sql.as_str(),
         &[&payload.owner, &payload.bucket_id, &payload.name],
-        &log,
+        metrics,
+        log,
     )
     .and_then(|_moved_rows| {
         sql::txn_query(
@@ -126,7 +138,8 @@ fn do_create(
                 &payload.sharks,
                 &payload.properties,
             ],
-            &log,
+            metrics,
+            log,
         )
     })
     .and_then(|rows| {
@@ -192,8 +205,8 @@ mod test {
                 .expect("failed to convert name field to Value");
             let bucket_id = serde_json::to_value(Uuid::new_v4())
                 .expect("failed to convert bucket_id field to Value");
-            let id =
-                serde_json::to_value(Uuid::new_v4()).expect("failed to convert id field to Value");
+            let id = serde_json::to_value(Uuid::new_v4())
+                .expect("failed to convert id field to Value");
             let vnode = serde_json::to_value(u64::arbitrary(g))
                 .expect("failed to convert vnode field to Value");
             let content_length = serde_json::to_value(i64::arbitrary(g))
@@ -203,10 +216,12 @@ mod test {
             let content_type = serde_json::to_value(random::string(g, 32))
                 .expect("failed to convert content_type field to Value");
             let mut headers = HashMap::new();
-            let _ = headers.insert(random::string(g, 32), Some(random::string(g, 32)));
-            let _ = headers.insert(random::string(g, 32), Some(random::string(g, 32)));
-            let headers =
-                serde_json::to_value(headers).expect("failed to convert headers field to Value");
+            let _ = headers
+                .insert(random::string(g, 32), Some(random::string(g, 32)));
+            let _ = headers
+                .insert(random::string(g, 32), Some(random::string(g, 32)));
+            let headers = serde_json::to_value(headers)
+                .expect("failed to convert headers field to Value");
             let shark_1 = object::StorageNodeIdentifier {
                 datacenter: random::string(g, 32),
                 manta_storage_id: random::string(g, 32),
@@ -247,8 +262,10 @@ mod test {
             let content_type = random::string(g, 32);
             let content_md5 = random::string(g, 32);
             let mut headers = HashMap::new();
-            let _ = headers.insert(random::string(g, 32), Some(random::string(g, 32)));
-            let _ = headers.insert(random::string(g, 32), Some(random::string(g, 32)));
+            let _ = headers
+                .insert(random::string(g, 32), Some(random::string(g, 32)));
+            let _ = headers
+                .insert(random::string(g, 32), Some(random::string(g, 32)));
 
             let shark_1 = StorageNodeIdentifier {
                 datacenter: random::string(g, 32),

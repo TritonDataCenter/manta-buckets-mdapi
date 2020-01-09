@@ -1,4 +1,4 @@
-// Copyright 2019 Joyent, Inc.
+// Copyright 2020 Joyent, Inc.
 
 use std::vec::Vec;
 
@@ -12,6 +12,7 @@ use uuid::Uuid;
 use cueball_postgres_connection::PostgresConnection;
 use rust_fast::protocol::{FastMessage, FastMessageData};
 
+use crate::metrics::RegisteredMetrics;
 use crate::object::{to_json, ObjectResponse};
 use crate::sql;
 use crate::types::{HandlerResponse, HasRequestId};
@@ -34,20 +35,23 @@ impl HasRequestId for ListObjectsPayload {
     }
 }
 
-pub(crate) fn decode_msg(value: &Value) -> Result<Vec<ListObjectsPayload>, SerdeError> {
+pub(crate) fn decode_msg(
+    value: &Value,
+) -> Result<Vec<ListObjectsPayload>, SerdeError> {
     serde_json::from_value::<Vec<ListObjectsPayload>>(value.clone())
 }
 
 pub(crate) fn action(
     msg_id: u32,
     method: &str,
+    metrics: &RegisteredMetrics,
     log: &Logger,
     payload: ListObjectsPayload,
     conn: &mut PostgresConnection,
 ) -> Result<HandlerResponse, String> {
     // Make database request
     if payload.limit > 0 && payload.limit <= 1024 {
-        do_list(msg_id, method, payload, conn, log)
+        do_list(msg_id, method, payload, conn, metrics, log)
             .and_then(|resp| {
                 // Handle the successful database response
                 debug!(log, "operation successful");
@@ -60,8 +64,10 @@ pub(crate) fn action(
                 // Database errors are returned to as regular Fast messages
                 // to be handled by the calling application
                 let value = sql::postgres_error(e);
-                let msg_data = FastMessageData::new(method.into(), array_wrap(value));
-                let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
+                let msg_data =
+                    FastMessageData::new(method.into(), array_wrap(value));
+                let msg: HandlerResponse =
+                    FastMessage::data(msg_id, msg_data).into();
                 Ok(msg)
             })
     } else {
@@ -84,6 +90,7 @@ fn do_list(
     method: &str,
     payload: ListObjectsPayload,
     mut conn: &mut PostgresConnection,
+    metrics: &RegisteredMetrics,
     log: &Logger,
 ) -> Result<Vec<FastMessage>, String> {
     let query_result = match (payload.marker, payload.prefix) {
@@ -95,7 +102,8 @@ fn do_list(
                 &mut conn,
                 sql.as_str(),
                 &[&payload.owner, &payload.bucket_id, &prefix, &marker],
-                &log,
+                metrics,
+                log,
             )
         }
         (Some(marker), None) => {
@@ -105,7 +113,8 @@ fn do_list(
                 &mut conn,
                 sql.as_str(),
                 &[&payload.owner, &payload.bucket_id, &marker],
-                &log,
+                metrics,
+                log,
             )
         }
         (None, Some(prefix)) => {
@@ -116,7 +125,8 @@ fn do_list(
                 &mut conn,
                 sql.as_str(),
                 &[&payload.owner, &payload.bucket_id, &prefix],
-                &log,
+                metrics,
+                log,
             )
         }
         (None, None) => {
@@ -126,7 +136,8 @@ fn do_list(
                 &mut conn,
                 sql.as_str(),
                 &[&payload.owner, &payload.bucket_id],
-                &log,
+                metrics,
+                log,
             )
         }
     };
@@ -153,7 +164,8 @@ fn do_list(
             };
 
             let value = to_json(resp);
-            let msg_data = FastMessageData::new(method.into(), array_wrap(value));
+            let msg_data =
+                FastMessageData::new(method.into(), array_wrap(value));
             let msg = FastMessage::data(msg_id, msg_data);
 
             msgs.push(msg);

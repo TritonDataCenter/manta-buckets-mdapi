@@ -1,4 +1,4 @@
-// Copyright 2019 Joyent, Inc.
+// Copyright 2020 Joyent, Inc.
 
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Error as SerdeError;
@@ -10,6 +10,7 @@ use cueball_postgres_connection::PostgresConnection;
 use rust_fast::protocol::{FastMessage, FastMessageData};
 
 use crate::bucket::{bucket_already_exists, response, to_json, BucketResponse};
+use crate::metrics::RegisteredMetrics;
 use crate::sql;
 use crate::types::{HandlerResponse, HasRequestId};
 use crate::util::array_wrap;
@@ -28,7 +29,9 @@ impl HasRequestId for CreateBucketPayload {
     }
 }
 
-pub(crate) fn decode_msg(value: &Value) -> Result<Vec<CreateBucketPayload>, SerdeError> {
+pub(crate) fn decode_msg(
+    value: &Value,
+) -> Result<Vec<CreateBucketPayload>, SerdeError> {
     serde_json::from_value::<Vec<CreateBucketPayload>>(value.clone())
 }
 
@@ -36,12 +39,13 @@ pub(crate) fn decode_msg(value: &Value) -> Result<Vec<CreateBucketPayload>, Serd
 pub(crate) fn action(
     msg_id: u32,
     method: &str,
+    metrics: &RegisteredMetrics,
     log: &Logger,
     payload: CreateBucketPayload,
     conn: &mut PostgresConnection,
 ) -> Result<HandlerResponse, String> {
     // Make database request
-    do_create(method, &payload, conn, log)
+    do_create(method, &payload, conn, metrics, log)
         .and_then(|maybe_resp| {
             // Handle the successful database response
             debug!(log, "operation successful");
@@ -49,8 +53,10 @@ pub(crate) fn action(
                 Some(resp) => to_json(resp),
                 None => bucket_already_exists(),
             };
-            let msg_data = FastMessageData::new(method.into(), array_wrap(value));
-            let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
+            let msg_data =
+                FastMessageData::new(method.into(), array_wrap(value));
+            let msg: HandlerResponse =
+                FastMessage::data(msg_id, msg_data).into();
             Ok(msg)
         })
         .or_else(|e| {
@@ -60,8 +66,10 @@ pub(crate) fn action(
             // Database errors are returned to as regular Fast messages
             // to be handled by the calling application
             let value = sql::postgres_error(e);
-            let msg_data = FastMessageData::new(method.into(), array_wrap(value));
-            let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
+            let msg_data =
+                FastMessageData::new(method.into(), array_wrap(value));
+            let msg: HandlerResponse =
+                FastMessage::data(msg_id, msg_data).into();
             Ok(msg)
         })
 }
@@ -70,6 +78,7 @@ fn do_create(
     method: &str,
     payload: &CreateBucketPayload,
     conn: &mut PostgresConnection,
+    metrics: &RegisteredMetrics,
     log: &Logger,
 ) -> Result<Option<BucketResponse>, String> {
     let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
@@ -80,7 +89,8 @@ fn do_create(
         &mut txn,
         create_sql.as_str(),
         &[&Uuid::new_v4(), &payload.owner, &payload.name],
-        &log,
+        metrics,
+        log,
     )
     .and_then(|rows| {
         txn.commit()?;

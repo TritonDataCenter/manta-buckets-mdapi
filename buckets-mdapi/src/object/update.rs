@@ -1,4 +1,4 @@
-// Copyright 2019 Joyent, Inc.
+// Copyright 2020 Joyent, Inc.
 
 use std::vec::Vec;
 
@@ -11,6 +11,7 @@ use uuid::Uuid;
 use cueball_postgres_connection::PostgresConnection;
 use rust_fast::protocol::{FastMessage, FastMessageData};
 
+use crate::metrics::RegisteredMetrics;
 use crate::object::{object_not_found, response, to_json, ObjectResponse};
 use crate::sql;
 use crate::types::{HandlerResponse, HasRequestId, Hstore};
@@ -35,7 +36,9 @@ impl HasRequestId for UpdateObjectPayload {
     }
 }
 
-pub(crate) fn decode_msg(value: &Value) -> Result<Vec<UpdateObjectPayload>, SerdeError> {
+pub(crate) fn decode_msg(
+    value: &Value,
+) -> Result<Vec<UpdateObjectPayload>, SerdeError> {
     serde_json::from_value::<Vec<UpdateObjectPayload>>(value.clone())
 }
 
@@ -43,12 +46,13 @@ pub(crate) fn decode_msg(value: &Value) -> Result<Vec<UpdateObjectPayload>, Serd
 pub(crate) fn action(
     msg_id: u32,
     method: &str,
+    metrics: &RegisteredMetrics,
     log: &Logger,
     payload: UpdateObjectPayload,
     conn: &mut PostgresConnection,
 ) -> Result<HandlerResponse, String> {
     // Make database request
-    do_update(method, &payload, conn, log)
+    do_update(method, &payload, conn, metrics, log)
         .and_then(|maybe_resp| {
             // Handle the successful database response
             debug!(log, "operation successful");
@@ -56,8 +60,10 @@ pub(crate) fn action(
                 Some(resp) => to_json(resp),
                 None => object_not_found(),
             };
-            let msg_data = FastMessageData::new(method.into(), array_wrap(value));
-            let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
+            let msg_data =
+                FastMessageData::new(method.into(), array_wrap(value));
+            let msg: HandlerResponse =
+                FastMessage::data(msg_id, msg_data).into();
             Ok(msg)
         })
         .or_else(|e| {
@@ -67,8 +73,10 @@ pub(crate) fn action(
             // Database errors are returned to as regular Fast messages
             // to be handled by the calling application
             let value = sql::postgres_error(e);
-            let msg_data = FastMessageData::new(method.into(), array_wrap(value));
-            let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
+            let msg_data =
+                FastMessageData::new(method.into(), array_wrap(value));
+            let msg: HandlerResponse =
+                FastMessage::data(msg_id, msg_data).into();
             Ok(msg)
         })
 }
@@ -77,6 +85,7 @@ fn do_update(
     method: &str,
     payload: &UpdateObjectPayload,
     conn: &mut PostgresConnection,
+    metrics: &RegisteredMetrics,
     log: &Logger,
 ) -> Result<Option<ObjectResponse>, String> {
     let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
@@ -94,7 +103,8 @@ fn do_update(
             &payload.bucket_id,
             &payload.name,
         ],
-        &log,
+        metrics,
+        log,
     )
     .and_then(|rows| {
         txn.commit()?;
@@ -145,17 +155,19 @@ mod test {
                 .expect("failed to convert name field to Value");
             let bucket_id = serde_json::to_value(Uuid::new_v4())
                 .expect("failed to convert bucket_id field to Value");
-            let id =
-                serde_json::to_value(Uuid::new_v4()).expect("failed to convert id field to Value");
+            let id = serde_json::to_value(Uuid::new_v4())
+                .expect("failed to convert id field to Value");
             let vnode = serde_json::to_value(u64::arbitrary(g))
                 .expect("failed to convert vnode field to Value");
             let content_type = serde_json::to_value(random::string(g, 32))
                 .expect("failed to convert content_type field to Value");
             let mut headers = HashMap::new();
-            let _ = headers.insert(random::string(g, 32), Some(random::string(g, 32)));
-            let _ = headers.insert(random::string(g, 32), Some(random::string(g, 32)));
-            let headers =
-                serde_json::to_value(headers).expect("failed to convert headers field to Value");
+            let _ = headers
+                .insert(random::string(g, 32), Some(random::string(g, 32)));
+            let _ = headers
+                .insert(random::string(g, 32), Some(random::string(g, 32)));
+            let headers = serde_json::to_value(headers)
+                .expect("failed to convert headers field to Value");
             let request_id = serde_json::to_value(Uuid::new_v4())
                 .expect("failed to convert request_id field to Value");
 
@@ -181,8 +193,10 @@ mod test {
             let vnode = u64::arbitrary(g);
             let content_type = random::string(g, 32);
             let mut headers = HashMap::new();
-            let _ = headers.insert(random::string(g, 32), Some(random::string(g, 32)));
-            let _ = headers.insert(random::string(g, 32), Some(random::string(g, 32)));
+            let _ = headers
+                .insert(random::string(g, 32), Some(random::string(g, 32)));
+            let _ = headers
+                .insert(random::string(g, 32), Some(random::string(g, 32)));
 
             let properties = None;
             let request_id = Uuid::new_v4();
