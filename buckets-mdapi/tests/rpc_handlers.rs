@@ -1,4 +1,4 @@
-// Copyright 2019 Joyent, Inc.
+// Copyright 2020 Joyent, Inc.
 
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr};
@@ -21,6 +21,7 @@ use rust_fast::protocol::{FastMessage, FastMessageData};
 use buckets_mdapi::bucket;
 use buckets_mdapi::error::{BucketsMdapiError, BucketsMdapiErrorType};
 use buckets_mdapi::gc;
+use buckets_mdapi::metrics;
 use buckets_mdapi::object;
 use buckets_mdapi::util;
 use utils::{config, schema};
@@ -35,6 +36,10 @@ fn verify_rpc_handlers() {
         Mutex::new(slog_term::FullFormat::new(plain).build()).fuse(),
         o!("build-id" => "0.1.0"),
     );
+
+    let metrics_config = config::ConfigMetrics::default();
+    let metrics = metrics::register_metrics(&metrics_config);
+
     ////////////////////////////////////////////////////////////////////////////
     // Check for pg_tmp on the system
     ////////////////////////////////////////////////////////////////////////////
@@ -157,7 +162,7 @@ fn verify_rpc_handlers() {
     let get_bucket_fast_msg =
         FastMessage::data(msg_id, get_bucket_fast_msg_data);
     let mut get_bucket_result =
-        util::handle_msg(&get_bucket_fast_msg, &pool, &log);
+        util::handle_msg(&get_bucket_fast_msg, &pool, &metrics, &log);
 
     assert!(get_bucket_result.is_ok());
     let get_bucket_response = get_bucket_result.unwrap();
@@ -186,7 +191,7 @@ fn verify_rpc_handlers() {
     let create_bucket_fast_msg =
         FastMessage::data(msg_id, create_bucket_fast_msg_data);
     let mut create_bucket_result =
-        util::handle_msg(&create_bucket_fast_msg, &pool, &log);
+        util::handle_msg(&create_bucket_fast_msg, &pool, &metrics, &log);
 
     assert!(create_bucket_result.is_ok());
     let create_bucket_response = create_bucket_result.unwrap();
@@ -198,7 +203,8 @@ fn verify_rpc_handlers() {
     assert_eq!(create_bucket_response_result.unwrap().name, bucket);
 
     // Read bucket again and make sure the resonse is returned successfully
-    get_bucket_result = util::handle_msg(&get_bucket_fast_msg, &pool, &log);
+    get_bucket_result =
+        util::handle_msg(&get_bucket_fast_msg, &pool, &metrics, &log);
 
     assert!(get_bucket_result.is_ok());
     let get_bucket_response = get_bucket_result.unwrap();
@@ -212,7 +218,7 @@ fn verify_rpc_handlers() {
     // Try to create same bucket again and verify a BucketAlreadyExists error is
     // returned
     create_bucket_result =
-        util::handle_msg(&create_bucket_fast_msg, &pool, &log);
+        util::handle_msg(&create_bucket_fast_msg, &pool, &metrics, &log);
 
     assert!(create_bucket_result.is_ok());
     let create_bucket_response = create_bucket_result.unwrap();
@@ -241,7 +247,7 @@ fn verify_rpc_handlers() {
     let delete_bucket_fast_msg =
         FastMessage::data(msg_id, delete_bucket_fast_msg_data);
     let mut delete_bucket_result =
-        util::handle_msg(&delete_bucket_fast_msg, &pool, &log);
+        util::handle_msg(&delete_bucket_fast_msg, &pool, &metrics, &log);
 
     assert!(delete_bucket_result.is_ok());
     let delete_bucket_response = delete_bucket_result.unwrap();
@@ -253,7 +259,8 @@ fn verify_rpc_handlers() {
     assert_eq!(delete_bucket_response_result.unwrap(), 1);
 
     // Read bucket again and verify it's gone
-    get_bucket_result = util::handle_msg(&get_bucket_fast_msg, &pool, &log);
+    get_bucket_result =
+        util::handle_msg(&get_bucket_fast_msg, &pool, &metrics, &log);
 
     assert!(get_bucket_result.is_ok());
     let get_bucket_response = get_bucket_result.unwrap();
@@ -269,7 +276,7 @@ fn verify_rpc_handlers() {
 
     // Attempt to delete a nonexistent bucket and verify an error is returned
     delete_bucket_result =
-        util::handle_msg(&delete_bucket_fast_msg, &pool, &log);
+        util::handle_msg(&delete_bucket_fast_msg, &pool, &metrics, &log);
 
     assert!(delete_bucket_result.is_ok());
     let delete_bucket_response = delete_bucket_result.unwrap();
@@ -301,7 +308,7 @@ fn verify_rpc_handlers() {
     let get_object_fast_msg =
         FastMessage::data(msg_id, get_object_fast_msg_data);
     let mut get_object_result =
-        util::handle_msg(&get_object_fast_msg, &pool, &log);
+        util::handle_msg(&get_object_fast_msg, &pool, &metrics, &log);
 
     assert!(get_object_result.is_ok());
     let get_object_response = get_object_result.unwrap();
@@ -347,7 +354,7 @@ fn verify_rpc_handlers() {
     let update_object_fast_msg =
         FastMessage::data(msg_id, update_object_fast_msg_data);
     let mut update_object_result =
-        util::handle_msg(&update_object_fast_msg, &pool, &log);
+        util::handle_msg(&update_object_fast_msg, &pool, &metrics, &log);
 
     assert!(update_object_result.is_ok());
     let mut update_object_response = update_object_result.unwrap();
@@ -393,7 +400,7 @@ fn verify_rpc_handlers() {
     let create_object_fast_msg =
         FastMessage::data(msg_id, create_object_fast_msg_data);
     let mut create_object_result =
-        util::handle_msg(&create_object_fast_msg, &pool, &log);
+        util::handle_msg(&create_object_fast_msg, &pool, &metrics, &log);
 
     assert!(create_object_result.is_ok());
     let create_object_response = create_object_result.unwrap();
@@ -405,7 +412,8 @@ fn verify_rpc_handlers() {
     assert_eq!(create_object_response_result.unwrap().name, object);
 
     // Read object again and verify a successful response is returned
-    get_object_result = util::handle_msg(&get_object_fast_msg, &pool, &log);
+    get_object_result =
+        util::handle_msg(&get_object_fast_msg, &pool, &metrics, &log);
 
     assert!(get_object_result.is_ok());
     let get_object_response = get_object_result.unwrap();
@@ -420,7 +428,7 @@ fn verify_rpc_handlers() {
 
     // Update the object's metadata and verify it is successful
     update_object_result =
-        util::handle_msg(&update_object_fast_msg, &pool, &log);
+        util::handle_msg(&update_object_fast_msg, &pool, &metrics, &log);
 
     assert!(update_object_result.is_ok());
     update_object_response = update_object_result.unwrap();
@@ -434,7 +442,8 @@ fn verify_rpc_handlers() {
     assert_eq!(&update_object_unwrapped_result.content_type, "text/html");
 
     // Read object again and verify the metadata update
-    get_object_result = util::handle_msg(&get_object_fast_msg, &pool, &log);
+    get_object_result =
+        util::handle_msg(&get_object_fast_msg, &pool, &metrics, &log);
     assert!(get_object_result.is_ok());
     let get_object_response = get_object_result.unwrap();
     assert_eq!(get_object_response.len(), 1);
@@ -457,7 +466,7 @@ fn verify_rpc_handlers() {
     let delete_object_fast_msg =
         FastMessage::data(msg_id, delete_object_fast_msg_data);
     let mut delete_object_result =
-        util::handle_msg(&delete_object_fast_msg, &pool, &log);
+        util::handle_msg(&delete_object_fast_msg, &pool, &metrics, &log);
 
     assert!(delete_object_result.is_ok());
     let delete_object_response = delete_object_result.unwrap();
@@ -475,7 +484,8 @@ fn verify_rpc_handlers() {
     assert_eq!(&delete_object_response[0].name, &object);
 
     // Read object again and verify it is not found
-    get_object_result = util::handle_msg(&get_object_fast_msg, &pool, &log);
+    get_object_result =
+        util::handle_msg(&get_object_fast_msg, &pool, &metrics, &log);
 
     assert!(get_object_result.is_ok());
     let get_object_response = get_object_result.unwrap();
@@ -491,7 +501,7 @@ fn verify_rpc_handlers() {
 
     // Delete the object again and verify it is not found
     delete_object_result =
-        util::handle_msg(&delete_object_fast_msg, &pool, &log);
+        util::handle_msg(&delete_object_fast_msg, &pool, &metrics, &log);
 
     assert!(delete_object_result.is_ok());
     let delete_object_response = delete_object_result.unwrap();
@@ -523,7 +533,7 @@ fn verify_rpc_handlers() {
     let list_buckets_fast_msg =
         FastMessage::data(msg_id, list_buckets_fast_msg_data);
     let mut list_buckets_result =
-        util::handle_msg(&list_buckets_fast_msg, &pool, &log);
+        util::handle_msg(&list_buckets_fast_msg, &pool, &metrics, &log);
 
     assert!(list_buckets_result.is_ok());
     let list_buckets_response = list_buckets_result.unwrap();
@@ -531,7 +541,7 @@ fn verify_rpc_handlers() {
 
     // Create a bucket and list buckets again
     create_bucket_result =
-        util::handle_msg(&create_bucket_fast_msg, &pool, &log);
+        util::handle_msg(&create_bucket_fast_msg, &pool, &metrics, &log);
 
     assert!(create_bucket_result.is_ok());
     let create_bucket_response = create_bucket_result.unwrap();
@@ -542,7 +552,8 @@ fn verify_rpc_handlers() {
     assert!(create_bucket_response_result.is_ok());
     assert_eq!(create_bucket_response_result.unwrap().name, bucket);
 
-    list_buckets_result = util::handle_msg(&list_buckets_fast_msg, &pool, &log);
+    list_buckets_result =
+        util::handle_msg(&list_buckets_fast_msg, &pool, &metrics, &log);
 
     assert!(list_buckets_result.is_ok());
     let list_buckets_response = list_buckets_result.unwrap();
@@ -567,7 +578,7 @@ fn verify_rpc_handlers() {
     let list_objects_fast_msg =
         FastMessage::data(msg_id, list_objects_fast_msg_data);
     let mut list_objects_result =
-        util::handle_msg(&list_objects_fast_msg, &pool, &log);
+        util::handle_msg(&list_objects_fast_msg, &pool, &metrics, &log);
 
     assert!(list_objects_result.is_ok());
     let list_objects_response = list_objects_result.unwrap();
@@ -575,7 +586,7 @@ fn verify_rpc_handlers() {
 
     // Create an object and list objects again
     create_object_result =
-        util::handle_msg(&create_object_fast_msg, &pool, &log);
+        util::handle_msg(&create_object_fast_msg, &pool, &metrics, &log);
 
     assert!(create_object_result.is_ok());
     let create_object_response = create_object_result.unwrap();
@@ -586,7 +597,8 @@ fn verify_rpc_handlers() {
     assert!(create_object_response_result.is_ok());
     assert_eq!(create_object_response_result.unwrap().name, object);
 
-    list_objects_result = util::handle_msg(&list_objects_fast_msg, &pool, &log);
+    list_objects_result =
+        util::handle_msg(&list_objects_fast_msg, &pool, &metrics, &log);
 
     assert!(list_objects_result.is_ok());
     let list_objects_response = list_objects_result.unwrap();
@@ -605,7 +617,7 @@ fn verify_rpc_handlers() {
     let get_garbage_fast_msg =
         FastMessage::data(msg_id, get_garbage_fast_msg_data);
     let mut get_garbage_result =
-        util::handle_msg(&get_garbage_fast_msg, &pool, &log);
+        util::handle_msg(&get_garbage_fast_msg, &pool, &metrics, &log);
 
     assert!(get_garbage_result.is_ok());
     let get_garbage_response = get_garbage_result.unwrap();
@@ -634,7 +646,7 @@ fn verify_rpc_handlers() {
     let delete_garbage_fast_msg =
         FastMessage::data(msg_id, delete_garbage_fast_msg_data);
     let delete_garbage_result =
-        util::handle_msg(&delete_garbage_fast_msg, &pool, &log);
+        util::handle_msg(&delete_garbage_fast_msg, &pool, &metrics, &log);
 
     assert!(delete_garbage_result.is_ok());
     let delete_garbage_response = delete_garbage_result.unwrap();
@@ -648,7 +660,8 @@ fn verify_rpc_handlers() {
 
     // Request another batch of garbage and this time it should return an empty
     // list and a NULL batch_id
-    get_garbage_result = util::handle_msg(&get_garbage_fast_msg, &pool, &log);
+    get_garbage_result =
+        util::handle_msg(&get_garbage_fast_msg, &pool, &metrics, &log);
 
     assert!(get_garbage_result.is_ok());
     let get_garbage_response = get_garbage_result.unwrap();

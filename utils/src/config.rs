@@ -150,6 +150,9 @@ pub struct ConfigMetrics {
     pub host: String,
     /// The port number buckets-mdapi should listen on for incoming metrics request connections.
     pub port: u16,
+    pub datacenter: String,
+    pub service: String,
+    pub server: String,
 }
 
 impl Default for ConfigMetrics {
@@ -157,6 +160,9 @@ impl Default for ConfigMetrics {
         Self {
             host: "127.0.0.1".into(),
             port: 3020,
+            datacenter: "development".into(),
+            service: "1.buckets-mdapi.localhost".into(),
+            server: "127.0.0.1".into(),
         }
     }
 }

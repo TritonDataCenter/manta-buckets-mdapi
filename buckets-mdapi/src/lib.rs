@@ -1,4 +1,4 @@
-// Copyright 2019 Joyent, Inc.
+// Copyright 2020 Joyent, Inc.
 
 #![allow(clippy::module_name_repetitions)]
 
@@ -30,7 +30,7 @@ pub mod util {
     use crate::bucket;
     use crate::error::{BucketsMdapiError, BucketsMdapiErrorType};
     use crate::gc;
-    use crate::metrics;
+    use crate::metrics::RegisteredMetrics;
     use crate::object;
     use crate::types::{HandlerError, HandlerResponse, HasRequestId};
 
@@ -41,12 +41,13 @@ pub mod util {
             impl Resolver,
             impl FnMut(&Backend) -> PostgresConnection + Send + 'static,
         >,
+        metrics: &RegisteredMetrics,
         log: &Logger,
     ) -> Result<Vec<FastMessage>, IOError> {
         let now = Instant::now();
         let mut response: Vec<FastMessage> = vec![];
 
-        metrics::INCOMING_REQUEST_COUNTER.inc();
+        metrics.request_count.inc();
 
         let mut connection_acquired = true;
         let method = msg.data.m.name.as_str();
@@ -62,7 +63,8 @@ pub mod util {
                         object::get::decode_msg(&msg.data.d),
                         &mut conn,
                         &object::get::action,
-                        &log,
+                        metrics,
+                        log,
                     ),
                     "createobject" => handle_request(
                         msg.id,
@@ -70,7 +72,8 @@ pub mod util {
                         object::create::decode_msg(&msg.data.d),
                         &mut conn,
                         &object::create::action,
-                        &log,
+                        metrics,
+                        log,
                     ),
                     "updateobject" => handle_request(
                         msg.id,
@@ -78,7 +81,8 @@ pub mod util {
                         object::update::decode_msg(&msg.data.d),
                         &mut conn,
                         &object::update::action,
-                        &log,
+                        metrics,
+                        log,
                     ),
                     "deleteobject" => handle_request(
                         msg.id,
@@ -86,7 +90,8 @@ pub mod util {
                         object::delete::decode_msg(&msg.data.d),
                         &mut conn,
                         &object::delete::action,
-                        &log,
+                        metrics,
+                        log,
                     ),
                     "listobjects" => handle_request(
                         msg.id,
@@ -94,7 +99,8 @@ pub mod util {
                         object::list::decode_msg(&msg.data.d),
                         &mut conn,
                         &object::list::action,
-                        &log,
+                        metrics,
+                        log,
                     ),
                     "getbucket" => handle_request(
                         msg.id,
@@ -102,7 +108,8 @@ pub mod util {
                         bucket::get::decode_msg(&msg.data.d),
                         &mut conn,
                         &bucket::get::action,
-                        &log,
+                        metrics,
+                        log,
                     ),
                     "createbucket" => handle_request(
                         msg.id,
@@ -110,7 +117,8 @@ pub mod util {
                         bucket::create::decode_msg(&msg.data.d),
                         &mut conn,
                         &bucket::create::action,
-                        &log,
+                        metrics,
+                        log,
                     ),
                     "deletebucket" => handle_request(
                         msg.id,
@@ -118,7 +126,8 @@ pub mod util {
                         bucket::delete::decode_msg(&msg.data.d),
                         &mut conn,
                         &bucket::delete::action,
-                        &log,
+                        metrics,
+                        log,
                     ),
                     "listbuckets" => handle_request(
                         msg.id,
@@ -126,7 +135,8 @@ pub mod util {
                         bucket::list::decode_msg(&msg.data.d),
                         &mut conn,
                         &bucket::list::action,
-                        &log,
+                        metrics,
+                        log,
                     ),
                     "getgcbatch" => handle_request(
                         msg.id,
@@ -134,7 +144,8 @@ pub mod util {
                         gc::get::decode_msg(&msg.data.d),
                         &mut conn,
                         &gc::get::action,
-                        &log,
+                        metrics,
+                        log,
                     ),
                     "deletegcbatch" => handle_request(
                         msg.id,
@@ -142,7 +153,8 @@ pub mod util {
                         gc::delete::decode_msg(&msg.data.d),
                         &mut conn,
                         &gc::delete::action,
-                        &log,
+                        metrics,
+                        log,
                     ),
                     _ => {
                         let err_msg = format!("Unsupported functon: {}", method);
@@ -200,7 +212,7 @@ pub mod util {
 
                 let success = if connection_acquired { "true" } else { "false" };
 
-                metrics::FAST_REQUESTS
+                metrics.fast_requests
                     .with_label_values(&[&method, success])
                     .observe(t);
 
@@ -213,7 +225,7 @@ pub mod util {
                 let duration = now.elapsed();
                 let t = duration_to_seconds(duration);
 
-                metrics::FAST_REQUESTS
+                metrics.fast_requests
                     .with_label_values(&[&method, "false"])
                     .observe(t);
 
@@ -288,10 +300,12 @@ pub mod util {
         action: &dyn Fn(
             u32,
             &str,
+            &RegisteredMetrics,
             &Logger,
             X,
             &mut PostgresConnection,
         ) -> Result<HandlerResponse, String>,
+        metrics: &RegisteredMetrics,
         log: &Logger,
     ) -> Result<HandlerResponse, HandlerError>
     where
@@ -311,7 +325,7 @@ pub mod util {
                 debug!(log_child, "parsed payload");
 
                 // Perform the action indicated by the request
-                action(msg_id, &method, &log_child, payload, conn)
+                action(msg_id, &method, metrics, &log_child, payload, conn)
             })
             .map_err(|e| HandlerError::IO(other_error(&e)))
     }

@@ -37,6 +37,9 @@ port = {{BUCKETS_MDAPI_METRICS_PORT}}
 {{^BUCKETS_MDAPI_METRICS_PORT}}
 port = 3020
 {{/BUCKETS_MDAPI_METRICS_PORT}}
+datacenter = "{{DATACENTER}}"
+service = "{{SERVICE_NAME}}"
+server = "{{auto.SERVER_UUID}}"
 
 [database]
 admin_user = "postgres"

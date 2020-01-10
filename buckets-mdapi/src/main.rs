@@ -1,4 +1,4 @@
-// Copyright 2019 Joyent, Inc.
+// Copyright 2020 Joyent, Inc.
 
 use std::default::Default;
 use std::net::SocketAddr;
@@ -44,8 +44,11 @@ fn main() {
     );
 
     // Configure and start metrics server
+    let metrics = buckets_mdapi::metrics::register_metrics(&config.metrics);
+    let metrics_clone = metrics.clone();
     let metrics_host = config.metrics.host.clone();
     let metrics_port = config.metrics.port;
+
     let metrics_thread_builder =
         thread::Builder::new().name("metrics-server".into());
     let m = log.clone();
@@ -58,6 +61,7 @@ fn main() {
             buckets_mdapi::metrics::start_server(
                 &metrics_host,
                 metrics_port,
+                metrics_clone,
                 &metrics_log,
             )
         })
@@ -122,6 +126,7 @@ fn main() {
     info!(log, "listening"; "address" => addr);
 
     let err_log = log.clone();
+
     let server = listener
         .incoming()
         .map_err(
@@ -129,12 +134,20 @@ fn main() {
         )
         .for_each(move |socket| {
             let pool_clone = pool.clone();
+            let metrics_clone = metrics.clone();
             let task_log = log.new(o!(
                 "component" => "FastServer",
                 "thread" => buckets_mdapi::util::get_thread_name()));
             let task = server::make_task(
                 socket,
-                move |a, c| buckets_mdapi::util::handle_msg(a, &pool_clone, c),
+                move |a, c| {
+                    buckets_mdapi::util::handle_msg(
+                        a,
+                        &pool_clone,
+                        &metrics_clone,
+                        c,
+                    )
+                },
                 Some(&task_log),
             );
             tokio::spawn(task);

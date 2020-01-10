@@ -1,4 +1,4 @@
-// Copyright 2019 Joyent, Inc.
+// Copyright 2020 Joyent, Inc.
 
 use std::vec::Vec;
 
@@ -9,14 +9,18 @@ use slog::{debug, error, Logger};
 use cueball_postgres_connection::PostgresConnection;
 use rust_fast::protocol::{FastMessage, FastMessageData};
 
+use crate::metrics::RegisteredMetrics;
 use crate::object::{
-    insert_delete_table_sql, object_not_found, DeleteObjectPayload, DeleteObjectResponse,
+    insert_delete_table_sql, object_not_found, DeleteObjectPayload,
+    DeleteObjectResponse,
 };
 use crate::sql;
 use crate::types::HandlerResponse;
 use crate::util::array_wrap;
 
-pub(crate) fn decode_msg(value: &Value) -> Result<Vec<DeleteObjectPayload>, SerdeError> {
+pub(crate) fn decode_msg(
+    value: &Value,
+) -> Result<Vec<DeleteObjectPayload>, SerdeError> {
     serde_json::from_value::<Vec<DeleteObjectPayload>>(value.clone())
 }
 
@@ -24,12 +28,13 @@ pub(crate) fn decode_msg(value: &Value) -> Result<Vec<DeleteObjectPayload>, Serd
 pub(crate) fn action(
     msg_id: u32,
     method: &str,
+    metrics: &RegisteredMetrics,
     log: &Logger,
     payload: DeleteObjectPayload,
     conn: &mut PostgresConnection,
 ) -> Result<HandlerResponse, String> {
     // Make database request
-    do_delete(&payload, conn, log)
+    do_delete(&payload, conn, metrics, log)
         .and_then(|deleted_objects| {
             // Handle the successful database response
             debug!(log, "operation successful");
@@ -42,8 +47,10 @@ pub(crate) fn action(
                 serde_json::to_value(deleted_objects).unwrap()
             };
 
-            let msg_data = FastMessageData::new(method.into(), array_wrap(value));
-            let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
+            let msg_data =
+                FastMessageData::new(method.into(), array_wrap(value));
+            let msg: HandlerResponse =
+                FastMessage::data(msg_id, msg_data).into();
             Ok(msg)
         })
         .or_else(|e| {
@@ -53,8 +60,10 @@ pub(crate) fn action(
             // Database errors are returned to as regular Fast messages
             // to be handled by the calling application
             let value = sql::postgres_error(e);
-            let msg_data = FastMessageData::new(method.into(), array_wrap(value));
-            let msg: HandlerResponse = FastMessage::data(msg_id, msg_data).into();
+            let msg_data =
+                FastMessageData::new(method.into(), array_wrap(value));
+            let msg: HandlerResponse =
+                FastMessage::data(msg_id, msg_data).into();
             Ok(msg)
         })
 }
@@ -62,6 +71,7 @@ pub(crate) fn action(
 fn do_delete(
     payload: &DeleteObjectPayload,
     conn: &mut PostgresConnection,
+    metrics: &RegisteredMetrics,
     log: &Logger,
 ) -> Result<Vec<DeleteObjectResponse>, String> {
     let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
@@ -73,6 +83,7 @@ fn do_delete(
         &mut txn,
         move_sql.as_str(),
         &[&payload.owner, &payload.bucket_id, &payload.name],
+        metrics,
         &log,
     )
     .and_then(|_moved_rows| {
@@ -81,6 +92,7 @@ fn do_delete(
             &mut txn,
             delete_sql.as_str(),
             &[&payload.owner, &payload.bucket_id, &payload.name],
+            metrics,
             &log,
         )
     })

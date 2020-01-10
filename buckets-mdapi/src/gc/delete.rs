@@ -1,4 +1,4 @@
-// Copyright 2019 Joyent, Inc.
+// Copyright 2020 Joyent, Inc.
 
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Error as SerdeError;
@@ -11,6 +11,7 @@ use rust_fast::protocol::{FastMessage, FastMessageData};
 use tokio_postgres::Error as PGError;
 
 use crate::gc;
+use crate::metrics::RegisteredMetrics;
 use crate::sql;
 use crate::types::{HandlerResponse, HasRequestId};
 use crate::util::array_wrap;
@@ -37,12 +38,13 @@ pub(crate) fn decode_msg(
 pub(crate) fn action(
     msg_id: u32,
     method: &str,
+    metrics: &RegisteredMetrics,
     log: &Logger,
     payload: DeleteGarbagePayload,
     conn: &mut PostgresConnection,
 ) -> Result<HandlerResponse, String> {
     // Make database request
-    do_delete(&payload, conn, log)
+    do_delete(&payload, conn, metrics, log)
         .and_then(|_affected_rows| {
             // Handle the successful database response
             debug!(log, "{} operation was successful", &method);
@@ -78,6 +80,7 @@ pub(crate) fn action(
 fn do_delete(
     _payload: &DeleteGarbagePayload,
     conn: &mut PostgresConnection,
+    metrics: &RegisteredMetrics,
     log: &Logger,
 ) -> Result<(), String> {
     let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
@@ -87,6 +90,7 @@ fn do_delete(
         &mut txn,
         get_garbage_records_sql(),
         &[],
+        metrics,
         log,
     )
     .and_then(|garbage_rows| {
@@ -110,6 +114,7 @@ fn do_delete(
                     &mut txn,
                     delete_stmt.as_str(),
                     &[&owner, &bucket_id, &name, &id],
+                    metrics,
                     log,
                 )
             }
@@ -124,6 +129,7 @@ fn do_delete(
             &mut txn,
             gc::refresh_garbage_view_sql(),
             &[],
+            metrics,
             log,
         )
     })
@@ -135,6 +141,7 @@ fn do_delete(
             &mut txn,
             update_garbage_batch_id_sql(),
             &[&batch_id],
+            metrics,
             log,
         )
     })

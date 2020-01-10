@@ -1,4 +1,4 @@
-// Copyright 2019 Joyent, Inc.
+// Copyright 2020 Joyent, Inc.
 
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Error as SerdeError;
@@ -10,6 +10,7 @@ use rust_fast::protocol::{FastMessage, FastMessageData};
 use uuid::Uuid;
 
 use crate::gc;
+use crate::metrics::RegisteredMetrics;
 use crate::object::ObjectResponse;
 use crate::sql;
 use crate::types::{HandlerResponse, HasRequestId, RowSlice};
@@ -51,12 +52,13 @@ pub(crate) fn decode_msg(
 pub(crate) fn action(
     msg_id: u32,
     method: &str,
+    metrics: &RegisteredMetrics,
     log: &Logger,
     _payload: GetGarbagePayload,
     conn: &mut PostgresConnection,
 ) -> Result<HandlerResponse, String> {
     // Make database request
-    do_get(method, conn, log)
+    do_get(method, conn, metrics, log)
         .and_then(|resp| {
             // Handle the successful database response
             debug!(log, "{} operation was successful", &method);
@@ -89,11 +91,12 @@ pub(crate) fn action(
 fn do_get(
     method: &str,
     mut conn: &mut PostgresConnection,
+    metrics: &RegisteredMetrics,
     log: &Logger,
 ) -> Result<GetGarbageResponse, String> {
     let sql = get_sql();
 
-    sql::query(sql::Method::GarbageGet, &mut conn, sql, &[], log)
+    sql::query(sql::Method::GarbageGet, &mut conn, sql, &[], metrics, log)
         .map_err(|e| e.to_string())
         .and_then(|rows| {
             if rows.is_empty() {
@@ -103,6 +106,7 @@ fn do_get(
                     &mut conn,
                     gc::refresh_garbage_view_sql(),
                     &[],
+                    metrics,
                     log,
                 )
                 .and_then(|_| {
@@ -111,6 +115,7 @@ fn do_get(
                         &mut conn,
                         sql,
                         &[],
+                        metrics,
                         log,
                     )
                 })
