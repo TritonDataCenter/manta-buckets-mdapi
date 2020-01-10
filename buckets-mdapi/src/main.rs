@@ -44,7 +44,6 @@ fn main() {
     );
 
     // Configure and start metrics server
-    // let metrics_config = config.metrics.clone();
     let metrics = buckets_mdapi::metrics::register_metrics(&config.metrics);
     let metrics_clone = metrics.clone();
     let metrics_host = config.metrics.host.clone();
