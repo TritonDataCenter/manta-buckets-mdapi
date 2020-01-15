@@ -12,7 +12,7 @@ use cueball_postgres_connection::PostgresConnection;
 use rust_fast::protocol::{FastMessage, FastMessageData};
 
 use crate::metrics::RegisteredMetrics;
-use crate::object::{object_not_found, response, to_json, ObjectResponse};
+use crate::object::{conditional, object_not_found, response, to_json, ObjectResponse};
 use crate::sql;
 use crate::types::{HandlerResponse, HasRequestId, Hstore};
 use crate::util::array_wrap;
@@ -91,24 +91,35 @@ fn do_update(
     let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
     let update_sql = update_sql(payload.vnode);
 
-    sql::txn_query(
-        sql::Method::ObjectUpdate,
+    conditional(
         &mut txn,
-        update_sql.as_str(),
-        &[
-            &payload.content_type,
-            &payload.headers,
-            &payload.properties,
-            &payload.owner,
-            &payload.bucket_id,
-            &payload.name,
-        ],
+        &payload.owner,
+        &payload.bucket_id,
+        &payload.name,
+        payload.vnode,
         metrics,
         log,
     )
-    .and_then(|rows| {
+    .and_then(|_fetched_rows| {
+        sql::txn_query(
+            sql::Method::ObjectUpdate,
+            &mut txn,
+            update_sql.as_str(),
+            &[
+                &payload.content_type,
+                &payload.headers,
+                &payload.properties,
+                &payload.owner,
+                &payload.bucket_id,
+                &payload.name,
+            ],
+            metrics,
+            log,
+        )
+    })
+    .and_then(|updated_rows| {
         txn.commit()?;
-        Ok(rows)
+        Ok(updated_rows)
     })
     .map_err(|e| e.to_string())
     .and_then(|rows| response(method, &rows))

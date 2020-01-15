@@ -6,7 +6,7 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::Mutex;
 
-use slog::{error, info, o, Drain, Logger};
+use slog::{error, info, o, Drain, Level, LevelFilter, Logger};
 use url::Url;
 use uuid::Uuid;
 
@@ -33,8 +33,11 @@ use utils::{config, schema};
 fn verify_rpc_handlers() {
     let plain = slog_term::PlainSyncDecorator::new(std::io::stdout());
     let log = Logger::root(
-        Mutex::new(slog_term::FullFormat::new(plain).build()).fuse(),
-        o!("build-id" => "0.1.0"),
+        Mutex::new(LevelFilter::new(
+            slog_term::FullFormat::new(plain).build(),
+            Level::Error,
+        )).fuse(),
+        o!(),
     );
 
     let metrics_config = config::ConfigMetrics::default();
@@ -454,6 +457,9 @@ fn verify_rpc_handlers() {
     get_object_unwrapped_result = get_object_response_result.unwrap();
     assert_eq!(get_object_unwrapped_result.name, object);
     assert_eq!(&get_object_unwrapped_result.content_type, "text/html");
+
+    // Get object with matching etag
+    // Get object with mis-matching etag
 
     // Delete object
 

@@ -19,6 +19,13 @@ pub mod get;
 pub mod list;
 pub mod update;
 
+use tokio_postgres::Error as PGError;
+use tokio_postgres::Row as PGRow;
+use postgres::Transaction;
+use slog::{crit, Logger};
+use crate::sql;
+use crate::metrics;
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct GetObjectPayload {
     pub owner: Uuid,
@@ -148,6 +155,38 @@ pub(self) fn object_not_found() -> Value {
         BucketsMdapiErrorType::ObjectNotFound,
     ))
     .expect("failed to encode a ObjectNotFound error")
+}
+
+pub(self) fn conditional(
+    mut txn: &mut Transaction,
+    owner: &Uuid,
+    bucket_id: &Uuid,
+    name: &String,
+    vnode: u64,
+    metrics: &metrics::RegisteredMetrics,
+    log: &Logger,
+) -> Result<Vec<PGRow>, PGError> {
+    // XXX
+    //
+    // perhaps we should accept the conditionals in the form of "headers", as opposed to the
+    // caller specifically passing the appropriate ones.  this way we can return from this method
+    // early if none of the conditional headers are returned, and not rely on the caller sifting
+    // through the headers.
+    let sql = sql::get_sql(vnode);
+
+    sql::txn_query(
+        sql::Method::ObjectGet,
+        &mut txn,
+        sql.as_str(),
+        &[&owner, &bucket_id, &name],
+        metrics,
+        log,
+    )
+    .and_then(|rows| {
+        crit!(log, "got {} rows from conditional query", rows.len());
+
+        Ok(rows)
+    })
 }
 
 pub(self) fn response(

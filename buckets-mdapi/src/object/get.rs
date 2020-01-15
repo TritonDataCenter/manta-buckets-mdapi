@@ -11,7 +11,7 @@ use rust_fast::protocol::{FastMessage, FastMessageData};
 
 use crate::metrics::RegisteredMetrics;
 use crate::object::{
-    object_not_found, response, to_json, GetObjectPayload, ObjectResponse,
+    conditional, object_not_found, response, to_json, GetObjectPayload, ObjectResponse,
 };
 use crate::sql;
 use crate::types::HandlerResponse;
@@ -64,33 +64,31 @@ pub(crate) fn action(
 fn do_get(
     method: &str,
     payload: &GetObjectPayload,
-    mut conn: &mut PostgresConnection,
+    conn: &mut PostgresConnection,
     metrics: &RegisteredMetrics,
     log: &Logger,
 ) -> Result<Option<ObjectResponse>, String> {
-    let sql = get_sql(payload.vnode);
+    let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
 
-    sql::query(
-        sql::Method::ObjectGet,
-        &mut conn,
-        sql.as_str(),
-        &[&payload.owner, &payload.bucket_id, &payload.name],
+    conditional(
+        &mut txn,
+        &payload.owner,
+        &payload.bucket_id,
+        &payload.name,
+        payload.vnode,
         metrics,
         log,
     )
+    // XXX
+    //
+    // this should probably check the response from the conditional call or something, because if
+    // the request wasn't conditional then there'd be no rows here, in which case we'd need to get
+    // them anyway.  if it's the case that the call isn't conditional, is the txn going to hurt us
+    // in any way?
+    .and_then(|rows| {
+        txn.commit()?;
+        Ok(rows)
+    })
     .map_err(|e| e.to_string())
     .and_then(|rows| response(method, &rows))
-}
-
-fn get_sql(vnode: u64) -> String {
-    [
-        "SELECT id, owner, bucket_id, name, created, modified, content_length, \
-         content_md5, content_type, headers, sharks, properties \
-         FROM manta_bucket_",
-        &vnode.to_string(),
-        &".manta_bucket_object WHERE owner = $1 \
-          AND bucket_id = $2 \
-          AND name = $3",
-    ]
-    .concat()
 }
