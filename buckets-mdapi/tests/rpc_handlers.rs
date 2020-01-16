@@ -302,6 +302,7 @@ fn verify_rpc_handlers() {
         name: object.clone(),
         vnode: 1,
         request_id,
+        headers: HashMap::new(),
     };
 
     let get_object_json =
