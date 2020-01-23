@@ -4,7 +4,7 @@ use std::vec::Vec;
 
 use serde_json::Error as SerdeError;
 use serde_json::Value;
-use slog::{debug, error, Logger};
+use slog::{crit, debug, error, Logger};
 
 use cueball_postgres_connection::PostgresConnection;
 use rust_fast::protocol::{FastMessage, FastMessageData};
@@ -69,6 +69,7 @@ fn do_get(
     log: &Logger,
 ) -> Result<Option<ObjectResponse>, String> {
     let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
+    let get_sql = sql::get_sql(payload.vnode);
 
     conditional(
         &mut txn,
@@ -80,14 +81,24 @@ fn do_get(
         metrics,
         log,
     )
-    // XXX
-    //
-    // this should probably check the response from the conditional call or something, because if
-    // the request wasn't conditional then there'd be no rows here, in which case we'd need to get
-    // them anyway.  if it's the case that the call isn't conditional, is the txn going to hurt us
-    // in any way?
+    .and_then(|_rows| {
+        // XXX
+        //
+        // Somehow this should skip this second get if the above conditional already gets the
+        // object that we want successfully.
+
+        sql::txn_query(
+            sql::Method::ObjectGet,
+            &mut txn,
+            get_sql.as_str(),
+            &[&payload.owner, &payload.bucket_id, &payload.name],
+            metrics,
+            log,
+        )
+    })
     .and_then(|rows| {
         txn.commit()?;
+        crit!(log, "txn committed");
         Ok(rows)
     })
     .map_err(|e| e.to_string())

@@ -35,6 +35,7 @@ pub struct GetObjectPayload {
     pub request_id: Uuid,
     pub headers: Hstore,
 }
+// is_conditional()?
 
 impl HasRequestId for GetObjectPayload {
     fn request_id(&self) -> Uuid {
@@ -168,22 +169,36 @@ pub(self) fn conditional(
     metrics: &metrics::RegisteredMetrics,
     log: &Logger,
 ) -> Result<Vec<PGRow>, PGError> {
-    let sql = sql::get_sql(vnode);
+    let get_sql = sql::get_sql(vnode);
 
-    for (h, _v) in headers.iter() {
-        crit!(log, "{}", h);
+    if !headers.contains_key("if-match") {
+        crit!(log, "if-match not found; returning");
+        return Ok(vec!());
     }
+
+    //for (h, _v) in headers.iter() {
+    //    crit!(log, "{}", h);
+    //}
 
     sql::txn_query(
         sql::Method::ObjectGet,
         &mut txn,
-        sql.as_str(),
+        get_sql.as_str(),
         &[&owner, &bucket_id, &name],
         metrics,
         log,
     )
     .and_then(|rows| {
         crit!(log, "got {} rows from conditional query", rows.len());
+
+        if rows.len() == 1 {
+            let row = &rows[0];
+
+            let id: Uuid = row.get("id");
+            let if_match_id = headers.get("if-match");
+
+            crit!(log, "using {} for conditional {:?}", id, if_match_id);
+        }
 
         Ok(rows)
     })

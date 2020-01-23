@@ -6,7 +6,7 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::Mutex;
 
-use slog::{error, info, o, Drain, Level, LevelFilter, Logger};
+use slog::{crit, error, info, o, Drain, Level, LevelFilter, Logger};
 use url::Url;
 use uuid::Uuid;
 
@@ -459,8 +459,44 @@ fn verify_rpc_handlers() {
     assert_eq!(get_object_unwrapped_result.name, object);
     assert_eq!(&get_object_unwrapped_result.content_type, "text/html");
 
-    // Get object with matching etag
-    // Get object with mis-matching etag
+    // Get object with "if-match: correctETag"
+    let request_id = Uuid::new_v4();
+    let mut headers = HashMap::new();
+    let _ = headers
+        .insert("if-match".into(), Some(object_id.to_string()));
+    let get_object_payload = object::GetObjectPayload {
+        owner: owner_id,
+        bucket_id,
+        name: object.clone(),
+        vnode: 1,
+        request_id,
+        headers,
+    };
+
+    let get_object_json =
+        serde_json::to_value(vec![&get_object_payload]).unwrap();
+    let get_object_fast_msg_data =
+        FastMessageData::new("getobject".into(), get_object_json);
+    let get_object_fast_msg =
+        FastMessage::data(msg_id, get_object_fast_msg_data);
+    let mut get_object_result =
+        util::handle_msg(&get_object_fast_msg, &pool, &metrics, &log);
+
+    assert!(get_object_result.is_ok());
+    let get_object_response = get_object_result.unwrap();
+    assert_eq!(get_object_response.len(), 1);
+
+    let get_object_response_result: Result<object::ObjectResponse, _> =
+        serde_json::from_value(get_object_response[0].data.d[0].clone());
+    assert!(get_object_response_result.is_ok());
+    get_object_unwrapped_result = get_object_response_result.unwrap();
+    assert_eq!(get_object_unwrapped_result.name, object);
+    assert_eq!(&get_object_unwrapped_result.content_type, "text/html");
+
+    crit!(log, "--- end --- good if-match test");
+
+    // Try get object with "if-match: wrongETag"
+    // Get object with "if-match: *"
 
     // Delete object
 
@@ -490,6 +526,8 @@ fn verify_rpc_handlers() {
     assert_eq!(&delete_object_response[0].bucket_id, &bucket_id);
     assert_eq!(&delete_object_response[0].name, &object);
 
+    crit!(log, "--- end --- delete object test");
+
     // Read object again and verify it is not found
     get_object_result =
         util::handle_msg(&get_object_fast_msg, &pool, &metrics, &log);
@@ -506,6 +544,8 @@ fn verify_rpc_handlers() {
         BucketsMdapiError::new(BucketsMdapiErrorType::ObjectNotFound)
     );
 
+    crit!(log, "--- end --- read after delete");
+
     // Delete the object again and verify it is not found
     delete_object_result =
         util::handle_msg(&delete_object_fast_msg, &pool, &metrics, &log);
@@ -521,6 +561,8 @@ fn verify_rpc_handlers() {
         delete_object_response_result.unwrap(),
         BucketsMdapiError::new(BucketsMdapiErrorType::ObjectNotFound)
     );
+
+    crit!(log, "--- end --- delete after delete");
 
     // List buckets and confirm none are found
 
