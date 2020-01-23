@@ -194,10 +194,22 @@ pub(self) fn conditional(
         if rows.len() == 1 {
             let row = &rows[0];
 
-            let id: Uuid = row.get("id");
-            let if_match_id = headers.get("if-match");
+            let etag: Uuid = row.get("id");
+            let x = headers.get("if-match").unwrap().clone();
+            let y = x.unwrap();
+            let if_match_id = Uuid::parse_str(y.as_str()).unwrap();
 
-            crit!(log, "using {} for conditional {:?}", id, if_match_id);
+            if etag == if_match_id {
+                crit!(log, "precondition success: want:{} / got:{}", if_match_id, etag);
+                return Ok(rows);
+            } else {
+                let msg = format!("if-match {} didn't match etag {}", if_match_id, etag);
+                crit!(log, "{}", msg);
+                //return Err(BucketsMdapiError::with_message(
+                //    BucketsMdapiErrorType::PreconditionFailedError,
+                //    msg,
+                //));
+            }
         }
 
         Ok(rows)

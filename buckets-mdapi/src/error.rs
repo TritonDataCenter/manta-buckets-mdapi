@@ -7,6 +7,7 @@ pub enum BucketsMdapiErrorType {
     ObjectNotFound,
     PostgresError,
     LimitConstraintError,
+    PreconditionFailedError,
 }
 
 impl ToString for BucketsMdapiErrorType {
@@ -17,6 +18,7 @@ impl ToString for BucketsMdapiErrorType {
             BucketsMdapiErrorType::ObjectNotFound => "ObjectNotFound".into(),
             BucketsMdapiErrorType::PostgresError => "PostgresError".into(),
             BucketsMdapiErrorType::LimitConstraintError => "LimitConstraintError".into(),
+            BucketsMdapiErrorType::PreconditionFailedError => "PreconditionFailedError".into(),
         }
     }
 }
@@ -29,6 +31,7 @@ impl BucketsMdapiErrorType {
             BucketsMdapiErrorType::ObjectNotFound => "requested object not found".into(),
             BucketsMdapiErrorType::PostgresError => "postgres encountered an error".into(),
             BucketsMdapiErrorType::LimitConstraintError => "a limit constraint was violated".into(),
+            BucketsMdapiErrorType::PreconditionFailedError => "precondition failed ? ? ? ".into(),
         }
     }
 }

@@ -4,7 +4,7 @@ use std::vec::Vec;
 
 use serde_json::Error as SerdeError;
 use serde_json::Value;
-use slog::{crit, debug, error, Logger};
+use slog::{debug, error, Logger};
 
 use cueball_postgres_connection::PostgresConnection;
 use rust_fast::protocol::{FastMessage, FastMessageData};
@@ -98,7 +98,6 @@ fn do_get(
     })
     .and_then(|rows| {
         txn.commit()?;
-        crit!(log, "txn committed");
         Ok(rows)
     })
     .map_err(|e| e.to_string())
