@@ -20,7 +20,6 @@ pub mod list;
 pub mod update;
 
 use tokio_postgres::Error as PGError;
-use tokio_postgres::Row as PGRow;
 use postgres::Transaction;
 use slog::{crit, Logger};
 use crate::sql;
@@ -168,12 +167,12 @@ pub(self) fn conditional(
     headers: &Hstore,
     metrics: &metrics::RegisteredMetrics,
     log: &Logger,
-) -> Result<Vec<PGRow>, PGError> {
+) -> Result<(), PGError> {
     let get_sql = sql::get_sql(vnode);
 
     if !headers.contains_key("if-match") {
         crit!(log, "if-match not found; returning");
-        return Ok(vec!());
+        return Ok(());
     }
 
     //for (h, _v) in headers.iter() {
@@ -189,6 +188,10 @@ pub(self) fn conditional(
         log,
     )
     .and_then(|rows| {
+        // XXX
+        //
+        // What happens on 0 rows, like a precondition on a non-existent object?
+
         crit!(log, "got {} rows from conditional query", rows.len());
 
         if rows.len() == 1 {
@@ -201,7 +204,6 @@ pub(self) fn conditional(
 
             if etag == if_match_id {
                 crit!(log, "precondition success: want:{} / got:{}", if_match_id, etag);
-                return Ok(rows);
             } else {
                 let msg = format!("if-match {} didn't match etag {}", if_match_id, etag);
                 crit!(log, "{}", msg);
@@ -212,7 +214,7 @@ pub(self) fn conditional(
             }
         }
 
-        Ok(rows)
+        Ok(())
     })
 }
 

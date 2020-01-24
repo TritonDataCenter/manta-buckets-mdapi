@@ -479,7 +479,7 @@ fn verify_rpc_handlers() {
         FastMessageData::new("getobject".into(), get_object_json);
     let get_object_fast_msg =
         FastMessage::data(msg_id, get_object_fast_msg_data);
-    let mut get_object_result =
+    get_object_result =
         util::handle_msg(&get_object_fast_msg, &pool, &metrics, &log);
 
     assert!(get_object_result.is_ok());
@@ -496,6 +496,42 @@ fn verify_rpc_handlers() {
     crit!(log, "--- end --- good if-match test");
 
     // Try get object with "if-match: wrongETag"
+    let request_id = Uuid::new_v4();
+    let mut headers = HashMap::new();
+    let _ = headers
+        .insert("if-match".into(), Some(Uuid::new_v4().to_string()));
+    let get_object_payload = object::GetObjectPayload {
+        owner: owner_id,
+        bucket_id,
+        name: object.clone(),
+        vnode: 1,
+        request_id,
+        headers,
+    };
+
+    let get_object_json =
+        serde_json::to_value(vec![&get_object_payload]).unwrap();
+    let get_object_fast_msg_data =
+        FastMessageData::new("getobject".into(), get_object_json);
+    let get_object_fast_msg =
+        FastMessage::data(msg_id, get_object_fast_msg_data);
+    get_object_result =
+        util::handle_msg(&get_object_fast_msg, &pool, &metrics, &log);
+
+    assert!(get_object_result.is_ok());
+    let get_object_response = get_object_result.unwrap();
+    assert_eq!(get_object_response.len(), 1);
+
+    //let get_object_response_result: Result<BucketsMdapiError, _> =
+    //    serde_json::from_value(get_object_response[0].data.d[0].clone());
+    //assert!(get_object_response_result.is_ok());
+    //assert_eq!(
+    //    get_object_response_result.unwrap(),
+    //    BucketsMdapiError::new(BucketsMdapiErrorType::PreconditionFailedError)
+    //);
+
+    crit!(log, "--- end --- bad if-match test");
+
     // Get object with "if-match: *"
 
     // Delete object
