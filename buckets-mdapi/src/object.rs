@@ -166,21 +166,19 @@ pub(self) fn conditional(
     metrics: &metrics::RegisteredMetrics,
     log: &Logger,
 ) -> Result<(), PGError> {
-    let get_sql = sql::get_sql(vnode);
-
+    // XXX
+    //
+    // This should be some kind of `.isConditional()` call on some part of the request.  Probably
+    // the headers.
     if !headers.contains_key("if-match") {
         crit!(log, "if-match not found; returning");
         return Ok(());
     }
 
-    //for (h, _v) in headers.iter() {
-    //    crit!(log, "{}", h);
-    //}
-
     sql::txn_query(
         sql::Method::ObjectGet,
         &mut txn,
-        get_sql.as_str(),
+        sql::get_sql(vnode).as_str(),
         items,
         metrics,
         log,
