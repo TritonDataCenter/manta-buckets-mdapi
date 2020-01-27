@@ -2,6 +2,8 @@
 
 use std::error::Error;
 use std::vec::Vec;
+use std::fmt;
+use std::io;
 
 use base64;
 use postgres::types::{FromSql, IsNull, ToSql, Type};
@@ -158,6 +160,71 @@ pub(self) fn object_not_found() -> Value {
     .expect("failed to encode a ObjectNotFound error")
 }
 
+// XXX
+//
+// This is basically from:
+//
+//     https://blog.burntsushi.net/rust-error-handling/#defining-your-own-error-type
+//
+// I can't say I understand it all yet.
+//
+// I think `conditional` (or whatever it's going to be called) is going to need to have a custom
+// error type because it could either be a PGError from attempting the initial query, or whatever
+// type the actual conditional comparison failure is going to be.
+//
+// Still not sure on what error to return to the client.  I think as it is this will look like a
+// PostgresError, where I think something like PreconditionFailedError is what I want.  This
+// error could then define some ways of printing the precondition failure into a string suitable
+// for the fast message.
+#[derive(Debug)]
+enum ConditionalError {
+    Pg(PGError),
+    Conditional(io::Error),
+}
+
+impl From<PGError> for ConditionalError {
+    fn from(err: PGError) -> ConditionalError {
+        ConditionalError::Pg(err)
+    }
+}
+
+impl From<io::Error> for ConditionalError {
+    fn from(err: io::Error) -> ConditionalError {
+        ConditionalError::Conditional(err)
+    }
+}
+
+impl fmt::Display for ConditionalError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            ConditionalError::Pg(ref err) => write!(f, "pg: {}", err),
+            ConditionalError::Conditional(ref err) => write!(f, "conditional: {}", err),
+        }
+    }
+}
+
+impl Error for ConditionalError {
+    fn description(&self) -> &str {
+        match *self {
+            ConditionalError::Pg(ref err) => err.description(),
+            ConditionalError::Conditional(ref err) => err.description(),
+        }
+    }
+
+    fn cause(&self) -> Option<&Error> {
+        match *self {
+            ConditionalError::Pg(ref err) => Some(err),
+            ConditionalError::Conditional(ref err) => Some(err),
+        }
+    }
+}
+
+// XXX
+//
+// This perhaps could return an Option, but I think it's going to have to be Result at least
+// because of the get request case.  In that case the actual call is exactly the same as what is
+// done in this conditional call, so we might as well just return the object(s) and have the caller
+// skip the separate call to the database.
 pub(self) fn conditional(
     mut txn: &mut Transaction,
     items: &[&dyn ToSql],
@@ -165,7 +232,7 @@ pub(self) fn conditional(
     headers: &Hstore,
     metrics: &metrics::RegisteredMetrics,
     log: &Logger,
-) -> Result<(), PGError> {
+) -> Result<(), ConditionalError> {
     // XXX
     //
     // This should be some kind of `.isConditional()` call on some part of the request.  Probably
@@ -175,43 +242,58 @@ pub(self) fn conditional(
         return Ok(());
     }
 
-    sql::txn_query(
+    let rows = sql::txn_query(
         sql::Method::ObjectGet,
         &mut txn,
         sql::get_sql(vnode).as_str(),
         items,
         metrics,
         log,
-    )
-    .and_then(|rows| {
+    )?;
+
+    // XXX
+    //
+    // What happens on 0 rows, like a precondition on a non-existent object?
+    //
+    // What about >1 rows?  Do we need to handle all cases like `response` does?
+
+    crit!(log, "got {} rows from conditional query", rows.len());
+
+    if rows.len() == 1 {
+        let row = &rows[0];
+
+        let etag: Uuid = row.get("id");
+
         // XXX
         //
-        // What happens on 0 rows, like a precondition on a non-existent object?
+        // Need to figure out properly getting into Some(Some("x"))
+        let x = headers.get("if-match").unwrap().clone();
+        let y = x.unwrap();
 
-        crit!(log, "got {} rows from conditional query", rows.len());
+        // XXX
+        //
+        // This could be a comma separated list of values.  Or they could be weak comparisons.
+        // Or...
+        //
+        // Should this headers object be a new type with some fancy methods for getting at this
+        // information?
+        let if_match_id = Uuid::parse_str(y.as_str()).unwrap();
 
-        if rows.len() == 1 {
-            let row = &rows[0];
-
-            let etag: Uuid = row.get("id");
-            let x = headers.get("if-match").unwrap().clone();
-            let y = x.unwrap();
-            let if_match_id = Uuid::parse_str(y.as_str()).unwrap();
-
-            if etag == if_match_id {
-                crit!(log, "precondition success: want:{} / got:{}", if_match_id, etag);
-            } else {
-                let msg = format!("if-match {} didn't match etag {}", if_match_id, etag);
-                crit!(log, "{}", msg);
-                //return Err(BucketsMdapiError::with_message(
-                //    BucketsMdapiErrorType::PreconditionFailedError,
-                //    msg,
-                //));
-            }
+        if etag == if_match_id {
+            crit!(log, "precondition success: want:{} / got:{}", if_match_id, etag);
+        } else {
+            let msg = format!("if-match {} didn't match etag {}", if_match_id, etag);
+            crit!(log, "{}", msg);
+            return Err(ConditionalError::Conditional(io::Error::new(io::ErrorKind::Other, msg)));
+            //return Err(BucketsMdapiError::with_message(
+            //    BucketsMdapiErrorType::PreconditionFailedError,
+            //    msg,
+            //));
         }
+    }
 
-        Ok(())
-    })
+    Ok(())
+
 }
 
 pub(self) fn response(

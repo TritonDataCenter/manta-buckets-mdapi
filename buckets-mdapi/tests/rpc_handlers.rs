@@ -522,9 +522,9 @@ fn verify_rpc_handlers() {
     let get_object_response = get_object_result.unwrap();
     assert_eq!(get_object_response.len(), 1);
 
-    //let get_object_response_result: Result<BucketsMdapiError, _> =
-    //    serde_json::from_value(get_object_response[0].data.d[0].clone());
-    //assert!(get_object_response_result.is_ok());
+    let get_object_response_result: Result<BucketsMdapiError, _> =
+        serde_json::from_value(get_object_response[0].data.d[0].clone());
+    assert!(get_object_response_result.is_ok());
     //assert_eq!(
     //    get_object_response_result.unwrap(),
     //    BucketsMdapiError::new(BucketsMdapiErrorType::PreconditionFailedError)

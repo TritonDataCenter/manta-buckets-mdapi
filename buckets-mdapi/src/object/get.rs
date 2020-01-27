@@ -47,6 +47,11 @@ pub(crate) fn action(
             Ok(msg)
         })
         .or_else(|e| {
+            // XXX
+            //
+            // I think here we're going to need to match on the error now that precondition errors
+            // also need to bubble up as fast messages.
+
             // Handle database error response
             error!(log, "operation failed"; "error" => &e);
 
@@ -93,6 +98,11 @@ fn do_get(
             metrics,
             log,
         )
+        // XXX
+        //
+        // I think this was added when I was messing around with Box<Error>.  I am not sure why
+        // it's needed.
+        .map_err(|e| e.into())
     })
     .and_then(|rows| {
         txn.commit()?;

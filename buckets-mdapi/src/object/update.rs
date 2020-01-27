@@ -115,6 +115,7 @@ fn do_update(
             metrics,
             log,
         )
+        .map_err(|e| e.into())
     })
     .and_then(|updated_rows| {
         txn.commit()?;
