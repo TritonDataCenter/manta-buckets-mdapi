@@ -160,9 +160,7 @@ pub(self) fn object_not_found() -> Value {
 
 pub(self) fn conditional(
     mut txn: &mut Transaction,
-    owner: &Uuid,
-    bucket_id: &Uuid,
-    name: &String,
+    items: &[&dyn ToSql],
     vnode: u64,
     headers: &Hstore,
     metrics: &metrics::RegisteredMetrics,
@@ -183,7 +181,7 @@ pub(self) fn conditional(
         sql::Method::ObjectGet,
         &mut txn,
         get_sql.as_str(),
-        &[&owner, &bucket_id, &name],
+        items,
         metrics,
         log,
     )

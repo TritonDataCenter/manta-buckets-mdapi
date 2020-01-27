@@ -73,9 +73,7 @@ fn do_get(
 
     conditional(
         &mut txn,
-        &payload.owner,
-        &payload.bucket_id,
-        &payload.name,
+        &[&payload.owner, &payload.bucket_id, &payload.name],
         payload.vnode,
         &payload.headers,
         metrics,
