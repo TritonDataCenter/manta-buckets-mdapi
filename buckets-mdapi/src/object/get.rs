@@ -11,7 +11,7 @@ use rust_fast::protocol::{FastMessage, FastMessageData};
 
 use crate::metrics::RegisteredMetrics;
 use crate::object::{
-    conditional, object_not_found, response, to_json, GetObjectPayload, ObjectResponse,
+    precondition_error, conditional, object_not_found, response, to_json, GetObjectPayload, ObjectResponse,
 };
 use crate::sql;
 use crate::types::HandlerResponse;
@@ -53,13 +53,13 @@ pub(crate) fn action(
             // also need to bubble up as fast messages.
 
             // Handle database error response
-            error!(log, "operation failed"; "error" => &e);
+            // XXX error!(log, "operation failed"; "error" => &e);
 
             // Database errors are returned to as regular Fast messages
             // to be handled by the calling application
-            let value = sql::postgres_error(e);
+
             let msg_data =
-                FastMessageData::new(method.into(), array_wrap(value));
+                FastMessageData::new(method.into(), array_wrap(e));
             let msg: HandlerResponse =
                 FastMessage::data(msg_id, msg_data).into();
             Ok(msg)
@@ -72,7 +72,7 @@ fn do_get(
     conn: &mut PostgresConnection,
     metrics: &RegisteredMetrics,
     log: &Logger,
-) -> Result<Option<ObjectResponse>, String> {
+) -> Result<Option<ObjectResponse>, Value> {
     let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
     let get_sql = sql::get_sql(payload.vnode);
 
@@ -108,6 +108,12 @@ fn do_get(
         txn.commit()?;
         Ok(rows)
     })
-    .map_err(|e| e.to_string())
+    .map_err(|e| {
+        let err_str = e.to_string();
+        match e {
+            BucketsMdapiError => precondition_error(err_str),
+            PGError => sql::postgres_error(err_str),
+        }
+    })
     .and_then(|rows| response(method, &rows))
 }

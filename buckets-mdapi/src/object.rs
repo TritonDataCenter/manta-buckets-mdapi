@@ -160,6 +160,15 @@ pub(self) fn object_not_found() -> Value {
     .expect("failed to encode a ObjectNotFound error")
 }
 
+
+pub(self) fn precondition_error(msg: String) -> Value {
+    serde_json::to_value(BucketsMdapiError::with_message(
+        BucketsMdapiErrorType::PreconditionFailedError,
+        msg,
+    ))
+    .expect("failed to encode a PreconditionFailedError error")
+}
+
 // XXX
 //
 // This is basically from:
@@ -179,7 +188,7 @@ pub(self) fn object_not_found() -> Value {
 #[derive(Debug)]
 enum ConditionalError {
     Pg(PGError),
-    Conditional(io::Error),
+    Conditional(BucketsMdapiError),
 }
 
 impl From<PGError> for ConditionalError {
@@ -188,8 +197,8 @@ impl From<PGError> for ConditionalError {
     }
 }
 
-impl From<io::Error> for ConditionalError {
-    fn from(err: io::Error) -> ConditionalError {
+impl From<BucketsMdapiError> for ConditionalError {
+    fn from(err: BucketsMdapiError) -> ConditionalError {
         ConditionalError::Conditional(err)
     }
 }
@@ -197,8 +206,8 @@ impl From<io::Error> for ConditionalError {
 impl fmt::Display for ConditionalError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            ConditionalError::Pg(ref err) => write!(f, "pg: {}", err),
-            ConditionalError::Conditional(ref err) => write!(f, "conditional: {}", err),
+            ConditionalError::Pg(ref err) => write!(f, "{}", err),
+            ConditionalError::Conditional(ref err) => write!(f, "{}", err),
         }
     }
 }
@@ -284,11 +293,11 @@ pub(self) fn conditional(
         } else {
             let msg = format!("if-match {} didn't match etag {}", if_match_id, etag);
             crit!(log, "{}", msg);
-            return Err(ConditionalError::Conditional(io::Error::new(io::ErrorKind::Other, msg)));
-            //return Err(BucketsMdapiError::with_message(
-            //    BucketsMdapiErrorType::PreconditionFailedError,
-            //    msg,
-            //));
+            //return Err(ConditionalError::Conditional(io::Error::new(io::ErrorKind::Other, msg)));
+            return Err(ConditionalError::Conditional(BucketsMdapiError::with_message(
+                BucketsMdapiErrorType::PreconditionFailedError,
+                msg,
+            )));
         }
     }
 
@@ -299,7 +308,7 @@ pub(self) fn conditional(
 pub(self) fn response(
     method: &str,
     rows: &RowSlice,
-) -> Result<Option<ObjectResponse>, String> {
+) -> Result<Option<ObjectResponse>, Value> {
     if rows.is_empty() {
         Ok(None)
     } else if rows.len() == 1 {
@@ -330,7 +339,7 @@ pub(self) fn response(
                  but 12 were expected.",
                 method, cols
             );
-            Err(err.to_string())
+            Err(sql::postgres_error(err.to_string()))
         }
     } else {
         let err = format!(
@@ -338,7 +347,7 @@ pub(self) fn response(
             method,
             rows.len()
         );
-        Err(err.to_string())
+        Err(sql::postgres_error(err.to_string()))
     }
 }
 

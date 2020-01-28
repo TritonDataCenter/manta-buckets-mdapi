@@ -498,8 +498,9 @@ fn verify_rpc_handlers() {
     // Try get object with "if-match: wrongETag"
     let request_id = Uuid::new_v4();
     let mut headers = HashMap::new();
+    let if_match_etag = Uuid::new_v4();
     let _ = headers
-        .insert("if-match".into(), Some(Uuid::new_v4().to_string()));
+        .insert("if-match".into(), Some(if_match_etag.to_string()));
     let get_object_payload = object::GetObjectPayload {
         owner: owner_id,
         bucket_id,
@@ -525,10 +526,13 @@ fn verify_rpc_handlers() {
     let get_object_response_result: Result<BucketsMdapiError, _> =
         serde_json::from_value(get_object_response[0].data.d[0].clone());
     assert!(get_object_response_result.is_ok());
-    //assert_eq!(
-    //    get_object_response_result.unwrap(),
-    //    BucketsMdapiError::new(BucketsMdapiErrorType::PreconditionFailedError)
-    //);
+    assert_eq!(
+        get_object_response_result.unwrap(),
+        BucketsMdapiError::with_message(
+            BucketsMdapiErrorType::PreconditionFailedError,
+            format!("if-match {} didn't match etag {}", if_match_etag, object_id),
+        ),
+    );
 
     crit!(log, "--- end --- bad if-match test");
 

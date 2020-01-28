@@ -14,7 +14,7 @@ use rust_fast::protocol::{FastMessage, FastMessageData};
 
 use crate::metrics::RegisteredMetrics;
 use crate::object::{
-    insert_delete_table_sql, response, to_json, ObjectResponse,
+    precondition_error, insert_delete_table_sql, response, to_json, ObjectResponse,
     StorageNodeIdentifier,
 };
 use crate::sql;
@@ -82,13 +82,13 @@ pub(crate) fn action(
         })
         .or_else(|e| {
             // Handle database error response
-            error!(log, "operation failed"; "error" => &e);
+            //error!(log, "operation failed"; "error" => &e);
 
             // Database errors are returned to as regular Fast messages
             // to be handled by the calling application
-            let value = sql::postgres_error(e);
+            //let value = sql::postgres_error(e);
             let msg_data =
-                FastMessageData::new(method.into(), array_wrap(value));
+                FastMessageData::new(method.into(), array_wrap(e));
             let msg: HandlerResponse =
                 FastMessage::data(msg_id, msg_data).into();
             Ok(msg)
@@ -101,7 +101,7 @@ fn do_create(
     conn: &mut PostgresConnection,
     metrics: &RegisteredMetrics,
     log: &Logger,
-) -> Result<Option<ObjectResponse>, String> {
+) -> Result<Option<ObjectResponse>, Value> {
     let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
     let create_sql = create_sql(payload.vnode);
     let move_sql = insert_delete_table_sql(payload.vnode);
@@ -146,7 +146,13 @@ fn do_create(
         txn.commit()?;
         Ok(rows)
     })
-    .map_err(|e| e.to_string())
+    .map_err(|e| {
+        let err_str = e.to_string();
+        match e {
+            PGError => sql::postgres_error(err_str),
+            BucketsMdapiError => precondition_error(err_str),
+        }
+    })
     .and_then(|rows| response(method, &rows))
 }
 

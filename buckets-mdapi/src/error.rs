@@ -1,4 +1,6 @@
 use serde_derive::{Deserialize, Serialize};
+use std::fmt;
+use std::error;
 
 #[derive(Clone, Copy)]
 pub enum BucketsMdapiErrorType {
@@ -58,5 +60,21 @@ impl BucketsMdapiError {
             message: msg,
         };
         Self { error: inner }
+    }
+
+    pub fn description(&self) -> &str {
+        &self.error.message
+    }
+}
+
+impl fmt::Display for BucketsMdapiError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.error.message)
+    }
+}
+
+impl error::Error for BucketsMdapiError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        None
     }
 }
