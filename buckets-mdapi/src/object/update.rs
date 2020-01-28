@@ -12,7 +12,8 @@ use cueball_postgres_connection::PostgresConnection;
 use rust_fast::protocol::{FastMessage, FastMessageData};
 
 use crate::metrics::RegisteredMetrics;
-use crate::object::{precondition_error, conditional, object_not_found, response, to_json, ObjectResponse};
+use crate::object::{object_not_found, response, to_json, ObjectResponse};
+use crate::precondition;
 use crate::sql;
 use crate::types::{HandlerResponse, HasRequestId, Hstore};
 use crate::util::array_wrap;
@@ -68,11 +69,11 @@ pub(crate) fn action(
         })
         .or_else(|e| {
             // Handle database error response
-            //error!(log, "operation failed"; "error" => &e);
+            error!(log, "operation failed"; "error" => &e.to_string());
 
             // Database errors are returned to as regular Fast messages
             // to be handled by the calling application
-            //let value = sql::postgres_error(e);
+
             let msg_data =
                 FastMessageData::new(method.into(), array_wrap(e));
             let msg: HandlerResponse =
@@ -91,7 +92,7 @@ fn do_update(
     let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
     let update_sql = update_sql(payload.vnode);
 
-    conditional(
+    precondition::request(
         &mut txn,
         &[&payload.owner, &payload.bucket_id, &payload.name],
         payload.vnode,
@@ -125,7 +126,7 @@ fn do_update(
         let err_str = e.to_string();
         match e {
             PGError => sql::postgres_error(err_str),
-            BucketsMdapiError => precondition_error(err_str),
+            BucketsMdapiError => precondition::error(err_str),
         }
     })
     .and_then(|rows| response(method, &rows))

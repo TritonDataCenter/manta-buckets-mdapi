@@ -14,9 +14,10 @@ use rust_fast::protocol::{FastMessage, FastMessageData};
 
 use crate::metrics::RegisteredMetrics;
 use crate::object::{
-    precondition_error, insert_delete_table_sql, response, to_json, ObjectResponse,
+    insert_delete_table_sql, response, to_json, ObjectResponse,
     StorageNodeIdentifier,
 };
+use crate::precondition;
 use crate::sql;
 use crate::types::{HandlerResponse, HasRequestId, Hstore};
 use crate::util::array_wrap;
@@ -82,7 +83,7 @@ pub(crate) fn action(
         })
         .or_else(|e| {
             // Handle database error response
-            //error!(log, "operation failed"; "error" => &e);
+            error!(log, "operation failed"; "error" => &e.to_string());
 
             // Database errors are returned to as regular Fast messages
             // to be handled by the calling application
@@ -150,7 +151,7 @@ fn do_create(
         let err_str = e.to_string();
         match e {
             PGError => sql::postgres_error(err_str),
-            BucketsMdapiError => precondition_error(err_str),
+            BucketsMdapiError => precondition::error(err_str),
         }
     })
     .and_then(|rows| response(method, &rows))

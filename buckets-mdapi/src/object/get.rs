@@ -11,8 +11,9 @@ use rust_fast::protocol::{FastMessage, FastMessageData};
 
 use crate::metrics::RegisteredMetrics;
 use crate::object::{
-    precondition_error, conditional, object_not_found, response, to_json, GetObjectPayload, ObjectResponse,
+    object_not_found, response, to_json, GetObjectPayload, ObjectResponse,
 };
+use crate::precondition;
 use crate::sql;
 use crate::types::HandlerResponse;
 use crate::util::array_wrap;
@@ -47,13 +48,13 @@ pub(crate) fn action(
             Ok(msg)
         })
         .or_else(|e| {
+            // Handle database error response
+
             // XXX
             //
-            // I think here we're going to need to match on the error now that precondition errors
-            // also need to bubble up as fast messages.
-
-            // Handle database error response
-            // XXX error!(log, "operation failed"; "error" => &e);
+            // We only really care about this failure if it's a postgres error, but by this time
+            // the error is a Value so I think it's harder to match on.
+            error!(log, "operation failed"; "error" => &e.to_string());
 
             // Database errors are returned to as regular Fast messages
             // to be handled by the calling application
@@ -76,7 +77,7 @@ fn do_get(
     let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
     let get_sql = sql::get_sql(payload.vnode);
 
-    conditional(
+    precondition::request(
         &mut txn,
         &[&payload.owner, &payload.bucket_id, &payload.name],
         payload.vnode,
@@ -111,7 +112,7 @@ fn do_get(
     .map_err(|e| {
         let err_str = e.to_string();
         match e {
-            BucketsMdapiError => precondition_error(err_str),
+            BucketsMdapiError => precondition::error(err_str),
             PGError => sql::postgres_error(err_str),
         }
     })
