@@ -1,6 +1,6 @@
 [package]
 name = "buckets-mdapi"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Kelly McLaughlin <kelly.mclaughlin@joyent.com>",
            "Jon Anderson <jon.anderson@joyent.com"]
 edition = "2018"
@@ -17,7 +17,7 @@ prometheus = "0.5.0"
 cueball = "0.3.0"
 cueball-manatee-primary-resolver = "0.3.0"
 cueball-postgres-connection = "0.3.0"
-rust_fast = { git = "https://github.com/joyent/rust-fast", tag = "v0.1.1" }
+rust_fast = { git = "https://github.com/joyent/rust-fast", tag = "v0.2.0" }
 serde = "1.0.84"
 serde_derive = "1.0.84"
 serde_json = "1.0.40"
