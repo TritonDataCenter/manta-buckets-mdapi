@@ -17,7 +17,6 @@ use crate::object::{
     insert_delete_table_sql, response, to_json, ObjectResponse,
     StorageNodeIdentifier,
 };
-use crate::precondition;
 use crate::sql;
 use crate::types::{HandlerResponse, HasRequestId, Hstore};
 use crate::util::array_wrap;
@@ -147,13 +146,7 @@ fn do_create(
         txn.commit()?;
         Ok(rows)
     })
-    .map_err(|e| {
-        let err_str = e.to_string();
-        match e {
-            PGError => sql::postgres_error(err_str),
-            BucketsMdapiError => precondition::error(err_str),
-        }
-    })
+    .map_err(|e| { sql::postgres_error(e.to_string()) })
     .and_then(|rows| response(method, &rows))
 }
 

@@ -109,17 +109,11 @@ fn do_get(
         txn.commit()?;
         Ok(rows)
     })
-    .map_err(|e| {
-        let err_str = e.to_string();
-        // XXX
-        //
-        // This isn't doing what I think it's doing.  As it is, every error is a precondition error
-        // now, whereas I want to match on the error type and do different things depending on what
-        // it is.
-        match e {
-            BucketsMdapiError => precondition::error(err_str),
-            PGError => sql::postgres_error(err_str),
+    .map_err(|e| match e {
+        precondition::ConditionalError::Conditional(e) => {
+            precondition::error(e.to_string())
         }
+        _ => sql::postgres_error(e.to_string()),
     })
     .and_then(|rows| response(method, &rows))
 }

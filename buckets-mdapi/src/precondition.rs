@@ -3,17 +3,17 @@
 use std::error::Error;
 use std::fmt;
 
-use tokio_postgres;
 use postgres::types::ToSql;
 use postgres::Transaction;
-use slog::{crit, Logger};
-use uuid::Uuid;
 use serde_json;
+use slog::{crit, Logger};
+use tokio_postgres;
+use uuid::Uuid;
 
 use crate::error;
+use crate::metrics;
 use crate::sql;
 use crate::types;
-use crate::metrics;
 
 pub fn error(msg: String) -> serde_json::Value {
     serde_json::to_value(error::BucketsMdapiError::with_message(
@@ -132,11 +132,7 @@ pub fn request(
     if rows.len() == 1 {
         let row = &rows[0];
 
-        let c = check_conditional(
-            headers,
-            row.get("id"),
-            row.get("modified"),
-        );
+        let c = check_conditional(headers, row.get("id"), row.get("modified"));
 
         match c {
             Ok(x) => x,
@@ -149,13 +145,11 @@ pub fn request(
     Ok(())
 }
 
-pub fn is_conditional(
-    headers: &types::Hstore,
-) -> bool {
-    headers.contains_key("if-match") ||
-    headers.contains_key("if-none-match") ||
-    headers.contains_key("if-modified-since") ||
-    headers.contains_key("if-unmodified-since")
+pub fn is_conditional(headers: &types::Hstore) -> bool {
+    headers.contains_key("if-match")
+        || headers.contains_key("if-none-match")
+        || headers.contains_key("if-modified-since")
+        || headers.contains_key("if-unmodified-since")
 }
 
 // XXX
@@ -198,7 +192,8 @@ pub fn check_conditional(
     if matched {
         Ok(())
     } else {
-        let msg = format!("if-match '{}' didn't match etag '{}'", if_match, etag);
+        let msg =
+            format!("if-match '{}' didn't match etag '{}'", if_match, etag);
         //crit!(log, "{}", msg);
         Err(error::BucketsMdapiError::with_message(
             error::BucketsMdapiErrorType::PreconditionFailedError,
@@ -210,8 +205,8 @@ pub fn check_conditional(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
     use chrono::Utc;
+    use std::collections::HashMap;
 
     #[test]
     fn precon_empty_headers() {
@@ -252,7 +247,17 @@ mod tests {
         let modified = Utc::now();
 
         let mut h = HashMap::new();
-        let _ = h.insert("if-match".into(), Some(format!("\"{}\", thing", id)));
+        let _ = h.insert("if-match".into(), Some(format!("thing,\"{}\"", id)));
+        assert!(check_conditional(&h, id, modified).is_ok());
+    }
+
+    #[test]
+    fn precon_check_if_match_list_with_any() {
+        let id = Uuid::new_v4();
+        let modified = Utc::now();
+
+        let mut h = HashMap::new();
+        let _ = h.insert("if-match".into(), Some("\"test\",thing,*".into()));
         assert!(check_conditional(&h, id, modified).is_ok());
     }
 
