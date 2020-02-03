@@ -528,7 +528,7 @@ fn verify_rpc_handlers() {
         get_object_response_result.unwrap(),
         BucketsMdapiError::with_message(
             BucketsMdapiErrorType::PreconditionFailedError,
-            format!("if-match {} didn't match etag {}", if_match_etag, object_id),
+            format!("if-match '{}' didn't match etag '{}'", if_match_etag, object_id),
         ),
     );
 

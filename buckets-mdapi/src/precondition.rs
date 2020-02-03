@@ -132,34 +132,18 @@ pub fn request(
     if rows.len() == 1 {
         let row = &rows[0];
 
-        let etag: Uuid = row.get("id");
+        let c = check_conditional(
+            headers,
+            row.get("id"),
+            row.get("modified"),
+        );
 
-        // XXX
-        //
-        // Need to figure out properly getting into Some(Some("x"))
-        let x = headers.get("if-match").unwrap().clone();
-        let y = x.unwrap();
-
-        // XXX
-        //
-        // This could be a comma separated list of values.  Or they could be weak comparisons.
-        // Or...
-        //
-        // Should this headers object be a new type with some fancy methods for getting at this
-        // information?
-        let if_match_id = Uuid::parse_str(y.as_str()).unwrap();
-
-        if etag == if_match_id {
-            crit!(log, "precondition success: want:{} / got:{}", if_match_id, etag);
-        } else {
-            let msg = format!("if-match {} didn't match etag {}", if_match_id, etag);
-            crit!(log, "{}", msg);
-            //return Err(ConditionalError::Conditional(io::Error::new(io::ErrorKind::Other, msg)));
-            return Err(ConditionalError::Conditional(error::BucketsMdapiError::with_message(
-                error::BucketsMdapiErrorType::PreconditionFailedError,
-                msg,
-            )));
-        }
+        match c {
+            Ok(x) => x,
+            Err(e) => {
+                return Err(ConditionalError::Conditional(e));
+            }
+        };
     }
 
     Ok(())
@@ -179,22 +163,67 @@ pub fn is_conditional(
 // Not totally sure on the return type for this.  This needs to at least be a string, but an
 // actual error type might be better.  Should this return BucketsMdapiError with an appropriate
 // message?  Or should it return many errors/messages, one for each of the failures?
+//
+// Also not totally sure about the response codes here.  I'm not sure it makes sense for mdapi to
+// care so much about HTTP response codes and to let the api handle the assignments of errors
+// types/names to response codes.
+//
+// manta-buckets-api also looks to provide a way of doing either match or modified conditionals.
+// Do we need to do the same here?
 pub fn check_conditional(
     headers: &types::Hstore,
-    object_id: Uuid,
+    etag: Uuid,
     last_modified: types::Timestamptz,
-) -> bool {
-    true
+) -> Result<(), error::BucketsMdapiError> {
+    // XXX
+    //
+    // Need to figure out properly getting into Some(Some("x"))
+    let x = headers.get("if-match").unwrap().clone();
+    let if_match = x.unwrap();
+
+    let mut matched: bool = false;
+
+    // XXX
+    //
+    // - How is this handling whitespace around the comma?
+    // - Are we still ignoring weak comparisons?
+    for client_etag in if_match.split(",") {
+        let client_etag = client_etag.replace("\"", "");
+        if client_etag == "*" || etag.to_string() == client_etag {
+            matched = true;
+            break;
+        }
+    }
+
+    if matched {
+        Ok(())
+    } else {
+        let msg = format!("if-match '{}' didn't match etag '{}'", if_match, etag);
+        //crit!(log, "{}", msg);
+        Err(error::BucketsMdapiError::with_message(
+            error::BucketsMdapiErrorType::PreconditionFailedError,
+            msg,
+        ))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::HashMap;
+    use chrono::Utc;
 
     #[test]
     fn precon_empty_headers() {
         let h = HashMap::new();
+        assert_eq!(is_conditional(&h), false);
+    }
+
+    #[test]
+    fn precon_not_applicable_headers() {
+        let mut h = HashMap::new();
+        let _ = h.insert("if-something".into(), Some("test".into()));
+        let _ = h.insert("accept".into(), Some("test".into()));
         assert_eq!(is_conditional(&h), false);
     }
 
@@ -208,10 +237,32 @@ mod tests {
     }
 
     #[test]
-    fn precon_not_applicable_headers() {
+    fn precon_check_if_match_single() {
+        let id = Uuid::new_v4();
+        let modified = Utc::now();
+
         let mut h = HashMap::new();
-        let _ = h.insert("if-something".into(), Some("test".into()));
-        let _ = h.insert("accept".into(), Some("test".into()));
-        assert_eq!(is_conditional(&h), false);
+        let _ = h.insert("if-match".into(), Some(id.to_string()));
+        assert!(check_conditional(&h, id, modified).is_ok());
+    }
+
+    #[test]
+    fn precon_check_if_match_list() {
+        let id = Uuid::new_v4();
+        let modified = Utc::now();
+
+        let mut h = HashMap::new();
+        let _ = h.insert("if-match".into(), Some(format!("\"{}\", thing", id)));
+        assert!(check_conditional(&h, id, modified).is_ok());
+    }
+
+    #[test]
+    fn precon_check_if_match_any() {
+        let id = Uuid::new_v4();
+        let modified = Utc::now();
+
+        let mut h = HashMap::new();
+        let _ = h.insert("if-match".into(), Some("*".into()));
+        assert!(check_conditional(&h, id, modified).is_ok());
     }
 }
