@@ -111,6 +111,11 @@ fn do_get(
     })
     .map_err(|e| {
         let err_str = e.to_string();
+        // XXX
+        //
+        // This isn't doing what I think it's doing.  As it is, every error is a precondition error
+        // now, whereas I want to match on the error type and do different things depending on what
+        // it is.
         match e {
             BucketsMdapiError => precondition::error(err_str),
             PGError => sql::postgres_error(err_str),

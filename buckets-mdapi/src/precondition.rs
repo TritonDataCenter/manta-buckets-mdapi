@@ -96,12 +96,8 @@ pub fn request(
     metrics: &metrics::RegisteredMetrics,
     log: &Logger,
 ) -> Result<(), ConditionalError> {
-    // XXX
-    //
-    // This should be some kind of `.isConditional()` call on some part of the request.  Probably
-    // the headers.
-    if !headers.contains_key("if-match") {
-        crit!(log, "if-match not found; returning");
+    if !is_conditional(headers) {
+        crit!(log, "request not conditional; returning");
         return Ok(());
     }
 
@@ -167,5 +163,55 @@ pub fn request(
     }
 
     Ok(())
+}
 
+pub fn is_conditional(
+    headers: &types::Hstore,
+) -> bool {
+    headers.contains_key("if-match") ||
+    headers.contains_key("if-none-match") ||
+    headers.contains_key("if-modified-since") ||
+    headers.contains_key("if-unmodified-since")
+}
+
+// XXX
+//
+// Not totally sure on the return type for this.  This needs to at least be a string, but an
+// actual error type might be better.  Should this return BucketsMdapiError with an appropriate
+// message?  Or should it return many errors/messages, one for each of the failures?
+pub fn check_conditional(
+    headers: &types::Hstore,
+    object_id: Uuid,
+    last_modified: types::Timestamptz,
+) -> bool {
+    true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn precon_empty_headers() {
+        let h = HashMap::new();
+        assert_eq!(is_conditional(&h), false);
+    }
+
+    #[test]
+    fn precon_mix_headers() {
+        let mut h = HashMap::new();
+        let _ = h.insert("if-match".into(), Some("test".into()));
+        let _ = h.insert("if-modified-since".into(), Some("test".into()));
+        let _ = h.insert("if-none-match".into(), Some("test".into()));
+        assert_eq!(is_conditional(&h), true);
+    }
+
+    #[test]
+    fn precon_not_applicable_headers() {
+        let mut h = HashMap::new();
+        let _ = h.insert("if-something".into(), Some("test".into()));
+        let _ = h.insert("accept".into(), Some("test".into()));
+        assert_eq!(is_conditional(&h), false);
+    }
 }
