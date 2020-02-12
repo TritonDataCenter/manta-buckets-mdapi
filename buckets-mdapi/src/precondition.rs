@@ -88,7 +88,11 @@ impl Error for ConditionalError {
 // because of the get request case.  In that case the actual call is exactly the same as what is
 // done in this conditional call, so we might as well just return the object(s) and have the caller
 // skip the separate call to the database.
+//
+// Can the method here be bounded to only the two methods we expect (ObjectGet and BucketGet)?  Or
+// should the function itself make that assertion?
 pub fn request(
+    method: sql::Method,
     mut txn: &mut Transaction,
     items: &[&dyn ToSql],
     vnode: u64,
@@ -112,8 +116,9 @@ pub fn request(
     // Also this needs to work for buckets.  Maybe it's just as simple as accepting either
     // BucketGet or ObjectGet as a parameter, or maybe matching on the method name of the request.
     // Maybe I'll add an argument that will either be "bucket" or "object" to make this decision.
+    // For now it's accepting a sql::Method, so we'll see how that goes.
     let rows = sql::txn_query(
-        sql::Method::ObjectGet,
+        method,
         &mut txn,
         sql::get_sql(vnode).as_str(),
         items,

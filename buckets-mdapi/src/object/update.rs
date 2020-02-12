@@ -93,6 +93,7 @@ fn do_update(
     let update_sql = update_sql(payload.vnode);
 
     precondition::request(
+        sql::Method::ObjectGet,
         &mut txn,
         &[&payload.owner, &payload.bucket_id, &payload.name],
         payload.vnode,
