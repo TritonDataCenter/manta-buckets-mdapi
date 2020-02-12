@@ -169,43 +169,69 @@ pub fn is_conditional(headers: &types::Hstore) -> bool {
 //
 // manta-buckets-api also looks to provide a way of doing either match or modified conditionals.
 // Do we need to do the same here?
+//
+// I think this needs to only return the first issue in the conditional request it comes across, as
+// opposed to a mixed bag of all failures.  I guess this is part of the RFC, but for now I'll do
+// this in the same order as joyent/manta-buckets-api, which is:
+//
+//     if-match > if-unmodified-since > if-none-match > if-modified-since
 pub fn check_conditional(
     headers: &types::Hstore,
     etag: Uuid,
     last_modified: types::Timestamptz,
 ) -> Result<(), error::BucketsMdapiError> {
-    // XXX
-    //
-    // Need to figure out properly getting into Some(Some("x"))
-    let x = headers.get("if-match").unwrap().clone();
-    let if_match = x.unwrap();
+    if let Some(x) = headers.get("if-match") {
+        if let Some(if_match) = x {
+            let match_client_etags = if_match.split(",");
+            if !check_if_match(etag.to_string(), match_client_etags.collect()) {
+                return Err(error::BucketsMdapiError::with_message(
+                    error::BucketsMdapiErrorType::PreconditionFailedError,
+                    format!("if-match '{}' didn't match etag '{}'", if_match, etag),
+                ));
+            }
+        }
+    }
 
-    let mut matched: bool = false;
+    if let Some(x) = headers.get("if-unmodified-since") {
+        if let Some(client_modified_string) = x {
+            if let Ok(client_modified) = client_modified_string.parse::<types::Timestamptz>() {
+                if check_if_unmodified(last_modified, client_modified) {
+                    return Err(error::BucketsMdapiError::with_message(
+                        error::BucketsMdapiErrorType::PreconditionFailedError,
+                        "object was modified at ''; if-unmodified-since ''".to_string(),
+                    ));
+                }
+            } else {
+                // BadRequestError?
+            }
+        }
+    }
 
+    Ok(())
+}
+
+fn check_if_match(etag: String, client_etags: Vec<&str>) -> bool {
     // XXX
     //
     // - How is this handling whitespace around the comma?
     // - Are we still ignoring weak comparisons?
-    for client_etag in if_match.split(",") {
+    for client_etag in client_etags {
         let client_etag = client_etag.replace("\"", "");
-        if client_etag == "*" || etag.to_string() == client_etag {
-            matched = true;
-            break;
+        if client_etag == "*" || etag == client_etag {
+            return true;
         }
     }
 
-    if matched {
-        Ok(())
-    } else {
-        let msg =
-            format!("if-match '{}' didn't match etag '{}'", if_match, etag);
-        //crit!(log, "{}", msg);
-        Err(error::BucketsMdapiError::with_message(
-            error::BucketsMdapiErrorType::PreconditionFailedError,
-            msg,
-        ))
-    }
+    false
 }
+
+fn check_if_unmodified(
+    last_modified: types::Timestamptz,
+    client_modified: types::Timestamptz
+) -> bool {
+    last_modified > client_modified
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -274,5 +300,58 @@ mod tests {
         let mut h = HashMap::new();
         let _ = h.insert("if-match".into(), Some("*".into()));
         assert!(check_conditional(&h, id, modified).is_ok());
+    }
+
+    #[test]
+    fn precon_check_if_match_single_fail() {
+        let id = Uuid::new_v4();
+        let client_etag = Uuid::new_v4();
+        let modified = Utc::now();
+
+        let mut h = HashMap::new();
+        let _ = h.insert("if-match".into(), Some(client_etag.to_string()));
+
+        let check_res = check_conditional(&h, id, modified);
+
+        assert!(check_res.is_err());
+        assert_eq!(
+            check_res.unwrap_err(),
+            error::BucketsMdapiError::with_message(
+                error::BucketsMdapiErrorType::PreconditionFailedError,
+                format!("if-match '{}' didn't match etag '{}'", client_etag, id),
+            )
+        );
+    }
+
+    #[test]
+    fn precon_check_if_unmodified() {
+        let obj_id = Uuid::new_v4();
+        let obj_modified = "2010-01-01T10:00:00Z".parse::<types::Timestamptz>().unwrap();
+        let client_modified = Utc::now();
+
+        let mut h = HashMap::new();
+        let _ = h.insert("if-unmodified-since".into(), Some(client_modified.format("%Y-%m-%dT%H:%M:%SZ").to_string()));
+        assert!(check_conditional(&h, obj_id, obj_modified).is_ok());
+    }
+
+    #[test]
+    fn precon_check_if_unmodified_fail() {
+        let obj_id = Uuid::new_v4();
+        let obj_modified = Utc::now();
+        let client_modified = "2010-01-01T10:00:00Z";
+
+        let mut h = HashMap::new();
+        let _ = h.insert("if-unmodified-since".into(), Some(client_modified.into()));
+
+        let check_res = check_conditional(&h, obj_id, obj_modified);
+
+        assert!(check_res.is_err());
+        assert_eq!(
+            check_res.unwrap_err(),
+            error::BucketsMdapiError::with_message(
+                error::BucketsMdapiErrorType::PreconditionFailedError,
+                "object was modified at ''; if-unmodified-since ''".to_string(),
+            )
+        );
     }
 }
