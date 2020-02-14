@@ -186,7 +186,10 @@ pub fn check_conditional(
             if !check_if_match(etag.to_string(), match_client_etags.collect()) {
                 return Err(error::BucketsMdapiError::with_message(
                     error::BucketsMdapiErrorType::PreconditionFailedError,
-                    format!("if-match '{}' didn't match etag '{}'", if_match, etag),
+                    format!(
+                        "if-match '{}' didn't match etag '{}'",
+                        if_match, etag
+                    ),
                 ));
             }
         }
@@ -194,11 +197,14 @@ pub fn check_conditional(
 
     if let Some(x) = headers.get("if-unmodified-since") {
         if let Some(client_modified_string) = x {
-            if let Ok(client_modified) = client_modified_string.parse::<types::Timestamptz>() {
+            if let Ok(client_modified) =
+                client_modified_string.parse::<types::Timestamptz>()
+            {
                 if check_if_unmodified(last_modified, client_modified) {
                     return Err(error::BucketsMdapiError::with_message(
                         error::BucketsMdapiErrorType::PreconditionFailedError,
-                        "object was modified at ''; if-unmodified-since ''".to_string(),
+                        "object was modified at ''; if-unmodified-since ''"
+                            .to_string(),
                     ));
                 }
             } else {
@@ -227,17 +233,23 @@ fn check_if_match(etag: String, client_etags: Vec<&str>) -> bool {
 
 fn check_if_unmodified(
     last_modified: types::Timestamptz,
-    client_modified: types::Timestamptz
+    client_modified: types::Timestamptz,
 ) -> bool {
     last_modified > client_modified
 }
-
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use chrono::Utc;
+    use quickcheck::quickcheck;
     use std::collections::HashMap;
+
+    use crate::object::ObjectResponse;
+
+    /*
+     * XXX Somehow we get object.rs's Arbitrary implementation for free?
+     */
 
     #[test]
     fn precon_empty_headers() {
@@ -262,96 +274,90 @@ mod tests {
         assert_eq!(is_conditional(&h), true);
     }
 
-    #[test]
-    fn precon_check_if_match_single() {
-        let id = Uuid::new_v4();
-        let modified = Utc::now();
+    quickcheck! {
+        fn precon_check_if_match_single(res: ObjectResponse) -> () {
+            let mut h = HashMap::new();
+            let _ = h.insert("if-match".into(), Some(res.id.to_string()));
 
-        let mut h = HashMap::new();
-        let _ = h.insert("if-match".into(), Some(id.to_string()));
-        assert!(check_conditional(&h, id, modified).is_ok());
+            assert!(check_conditional(&h, res.id, res.modified).is_ok());
+        }
     }
 
-    #[test]
-    fn precon_check_if_match_list() {
-        let id = Uuid::new_v4();
-        let modified = Utc::now();
+    quickcheck! {
+        fn precon_check_if_match_list(res: ObjectResponse) -> () {
+            let mut h = HashMap::new();
+            let _ = h.insert("if-match".into(), Some(format!("thing,\"{}\"", res.id)));
 
-        let mut h = HashMap::new();
-        let _ = h.insert("if-match".into(), Some(format!("thing,\"{}\"", id)));
-        assert!(check_conditional(&h, id, modified).is_ok());
+            assert!(check_conditional(&h, res.id, res.modified).is_ok());
+        }
     }
 
-    #[test]
-    fn precon_check_if_match_list_with_any() {
-        let id = Uuid::new_v4();
-        let modified = Utc::now();
+    quickcheck! {
+        fn precon_check_if_match_list_with_any(res: ObjectResponse) -> () {
+            let mut h = HashMap::new();
+            let _ = h.insert("if-match".into(), Some("\"test\",thing,*".into()));
 
-        let mut h = HashMap::new();
-        let _ = h.insert("if-match".into(), Some("\"test\",thing,*".into()));
-        assert!(check_conditional(&h, id, modified).is_ok());
+            assert!(check_conditional(&h, res.id, res.modified).is_ok());
+        }
     }
 
-    #[test]
-    fn precon_check_if_match_any() {
-        let id = Uuid::new_v4();
-        let modified = Utc::now();
+    quickcheck! {
+        fn precon_check_if_match_any(res: ObjectResponse) -> () {
+            let mut h = HashMap::new();
+            let _ = h.insert("if-match".into(), Some("*".into()));
 
-        let mut h = HashMap::new();
-        let _ = h.insert("if-match".into(), Some("*".into()));
-        assert!(check_conditional(&h, id, modified).is_ok());
+            assert!(check_conditional(&h, res.id, res.modified).is_ok());
+        }
     }
 
-    #[test]
-    fn precon_check_if_match_single_fail() {
-        let id = Uuid::new_v4();
-        let client_etag = Uuid::new_v4();
-        let modified = Utc::now();
+    quickcheck! {
+        fn precon_check_if_match_single_fail(res: ObjectResponse) -> () {
+            let client_etag = Uuid::new_v4();
 
-        let mut h = HashMap::new();
-        let _ = h.insert("if-match".into(), Some(client_etag.to_string()));
+            let mut h = HashMap::new();
+            let _ = h.insert("if-match".into(), Some(client_etag.to_string()));
 
-        let check_res = check_conditional(&h, id, modified);
+            let check_res = check_conditional(&h, res.id, res.modified);
 
-        assert!(check_res.is_err());
-        assert_eq!(
-            check_res.unwrap_err(),
-            error::BucketsMdapiError::with_message(
-                error::BucketsMdapiErrorType::PreconditionFailedError,
-                format!("if-match '{}' didn't match etag '{}'", client_etag, id),
-            )
-        );
+            assert!(check_res.is_err());
+            assert_eq!(
+                check_res.unwrap_err(),
+                error::BucketsMdapiError::with_message(
+                    error::BucketsMdapiErrorType::PreconditionFailedError,
+                    format!("if-match '{}' didn't match etag '{}'", client_etag, res.id),
+                )
+            );
+        }
     }
 
-    #[test]
-    fn precon_check_if_unmodified() {
-        let obj_id = Uuid::new_v4();
-        let obj_modified = "2010-01-01T10:00:00Z".parse::<types::Timestamptz>().unwrap();
-        let client_modified = Utc::now();
+    quickcheck! {
+        fn precon_check_if_unmodified(res: ObjectResponse) -> () {
+            let client_modified = "2021-01-01T10:00:00Z".parse::<types::Timestamptz>().unwrap();
 
-        let mut h = HashMap::new();
-        let _ = h.insert("if-unmodified-since".into(), Some(client_modified.format("%Y-%m-%dT%H:%M:%SZ").to_string()));
-        assert!(check_conditional(&h, obj_id, obj_modified).is_ok());
+            let mut h = HashMap::new();
+            let _ = h.insert("if-unmodified-since".into(), Some(client_modified.format("%Y-%m-%dT%H:%M:%SZ").to_string()));
+
+            assert!(check_conditional(&h, res.id, res.modified).is_ok());
+        }
     }
 
-    #[test]
-    fn precon_check_if_unmodified_fail() {
-        let obj_id = Uuid::new_v4();
-        let obj_modified = Utc::now();
-        let client_modified = "2010-01-01T10:00:00Z";
+    quickcheck! {
+        fn precon_check_if_unmodified_fail(res: ObjectResponse) -> () {
+            let client_modified = "2010-01-01T10:00:00Z";
 
-        let mut h = HashMap::new();
-        let _ = h.insert("if-unmodified-since".into(), Some(client_modified.into()));
+            let mut h = HashMap::new();
+            let _ = h.insert("if-unmodified-since".into(), Some(client_modified.into()));
 
-        let check_res = check_conditional(&h, obj_id, obj_modified);
+            let check_res = check_conditional(&h, res.id, res.modified);
 
-        assert!(check_res.is_err());
-        assert_eq!(
-            check_res.unwrap_err(),
-            error::BucketsMdapiError::with_message(
-                error::BucketsMdapiErrorType::PreconditionFailedError,
-                "object was modified at ''; if-unmodified-since ''".to_string(),
-            )
-        );
+            assert!(check_res.is_err());
+            assert_eq!(
+                check_res.unwrap_err(),
+                error::BucketsMdapiError::with_message(
+                    error::BucketsMdapiErrorType::PreconditionFailedError,
+                    "object was modified at ''; if-unmodified-since ''".to_string(),
+                )
+            );
+        }
     }
 }
