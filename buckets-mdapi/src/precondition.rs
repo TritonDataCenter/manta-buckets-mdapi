@@ -182,8 +182,8 @@ pub fn check_conditional(
 ) -> Result<(), error::BucketsMdapiError> {
     if let Some(x) = headers.get("if-match") {
         if let Some(if_match) = x {
-            let match_client_etags = if_match.split(",");
-            if !check_if_match(etag.to_string(), match_client_etags.collect()) {
+            let match_client_etags = if_match.split(",").collect();
+            if !check_if_match(etag.to_string(), match_client_etags) {
                 return Err(error::BucketsMdapiError::with_message(
                     error::BucketsMdapiErrorType::PreconditionFailedError,
                     format!(
@@ -200,10 +200,43 @@ pub fn check_conditional(
             if let Ok(client_modified) =
                 client_modified_string.parse::<types::Timestamptz>()
             {
-                if check_if_unmodified(last_modified, client_modified) {
+                if check_if_modified(last_modified, client_modified) {
                     return Err(error::BucketsMdapiError::with_message(
                         error::BucketsMdapiErrorType::PreconditionFailedError,
                         "object was modified at ''; if-unmodified-since ''"
+                            .to_string(),
+                    ));
+                }
+            } else {
+                // BadRequestError?
+            }
+        }
+    }
+
+    if let Some(x) = headers.get("if-none-match") {
+        if let Some(if_match) = x {
+            let match_client_etags = if_match.split(",").collect();
+            if check_if_match(etag.to_string(), match_client_etags) {
+                return Err(error::BucketsMdapiError::with_message(
+                    error::BucketsMdapiErrorType::PreconditionFailedError,
+                    format!(
+                        "if-none-match '{}' matched etag '{}'",
+                        if_match, etag
+                    ),
+                ));
+            }
+        }
+    }
+
+    if let Some(x) = headers.get("if-modified-since") {
+        if let Some(client_modified_string) = x {
+            if let Ok(client_modified) =
+                client_modified_string.parse::<types::Timestamptz>()
+            {
+                if !check_if_modified(last_modified, client_modified) {
+                    return Err(error::BucketsMdapiError::with_message(
+                        error::BucketsMdapiErrorType::PreconditionFailedError,
+                        "object was modified at ''; if-modified-since ''"
                             .to_string(),
                     ));
                 }
@@ -231,7 +264,7 @@ fn check_if_match(etag: String, client_etags: Vec<&str>) -> bool {
     false
 }
 
-fn check_if_unmodified(
+fn check_if_modified(
     last_modified: types::Timestamptz,
     client_modified: types::Timestamptz,
 ) -> bool {
@@ -241,7 +274,6 @@ fn check_if_unmodified(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
     use quickcheck::quickcheck;
     use std::collections::HashMap;
 
@@ -274,6 +306,9 @@ mod tests {
         assert_eq!(is_conditional(&h), true);
     }
 
+    /*
+     * if-match
+     */
     quickcheck! {
         fn precon_check_if_match_single(res: ObjectResponse) -> () {
             let mut h = HashMap::new();
@@ -282,7 +317,6 @@ mod tests {
             assert!(check_conditional(&h, res.id, res.modified).is_ok());
         }
     }
-
     quickcheck! {
         fn precon_check_if_match_list(res: ObjectResponse) -> () {
             let mut h = HashMap::new();
@@ -291,7 +325,6 @@ mod tests {
             assert!(check_conditional(&h, res.id, res.modified).is_ok());
         }
     }
-
     quickcheck! {
         fn precon_check_if_match_list_with_any(res: ObjectResponse) -> () {
             let mut h = HashMap::new();
@@ -300,7 +333,6 @@ mod tests {
             assert!(check_conditional(&h, res.id, res.modified).is_ok());
         }
     }
-
     quickcheck! {
         fn precon_check_if_match_any(res: ObjectResponse) -> () {
             let mut h = HashMap::new();
@@ -309,7 +341,6 @@ mod tests {
             assert!(check_conditional(&h, res.id, res.modified).is_ok());
         }
     }
-
     quickcheck! {
         fn precon_check_if_match_single_fail(res: ObjectResponse) -> () {
             let client_etag = Uuid::new_v4();
@@ -330,8 +361,100 @@ mod tests {
         }
     }
 
+    /*
+     * if-none-match
+     */
+    quickcheck! {
+        fn precon_check_if_none_match_single(res: ObjectResponse) -> () {
+            let client_etag = Uuid::new_v4();
+
+            let mut h = HashMap::new();
+            let _ = h.insert("if-none-match".into(), Some(client_etag.to_string()));
+
+            assert!(check_conditional(&h, res.id, res.modified).is_ok());
+        }
+    }
+    quickcheck! {
+        fn precon_check_if_none_match_list_fail(res: ObjectResponse) -> () {
+            let mut h = HashMap::new();
+            let client_etag = format!("thing,\"{}\"", res.id);
+            let _ = h.insert("if-none-match".into(), Some(client_etag.clone()));
+
+            let check_res = check_conditional(&h, res.id, res.modified);
+
+            assert!(check_res.is_err());
+            assert_eq!(
+                check_res.unwrap_err(),
+                error::BucketsMdapiError::with_message(
+                    error::BucketsMdapiErrorType::PreconditionFailedError,
+                    format!("if-none-match '{}' matched etag '{}'", client_etag, res.id),
+                )
+            );
+        }
+    }
+    quickcheck! {
+        fn precon_check_if_none_match_list_with_any_fail(res: ObjectResponse) -> () {
+            let mut h = HashMap::new();
+            let client_etag = "\"test\",thing,*";
+            let _ = h.insert("if-none-match".into(), Some(client_etag.into()));
+
+            let check_res = check_conditional(&h, res.id, res.modified);
+
+            assert!(check_res.is_err());
+            assert_eq!(
+                check_res.unwrap_err(),
+                error::BucketsMdapiError::with_message(
+                    error::BucketsMdapiErrorType::PreconditionFailedError,
+                    format!("if-none-match '{}' matched etag '{}'", client_etag, res.id),
+                )
+            );
+        }
+    }
+
+    /*
+     * if-modified-since
+     */
+    quickcheck! {
+        fn precon_check_if_modified(res: ObjectResponse) -> () {
+            let client_modified = "2000-01-01T10:00:00Z".parse::<types::Timestamptz>().unwrap();
+
+            let mut h = HashMap::new();
+            let _ = h.insert("if-modified-since".into(), Some(client_modified.format("%Y-%m-%dT%H:%M:%SZ").to_string()));
+
+            assert!(check_conditional(&h, res.id, res.modified).is_ok());
+        }
+    }
+    quickcheck! {
+        fn precon_check_if_modified_fail(res: ObjectResponse) -> () {
+            /*
+             * XXX This will start failing in 2021.  Should increment `res.modified` instead.
+             */
+            let client_modified = "2021-01-01T10:00:00Z";
+
+            let mut h = HashMap::new();
+            let _ = h.insert("if-modified-since".into(), Some(client_modified.into()));
+
+            let check_res = check_conditional(&h, res.id, res.modified);
+
+            assert!(check_res.is_err());
+            assert_eq!(
+                check_res.unwrap_err(),
+                error::BucketsMdapiError::with_message(
+                    error::BucketsMdapiErrorType::PreconditionFailedError,
+                    "object was modified at ''; if-modified-since ''".to_string(),
+                )
+            );
+        }
+    }
+
+    /*
+     * if-unmodified-since
+     */
     quickcheck! {
         fn precon_check_if_unmodified(res: ObjectResponse) -> () {
+            /*
+             * XXX more time increments.
+             */
             let client_modified = "2021-01-01T10:00:00Z".parse::<types::Timestamptz>().unwrap();
 
             let mut h = HashMap::new();
@@ -340,7 +463,6 @@ mod tests {
             assert!(check_conditional(&h, res.id, res.modified).is_ok());
         }
     }
-
     quickcheck! {
         fn precon_check_if_unmodified_fail(res: ObjectResponse) -> () {
             let client_modified = "2010-01-01T10:00:00Z";
@@ -360,4 +482,8 @@ mod tests {
             );
         }
     }
+
+    /*
+     * mixture of match and modified preconditions.
+     */
 }
