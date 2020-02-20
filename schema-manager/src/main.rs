@@ -1,22 +1,22 @@
 // Copyright 2019 Joyent, Inc.
 
 use std::io::{Error, ErrorKind};
-use std::net::TcpStream;
 use std::path::Path;
-use std::process;
 use std::sync::Mutex;
 
 use clap::{crate_version, App, Arg, ArgMatches};
 use cmd_lib::{run_fun, FunResult};
 use serde_json::json;
-use slog::{crit, error, info, o, trace, warn, Drain, Logger};
+use slog::{crit, info, o, trace, warn, Drain, Logger};
 
 use cueball::connection_pool::types::ConnectionPoolOptions;
 use cueball::connection_pool::ConnectionPool;
+use cueball_dns_resolver::DnsResolver;
 use cueball_manatee_primary_resolver::ManateePrimaryResolver;
 use cueball_postgres_connection::{
     PostgresConnection, PostgresConnectionConfig,
 };
+use cueball_tcp_stream_connection::TcpStreamWrapper;
 use rust_fast::client as fast_client;
 use rust_fast::protocol::{FastMessage, FastMessageId};
 use sapi::{ZoneConfig, SAPI};
@@ -34,7 +34,7 @@ const BUCKETS_MDAPI_CONFIG_FILE_PATH: &str =
     "/opt/smartdc/buckets-mdapi/etc/config.toml";
 const TEMPLATE_DIR: &str = "/opt/smartdc/buckets-mdapi/schema_templates";
 const MIGRATIONS_DIR: &str = "/opt/smartdc/buckets-mdapi/migrations";
-const DEFAULT_EB_PORT: u32 = 2020;
+const BUCKET_PLACEMENT_SVC: &str = "_buckets-mdplacement._tcp";
 
 // Get the config on the local buckets-mdapi zone
 fn get_buckets_mdapi_config() -> config::Config {
@@ -189,10 +189,10 @@ fn run(log: &Logger) -> Result<(), Box<dyn std::error::Error>> {
     info!(log, "sapi_url:{}", sapi_url);
     let sapi = init_sapi_client(&sapi_url, &log)?;
     let zone_config = get_zone_config(&sapi)?;
-    let mdplacement_address = zone_config.metadata.buckets_mdplacement;
     let buckets_mdapi_host = zone_config.metadata.service_name;
     let buckets_mdapi_config = get_buckets_mdapi_config();
     let buckets_mdapi_port = buckets_mdapi_config.server.port;
+    let mdplacement_address = zone_config.metadata.buckets_mdplacement;
 
     let fast_arg = [
         String::from("tcp://"),
@@ -202,19 +202,25 @@ fn run(log: &Logger) -> Result<(), Box<dyn std::error::Error>> {
     ]
     .concat();
 
-    info!(log, "pnode argument to buckets-mdplacement:{}", fast_arg);
-    let mdplacement_endpoint = [
+    let cr = DnsResolver::new(
         mdplacement_address,
-        String::from(":"),
-        DEFAULT_EB_PORT.to_string(),
-    ]
-    .concat();
-    info!(log, "buckets-mdplacement endpoint:{}", mdplacement_endpoint);
-    let mut stream =
-        TcpStream::connect(&mdplacement_endpoint).unwrap_or_else(|e| {
-            error!(log, "failed to connect to buckets-mdplacement: {}", e);
-            process::exit(1)
-        });
+        BUCKET_PLACEMENT_SVC.to_string(),
+        log.clone(),
+    );
+
+    let dns_pool_opts = ConnectionPoolOptions {
+        max_connections: Some(1),
+        claim_timeout: None,
+        log: Some(log.clone()),
+        rebalancer_action_delay: None, // Default 100ms
+        decoherence_interval: None,    // Default 300s
+        connection_check_interval: None, // Default 30s
+    };
+
+    let dns_pool =
+        ConnectionPool::new(dns_pool_opts, cr, TcpStreamWrapper::new);
+
+    let mut stream = dns_pool.claim()?;
 
     let tls_config = utils::config::tls::tls_config(
         buckets_mdapi_config.database.tls_mode.clone(),

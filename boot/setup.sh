@@ -108,7 +108,7 @@ manta_common_presetup
 echo "Adding local manifest directories"
 manta_add_manifest_dir "/opt/smartdc/buckets-mdapi"
 
-manta_common_setup "buckets-mdapi" 0
+manta_common2_setup "buckets-mdapi"
 
 manta_ensure_zk
 
@@ -116,6 +116,8 @@ echo "setting up buckets-ddapi"
 get_sapi_config
 setup_buckets_mdapi
 
-manta_common_setup_end
+manta_common2_setup_log_rotation "buckets-mdapi"
+
+manta_common2_setup_end
 
 exit 0
