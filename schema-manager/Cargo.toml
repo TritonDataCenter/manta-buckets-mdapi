@@ -14,7 +14,7 @@ cueball-postgres-connection = "0.3.0"
 cueball-dns-resolver = "0.3.0"
 cueball-tcp-stream-connection = "0.3.0"
 dotenv = "0.9.0"
-rust_fast = { git = "https://github.com/joyent/rust-fast", tag = "v0.2.0" }
+fast-rpc = "0.3.0"
 sapi = { git = "https://github.com/joyent/rust-triton-clients", tag = "v0.2.0" }
 slog = { version = "2.4.1", features = [ "max_level_trace" ] }
 slog-stdlog = "3"

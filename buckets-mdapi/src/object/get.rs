@@ -7,7 +7,7 @@ use serde_json::Value;
 use slog::{debug, error, Logger};
 
 use cueball_postgres_connection::PostgresConnection;
-use rust_fast::protocol::{FastMessage, FastMessageData};
+use fast_rpc::protocol::{FastMessage, FastMessageData};
 
 use crate::metrics::RegisteredMetrics;
 use crate::object::{

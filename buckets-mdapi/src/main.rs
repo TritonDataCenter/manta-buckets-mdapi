@@ -18,7 +18,7 @@ use cueball_manatee_primary_resolver::ManateePrimaryResolver;
 use cueball_postgres_connection::{
     PostgresConnection, PostgresConnectionConfig,
 };
-use rust_fast::server;
+use fast_rpc::server;
 
 use utils::config::Config;
 
