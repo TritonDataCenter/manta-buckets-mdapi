@@ -25,7 +25,7 @@ pub mod util {
     use cueball::error::Error as CueballError;
     use cueball::resolver::Resolver;
     use cueball_postgres_connection::PostgresConnection;
-    use rust_fast::protocol::{FastMessage, FastMessageData};
+    use fast_rpc::protocol::{FastMessage, FastMessageData};
 
     use crate::bucket;
     use crate::error::{BucketsMdapiError, BucketsMdapiErrorType};
@@ -347,7 +347,7 @@ pub mod types {
     use uuid::Uuid;
 
     use cueball::error::Error as CueballError;
-    use rust_fast::protocol::FastMessage;
+    use fast_rpc::protocol::FastMessage;
 
     pub type Rows = Vec<Row>;
     pub type RowSlice = [Row];
