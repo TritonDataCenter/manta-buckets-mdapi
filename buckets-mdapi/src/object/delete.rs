@@ -14,6 +14,7 @@ use crate::object::{
     insert_delete_table_sql, object_not_found, DeleteObjectPayload,
     DeleteObjectResponse,
 };
+use crate::precondition;
 use crate::sql;
 use crate::types::HandlerResponse;
 use crate::util::array_wrap;
@@ -55,13 +56,13 @@ pub(crate) fn action(
         })
         .or_else(|e| {
             // Handle database error response
-            error!(log, "operation failed"; "error" => &e);
+            error!(log, "operation failed"; "error" => &e.to_string());
 
             // Database errors are returned to as regular Fast messages
             // to be handled by the calling application
-            let value = sql::postgres_error(e);
+            //let value = sql::postgres_error(e);
             let msg_data =
-                FastMessageData::new(method.into(), array_wrap(value));
+                FastMessageData::new(method.into(), array_wrap(e));
             let msg: HandlerResponse =
                 FastMessage::data(msg_id, msg_data).into();
             Ok(msg)
@@ -73,58 +74,80 @@ fn do_delete(
     conn: &mut PostgresConnection,
     metrics: &RegisteredMetrics,
     log: &Logger,
-) -> Result<Vec<DeleteObjectResponse>, String> {
+) -> Result<Vec<DeleteObjectResponse>, Value> {
     let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
     let move_sql = insert_delete_table_sql(payload.vnode);
     let delete_sql = delete_sql(payload.vnode);
 
-    sql::txn_execute(
-        sql::Method::ObjectDeleteMove,
+    precondition::request(
+        sql::Method::ObjectGet,
         &mut txn,
-        move_sql.as_str(),
         &[&payload.owner, &payload.bucket_id, &payload.name],
+        payload.vnode,
+        &payload.headers,
         metrics,
-        &log,
+        log,
     )
-    .and_then(|_moved_rows| {
-        sql::txn_query(
-            sql::Method::ObjectDelete,
+    .and_then(|_rows| {
+        sql::txn_execute(
+            sql::Method::ObjectDeleteMove,
             &mut txn,
-            delete_sql.as_str(),
+            move_sql.as_str(),
             &[&payload.owner, &payload.bucket_id, &payload.name],
             metrics,
             &log,
         )
+        .and_then(|_moved_rows| {
+            sql::txn_query(
+                sql::Method::ObjectDelete,
+                &mut txn,
+                delete_sql.as_str(),
+                &[&payload.owner, &payload.bucket_id, &payload.name],
+                metrics,
+                &log,
+            )
+        })
+        .and_then(|deleted_objects| {
+            let mut objs = vec![];
+            for row in deleted_objects {
+                /*
+                 * As of now, there is no constraint in the database to guarantee that
+                 * 'content_length' is not null, as a result of that we need to be cautious
+                 * while tying to get an integer out of it. Also, 'shark_count' could be
+                 * null, the reason is that array_length() returns 'null' if the array is
+                 * empty instead of returning '0'. Yeah, this is weird!
+                 */
+                let content_length = row.try_get("content_length")?;
+                let shark_count = row.try_get("shark_count").unwrap_or(0);
+
+                let obj = DeleteObjectResponse {
+                    id: row.get("id"),
+                    owner: row.get("owner"),
+                    bucket_id: row.get("bucket_id"),
+                    name: row.get("name"),
+                    content_length,
+                    shark_count,
+                };
+
+                println!("{:?}", obj);
+
+                objs.push(obj);
+            }
+
+            Ok(objs)
+        })
+        .map_err(|e| e.into())
     })
-    .and_then(|deleted_objects| {
-        let mut objs = vec![];
-        for row in deleted_objects {
-            /*
-             * As of now, there is no constraint in the database to guarantee that
-             * 'content_length' is not null, as a result of that we need to be cautious
-             * while tying to get an integer out of it. Also, 'shark_count' could be
-             * null, the reason is that array_length() returns 'null' if the array is
-             * empty instead of returning '0'. Yeah, this is weird!
-             */
-            let content_length = row.try_get("content_length")?;
-            let shark_count = row.try_get("shark_count").unwrap_or(0);
-
-            let obj = DeleteObjectResponse {
-                id: row.get("id"),
-                owner: row.get("owner"),
-                bucket_id: row.get("bucket_id"),
-                name: row.get("name"),
-                content_length,
-                shark_count,
-            };
-
-            objs.push(obj);
-        }
-
+    .and_then(|rows| {
         txn.commit()?;
-        Ok(objs)
+        Ok(rows)
     })
-    .map_err(|e| e.to_string())
+    .map_err(|e| match e {
+        precondition::ConditionalError::Conditional(e) => {
+            precondition::error(e.to_string())
+        }
+        _ => sql::postgres_error(e.to_string()),
+    })
 }
 
 fn delete_sql(vnode: u64) -> String {

@@ -499,7 +499,7 @@ fn verify_rpc_handlers() {
     let if_match_etag = Uuid::new_v4();
     let _ = headers
         .insert("if-match".into(), Some(if_match_etag.to_string()));
-    let get_object_payload = object::GetObjectPayload {
+    let mut get_object_payload = object::GetObjectPayload {
         owner: owner_id,
         bucket_id,
         name: object.clone(),
@@ -537,7 +537,9 @@ fn verify_rpc_handlers() {
     // Delete object
 
     // The get and delete object args are the same so we can reuse
-    // get_object_json here.
+    // get_object_json here.  Just lets empty the headers first.
+
+    get_object_payload.headers = HashMap::new();
     let delete_object_json =
         serde_json::to_value(vec![get_object_payload]).unwrap();
     let delete_object_fast_msg_data =

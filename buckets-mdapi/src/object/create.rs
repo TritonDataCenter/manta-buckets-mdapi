@@ -17,6 +17,7 @@ use crate::object::{
     insert_delete_table_sql, response, to_json, ObjectResponse,
     StorageNodeIdentifier,
 };
+use crate::precondition;
 use crate::sql;
 use crate::types::{HandlerResponse, HasRequestId, Hstore};
 use crate::util::array_wrap;
@@ -113,40 +114,57 @@ fn do_create(
             )
         })?;
 
-    sql::txn_execute(
-        sql::Method::ObjectCreateMove,
+    precondition::request(
+        sql::Method::ObjectGet,
         &mut txn,
-        move_sql.as_str(),
         &[&payload.owner, &payload.bucket_id, &payload.name],
+        payload.vnode,
+        &payload.headers,
         metrics,
         log,
     )
-    .and_then(|_moved_rows| {
-        sql::txn_query(
-            sql::Method::ObjectCreate,
+    .and_then(|_rows| {
+        sql::txn_execute(
+            sql::Method::ObjectCreateMove,
             &mut txn,
-            create_sql.as_str(),
-            &[
-                &payload.id,
-                &payload.owner,
-                &payload.bucket_id,
-                &payload.name,
-                &payload.content_length,
-                &content_md5_bytes,
-                &payload.content_type,
-                &payload.headers,
-                &payload.sharks,
-                &payload.properties,
-            ],
+            move_sql.as_str(),
+            &[&payload.owner, &payload.bucket_id, &payload.name],
             metrics,
             log,
         )
+        .and_then(|_moved_rows| {
+            sql::txn_query(
+                sql::Method::ObjectCreate,
+                &mut txn,
+                create_sql.as_str(),
+                &[
+                    &payload.id,
+                    &payload.owner,
+                    &payload.bucket_id,
+                    &payload.name,
+                    &payload.content_length,
+                    &content_md5_bytes,
+                    &payload.content_type,
+                    &payload.headers,
+                    &payload.sharks,
+                    &payload.properties,
+                ],
+                metrics,
+                log,
+            )
+        })
+        .map_err(|e| e.into())
     })
     .and_then(|rows| {
         txn.commit()?;
         Ok(rows)
     })
-    .map_err(|e| { sql::postgres_error(e.to_string()) })
+    .map_err(|e| match e {
+        precondition::ConditionalError::Conditional(e) => {
+            precondition::error(e.to_string())
+        }
+        _ => sql::postgres_error(e.to_string()),
+    })
     .and_then(|rows| response(method, &rows))
 }
 
