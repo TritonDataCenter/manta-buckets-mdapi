@@ -203,8 +203,10 @@ pub fn check_conditional(
                 if check_if_modified(last_modified, client_modified) {
                     return Err(error::BucketsMdapiError::with_message(
                         error::BucketsMdapiErrorType::PreconditionFailedError,
-                        "object was modified at ''; if-unmodified-since ''"
-                            .to_string(),
+                        format!(
+                            "object was modified at '{}'; if-unmodified-since '{}'",
+                            last_modified, client_modified,
+                        ),
                     ));
                 }
             } else {
@@ -236,8 +238,10 @@ pub fn check_conditional(
                 if !check_if_modified(last_modified, client_modified) {
                     return Err(error::BucketsMdapiError::with_message(
                         error::BucketsMdapiErrorType::PreconditionFailedError,
-                        "object was modified at ''; if-modified-since ''"
-                            .to_string(),
+                        format!(
+                            "object was modified at '{}'; if-modified-since '{}'",
+                            last_modified, client_modified,
+                        ),
                     ));
                 }
             } else {
@@ -441,7 +445,10 @@ mod tests {
                 check_res.unwrap_err(),
                 error::BucketsMdapiError::with_message(
                     error::BucketsMdapiErrorType::PreconditionFailedError,
-                    "object was modified at ''; if-modified-since ''".to_string(),
+                    format!(
+                        "object was modified at '{}'; if-modified-since '2021-01-01 10:00:00 UTC'",
+                        res.modified,
+                    ),
                 )
             );
         }
@@ -477,7 +484,10 @@ mod tests {
                 check_res.unwrap_err(),
                 error::BucketsMdapiError::with_message(
                     error::BucketsMdapiErrorType::PreconditionFailedError,
-                    "object was modified at ''; if-unmodified-since ''".to_string(),
+                    format!(
+                        "object was modified at '{}'; if-unmodified-since '2010-01-01 10:00:00 UTC'",
+                        res.modified,
+                    ),
                 )
             );
         }

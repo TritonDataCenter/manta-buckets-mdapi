@@ -129,8 +129,6 @@ fn do_delete(
                     shark_count,
                 };
 
-                println!("{:?}", obj);
-
                 objs.push(obj);
             }
 
