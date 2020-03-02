@@ -27,7 +27,7 @@ pub struct GetObjectPayload {
     pub name: String,
     pub vnode: u64,
     pub request_id: Uuid,
-    pub headers: Hstore,
+    pub precondition: Option<Hstore>,
 }
 
 impl HasRequestId for GetObjectPayload {
@@ -249,8 +249,6 @@ pub mod test {
                 .expect("failed to convert vnode field to Value");
             let request_id = serde_json::to_value(Uuid::new_v4())
                 .expect("failed to convert request_id field to Value");
-            let headers = serde_json::to_value(Hstore::new())
-                .expect("failed to convert headers field to Value");
 
             let mut obj = Map::new();
             obj.insert("owner".into(), owner);
@@ -258,7 +256,6 @@ pub mod test {
             obj.insert("name".into(), name);
             obj.insert("vnode".into(), vnode);
             obj.insert("request_id".into(), request_id);
-            obj.insert("headers".into(), headers);
             GetObjectJson(Value::Object(obj))
         }
     }
@@ -270,7 +267,7 @@ pub mod test {
             let name = random::string(g, 32);
             let vnode = u64::arbitrary(g);
             let request_id = Uuid::new_v4();
-            let headers = Hstore::new();
+            let precondition = None;
 
             GetObjectPayload {
                 owner,
@@ -278,7 +275,7 @@ pub mod test {
                 name,
                 vnode,
                 request_id,
-                headers,
+                precondition,
             }
         }
     }

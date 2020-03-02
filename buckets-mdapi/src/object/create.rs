@@ -36,6 +36,7 @@ pub struct CreateObjectPayload {
     pub sharks: Vec<StorageNodeIdentifier>,
     pub properties: Option<Value>,
     pub request_id: Uuid,
+    pub precondition: Option<Hstore>,
 }
 
 impl HasRequestId for CreateObjectPayload {
@@ -119,7 +120,7 @@ fn do_create(
         &mut txn,
         &[&payload.owner, &payload.bucket_id, &payload.name],
         payload.vnode,
-        &payload.headers,
+        &payload.precondition,
         metrics,
         log,
     )
@@ -296,6 +297,7 @@ mod test {
             let sharks = vec![shark_1, shark_2];
             let properties = None;
             let request_id = Uuid::new_v4();
+            let precondition = None;
 
             CreateObjectPayload {
                 owner,
@@ -310,6 +312,7 @@ mod test {
                 sharks,
                 properties,
                 request_id,
+                precondition,
             }
         }
     }

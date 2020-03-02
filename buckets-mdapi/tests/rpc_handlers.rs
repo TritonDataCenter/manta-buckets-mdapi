@@ -302,7 +302,7 @@ fn verify_rpc_handlers() {
         name: object.clone(),
         vnode: 1,
         request_id,
-        headers: HashMap::new(),
+        precondition: None,
     };
 
     let get_object_json =
@@ -349,6 +349,7 @@ fn verify_rpc_handlers() {
         headers: update_headers,
         properties: None,
         request_id,
+        precondition: None,
     };
 
     let update_object_json =
@@ -395,6 +396,7 @@ fn verify_rpc_handlers() {
         sharks: vec![shark1, shark2],
         properties: None,
         request_id,
+        precondition: None,
     };
 
     let create_object_json =
@@ -461,16 +463,18 @@ fn verify_rpc_handlers() {
 
     // Get object with "if-match: correctETag"
     let request_id = Uuid::new_v4();
-    let mut headers = HashMap::new();
-    let _ = headers
+    let mut precondition = HashMap::new();
+    let _ = precondition
         .insert("if-match".into(), Some(object_id.to_string()));
+    let precondition = Some(precondition);
+
     let get_object_payload = object::GetObjectPayload {
         owner: owner_id,
         bucket_id,
         name: object.clone(),
         vnode: 1,
         request_id,
-        headers,
+        precondition,
     };
 
     let get_object_json =
@@ -495,17 +499,19 @@ fn verify_rpc_handlers() {
 
     // Try get object with "if-match: wrongETag"
     let request_id = Uuid::new_v4();
-    let mut headers = HashMap::new();
+    let mut precondition = HashMap::new();
     let if_match_etag = Uuid::new_v4();
-    let _ = headers
+    let _ = precondition
         .insert("if-match".into(), Some(if_match_etag.to_string()));
+    let precondition = Some(precondition);
+
     let mut get_object_payload = object::GetObjectPayload {
         owner: owner_id,
         bucket_id,
         name: object.clone(),
         vnode: 1,
         request_id,
-        headers,
+        precondition,
     };
 
     let get_object_json =
@@ -539,7 +545,7 @@ fn verify_rpc_handlers() {
     // The get and delete object args are the same so we can reuse
     // get_object_json here.  Just lets empty the headers first.
 
-    get_object_payload.headers = HashMap::new();
+    get_object_payload.precondition = None;
     let delete_object_json =
         serde_json::to_value(vec![get_object_payload]).unwrap();
     let delete_object_fast_msg_data =

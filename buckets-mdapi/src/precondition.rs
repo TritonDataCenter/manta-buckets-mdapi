@@ -96,7 +96,7 @@ pub fn request(
     mut txn: &mut Transaction,
     items: &[&dyn ToSql],
     vnode: u64,
-    headers: &types::Hstore,
+    headers: &Option<types::Hstore>,
     metrics: &metrics::RegisteredMetrics,
     log: &Logger,
 ) -> Result<(), ConditionalError> {
@@ -104,6 +104,8 @@ pub fn request(
         crit!(log, "request not conditional; returning");
         return Ok(());
     }
+
+    let p = headers.as_ref().unwrap();
 
     // XXX
     //
@@ -137,7 +139,7 @@ pub fn request(
     if rows.len() == 1 {
         let row = &rows[0];
 
-        let c = check_conditional(headers, row.get("id"), row.get("modified"));
+        let c = check_conditional(&p, row.get("id"), row.get("modified"));
 
         match c {
             Ok(x) => x,
@@ -150,11 +152,16 @@ pub fn request(
     Ok(())
 }
 
-pub fn is_conditional(headers: &types::Hstore) -> bool {
-    headers.contains_key("if-match")
-        || headers.contains_key("if-none-match")
-        || headers.contains_key("if-modified-since")
-        || headers.contains_key("if-unmodified-since")
+pub fn is_conditional(headers: &Option<types::Hstore>) -> bool {
+    match headers {
+        Some(headers) => {
+            headers.contains_key("if-match")
+                || headers.contains_key("if-none-match")
+                || headers.contains_key("if-modified-since")
+                || headers.contains_key("if-unmodified-since")
+        },
+        None => false
+    }
 }
 
 // XXX
@@ -289,7 +296,13 @@ mod tests {
 
     #[test]
     fn precon_empty_headers() {
-        let h = HashMap::new();
+        let h = Some(HashMap::new());
+        assert_eq!(is_conditional(&h), false);
+    }
+
+    #[test]
+    fn precon_none_headers() {
+        let h = None;
         assert_eq!(is_conditional(&h), false);
     }
 
@@ -298,6 +311,7 @@ mod tests {
         let mut h = HashMap::new();
         let _ = h.insert("if-something".into(), Some("test".into()));
         let _ = h.insert("accept".into(), Some("test".into()));
+        let h = Some(h);
         assert_eq!(is_conditional(&h), false);
     }
 
@@ -307,6 +321,7 @@ mod tests {
         let _ = h.insert("if-match".into(), Some("test".into()));
         let _ = h.insert("if-modified-since".into(), Some("test".into()));
         let _ = h.insert("if-none-match".into(), Some("test".into()));
+        let h = Some(h);
         assert_eq!(is_conditional(&h), true);
     }
 
