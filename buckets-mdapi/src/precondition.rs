@@ -6,7 +6,7 @@ use std::fmt;
 use postgres::types::ToSql;
 use postgres::Transaction;
 use serde_json;
-use slog::{crit, Logger};
+use slog::{crit, trace, Logger};
 use tokio_postgres;
 use uuid::Uuid;
 
@@ -59,10 +59,7 @@ impl From<error::BucketsMdapiError> for ConditionalError {
 
 impl fmt::Display for ConditionalError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            ConditionalError::Pg(ref err) => write!(f, "{}", err),
-            ConditionalError::Conditional(ref err) => write!(f, "{}", err),
-        }
+        write!(f, "{}", self)
     }
 }
 
@@ -75,10 +72,7 @@ impl Error for ConditionalError {
     }
 
     fn cause(&self) -> Option<&Error> {
-        match *self {
-            ConditionalError::Pg(ref err) => Some(err),
-            ConditionalError::Conditional(ref err) => Some(err),
-        }
+        Some(self)
     }
 }
 
@@ -88,11 +82,7 @@ impl Error for ConditionalError {
 // because of the get request case.  In that case the actual call is exactly the same as what is
 // done in this conditional call, so we might as well just return the object(s) and have the caller
 // skip the separate call to the database.
-//
-// Can the method here be bounded to only the two methods we expect (ObjectGet and BucketGet)?  Or
-// should the function itself make that assertion?
 pub fn request(
-    method: sql::Method,
     mut txn: &mut Transaction,
     items: &[&dyn ToSql],
     vnode: u64,
@@ -101,7 +91,7 @@ pub fn request(
     log: &Logger,
 ) -> Result<(), ConditionalError> {
     if !is_conditional(headers) {
-        crit!(log, "request not conditional; returning");
+        trace!(log, "request not conditional; returning");
         return Ok(());
     }
 
@@ -109,18 +99,13 @@ pub fn request(
 
     // XXX
     //
-    // Should this be exactly the same as ObjectGet?  I think we only need the etag, so it's a
-    // shame to return all the other fields for no reason.
+    // Should this be exactly the same as ObjectGet?  I think we only need the etag and
+    // last_modified, so it's a shame to return all the other fields for no reason.
     //
     // Using ObjectGet has the advantage of possibly returning this as-is in the event that the
     // request is a GetObject.  We can just return `rows`.
-    //
-    // Also this needs to work for buckets.  Maybe it's just as simple as accepting either
-    // BucketGet or ObjectGet as a parameter, or maybe matching on the method name of the request.
-    // Maybe I'll add an argument that will either be "bucket" or "object" to make this decision.
-    // For now it's accepting a sql::Method, so we'll see how that goes.
     let rows = sql::txn_query(
-        method,
+        sql::Method::ObjectGet,
         &mut txn,
         sql::get_sql(vnode).as_str(),
         items,
@@ -139,9 +124,7 @@ pub fn request(
     if rows.len() == 1 {
         let row = &rows[0];
 
-        let c = check_conditional(&p, row.get("id"), row.get("modified"));
-
-        match c {
+        match check_conditional(&p, row.get("id"), row.get("modified")) {
             Ok(x) => x,
             Err(e) => {
                 return Err(ConditionalError::Conditional(e));
@@ -217,7 +200,13 @@ pub fn check_conditional(
                     ));
                 }
             } else {
-                // BadRequestError?
+                return Err(error::BucketsMdapiError::with_message(
+                    error::BucketsMdapiErrorType::BadRequestError,
+                    format!(
+                        "unable to parse '{}' as a valid date",
+                        client_modified_string,
+                    ),
+                ));
             }
         }
     }
@@ -252,7 +241,13 @@ pub fn check_conditional(
                     ));
                 }
             } else {
-                // BadRequestError?
+                return Err(error::BucketsMdapiError::with_message(
+                    error::BucketsMdapiErrorType::BadRequestError,
+                    format!(
+                        "unable to parse '{}' as a valid date",
+                        client_modified_string,
+                    ),
+                ));
             }
         }
     }
@@ -464,6 +459,25 @@ mod tests {
                         "object was modified at '{}'; if-modified-since '2021-01-01 10:00:00 UTC'",
                         res.modified,
                     ),
+                )
+            );
+        }
+    }
+    quickcheck! {
+        fn precon_check_if_modified_fail_invalid_date(res: ObjectResponse) -> () {
+            let client_modified = "not a valid date";
+
+            let mut h = HashMap::new();
+            let _ = h.insert("if-modified-since".into(), Some(client_modified.to_string()));
+
+            let check_res = check_conditional(&h, res.id, res.modified);
+
+            assert!(check_res.is_err());
+            assert_eq!(
+                check_res.unwrap_err(),
+                error::BucketsMdapiError::with_message(
+                    error::BucketsMdapiErrorType::BadRequestError,
+                    format!("unable to parse '{}' as a valid date", client_modified),
                 )
             );
         }

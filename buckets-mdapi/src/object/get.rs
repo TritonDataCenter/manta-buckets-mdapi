@@ -78,7 +78,6 @@ fn do_get(
     let get_sql = sql::get_sql(payload.vnode);
 
     precondition::request(
-        sql::Method::ObjectGet,
         &mut txn,
         &[&payload.owner, &payload.bucket_id, &payload.name],
         payload.vnode,

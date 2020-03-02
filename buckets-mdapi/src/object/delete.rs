@@ -80,7 +80,6 @@ fn do_delete(
     let delete_sql = delete_sql(payload.vnode);
 
     precondition::request(
-        sql::Method::ObjectGet,
         &mut txn,
         &[&payload.owner, &payload.bucket_id, &payload.name],
         payload.vnode,

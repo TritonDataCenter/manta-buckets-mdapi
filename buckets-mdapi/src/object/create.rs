@@ -116,7 +116,6 @@ fn do_create(
         })?;
 
     precondition::request(
-        sql::Method::ObjectGet,
         &mut txn,
         &[&payload.owner, &payload.bucket_id, &payload.name],
         payload.vnode,
