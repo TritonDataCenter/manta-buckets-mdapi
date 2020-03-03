@@ -195,7 +195,7 @@ pub fn check_conditional(
                         error::BucketsMdapiErrorType::PreconditionFailedError,
                         format!(
                             "object was modified at '{}'; if-unmodified-since '{}'",
-                            last_modified, client_modified,
+                            last_modified.to_rfc3339(), client_modified.to_rfc3339(),
                         ),
                     ));
                 }
@@ -236,7 +236,7 @@ pub fn check_conditional(
                         error::BucketsMdapiErrorType::PreconditionFailedError,
                         format!(
                             "object was modified at '{}'; if-modified-since '{}'",
-                            last_modified, client_modified,
+                            last_modified.to_rfc3339(), client_modified.to_rfc3339(),
                         ),
                     ));
                 }
@@ -282,6 +282,7 @@ mod tests {
     use super::*;
     use quickcheck::quickcheck;
     use std::collections::HashMap;
+    use chrono;
 
     use crate::object::ObjectResponse;
 
@@ -430,23 +431,27 @@ mod tests {
      */
     quickcheck! {
         fn precon_check_if_modified(res: ObjectResponse) -> () {
-            let client_modified = "2000-01-01T10:00:00Z".parse::<types::Timestamptz>().unwrap();
+            let client_modified = "2000-01-01T10:00:00Z";
 
             let mut h = HashMap::new();
-            let _ = h.insert("if-modified-since".into(), Some(client_modified.format("%Y-%m-%dT%H:%M:%SZ").to_string()));
+            let _ = h.insert(
+                "if-modified-since".into(),
+                Some(client_modified.into()),
+            );
 
             assert!(check_conditional(&h, res.id, res.modified).is_ok());
         }
     }
     quickcheck! {
         fn precon_check_if_modified_fail(res: ObjectResponse) -> () {
-            /*
-             * XXX This will start failing in 2021.  Should increment `res.modified` instead.
-             */
-            let client_modified = "2021-01-01T10:00:00Z";
+            let client_modified: types::Timestamptz =
+                chrono::Utc::now() + chrono::Duration::days(1);
 
             let mut h = HashMap::new();
-            let _ = h.insert("if-modified-since".into(), Some(client_modified.into()));
+            let _ = h.insert(
+                "if-modified-since".into(),
+                Some(format!("{}", client_modified.to_rfc3339())),
+            );
 
             let check_res = check_conditional(&h, res.id, res.modified);
 
@@ -456,8 +461,8 @@ mod tests {
                 error::BucketsMdapiError::with_message(
                     error::BucketsMdapiErrorType::PreconditionFailedError,
                     format!(
-                        "object was modified at '{}'; if-modified-since '2021-01-01 10:00:00 UTC'",
-                        res.modified,
+                        "object was modified at '{}'; if-modified-since '{}'",
+                        res.modified.to_rfc3339(), client_modified.to_rfc3339(),
                     ),
                 )
             );
@@ -468,7 +473,10 @@ mod tests {
             let client_modified = "not a valid date";
 
             let mut h = HashMap::new();
-            let _ = h.insert("if-modified-since".into(), Some(client_modified.to_string()));
+            let _ = h.insert(
+                "if-modified-since".into(),
+                Some(client_modified.to_string()),
+            );
 
             let check_res = check_conditional(&h, res.id, res.modified);
 
@@ -488,13 +496,14 @@ mod tests {
      */
     quickcheck! {
         fn precon_check_if_unmodified(res: ObjectResponse) -> () {
-            /*
-             * XXX more time increments.
-             */
-            let client_modified = "2021-01-01T10:00:00Z".parse::<types::Timestamptz>().unwrap();
+            let client_modified: types::Timestamptz =
+                chrono::Utc::now() + chrono::Duration::days(1);
 
             let mut h = HashMap::new();
-            let _ = h.insert("if-unmodified-since".into(), Some(client_modified.format("%Y-%m-%dT%H:%M:%SZ").to_string()));
+            let _ = h.insert(
+                "if-unmodified-since".into(),
+                Some(format!("{}", client_modified.to_rfc3339())),
+            );
 
             assert!(check_conditional(&h, res.id, res.modified).is_ok());
         }
@@ -514,8 +523,8 @@ mod tests {
                 error::BucketsMdapiError::with_message(
                     error::BucketsMdapiErrorType::PreconditionFailedError,
                     format!(
-                        "object was modified at '{}'; if-unmodified-since '2010-01-01 10:00:00 UTC'",
-                        res.modified,
+                        "object was modified at '{}'; if-unmodified-since '2010-01-01T10:00:00+00:00'",
+                        res.modified.to_rfc3339(),
                     ),
                 )
             );

@@ -162,8 +162,10 @@ fn do_create(
     .map_err(|e| match e {
         precondition::ConditionalError::Conditional(e) => {
             precondition::error(e.to_string())
-        }
-        _ => sql::postgres_error(e.to_string()),
+        },
+        precondition::ConditionalError::Pg(e) => {
+            sql::postgres_error(e.to_string())
+        },
     })
     .and_then(|rows| response(method, &rows))
 }
