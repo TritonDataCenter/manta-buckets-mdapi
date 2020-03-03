@@ -23,22 +23,29 @@ pub fn error(msg: String) -> serde_json::Value {
     .expect("failed to encode a PreconditionFailedError error")
 }
 
-// XXX
-//
-// This is basically from:
-//
-//     https://blog.burntsushi.net/rust-error-handling/#defining-your-own-error-type
-//
-// I can't say I understand it all yet.
-//
-// I think `conditional` (or whatever it's going to be called) is going to need to have a custom
-// error type because it could either be a PGError from attempting the initial query, or whatever
-// type the actual conditional comparison failure is going to be.
-//
-// Still not sure on what error to return to the client.  I think as it is this will look like a
-// PostgresError, where I think something like PreconditionFailedError is what I want.  This
-// error could then define some ways of printing the precondition failure into a string suitable
-// for the fast message.
+/*
+ * XXX
+ *
+ * This is basically from:
+ *
+ *     https://blog.burntsushi.net/rust-error-handling/#defining-your-own-error-type
+ *
+ * I think this is going to need to have a custom error type because as it now it could either be a
+ * PGError from attempting the initial query, or whatever type the actual conditional comparison
+ * failure is going to be.
+ *
+ * Really thought I expect it will be more complex than that.  The possible cases are something
+ * like:
+ *
+ * - PreconditionFailedError, from our checks on if-* headers
+ * - PgError, from an error talking to the database
+ * - <Some other error>, if the query for the object returns >1 rows
+ * - ObjectNotFound, if the query for the object returns no rows
+ * - BadRequestError, if the date in if-*modified-since is invalid
+ *
+ * That's quite a few, but I think they're still enumerable at compile time.  Should this just be a
+ * Box<Error>?
+ */
 #[derive(Debug)]
 pub enum ConditionalError {
     Pg(tokio_postgres::Error),
@@ -51,8 +58,12 @@ impl From<tokio_postgres::Error> for ConditionalError {
     }
 }
 
-impl From<error::BucketsMdapiError> for ConditionalError {
-    fn from(err: error::BucketsMdapiError) -> ConditionalError {
+impl From<String> for ConditionalError {
+    fn from(msg: String) -> ConditionalError {
+        let err = error::BucketsMdapiError::with_message(
+            error::BucketsMdapiErrorType::PreconditionFailedError,
+            msg,
+        );
         ConditionalError::Conditional(err)
     }
 }
@@ -86,16 +97,16 @@ pub fn request(
     mut txn: &mut Transaction,
     items: &[&dyn ToSql],
     vnode: u64,
-    headers: &Option<types::Hstore>,
+    conditions: &Option<types::Hstore>,
     metrics: &metrics::RegisteredMetrics,
     log: &Logger,
 ) -> Result<(), ConditionalError> {
-    if !is_conditional(headers) {
+    if !is_conditional(conditions) {
         trace!(log, "request not conditional; returning");
         return Ok(());
     }
 
-    let p = headers.as_ref().unwrap();
+    let conditions = conditions.as_ref().unwrap();
 
     // XXX
     //
@@ -113,23 +124,19 @@ pub fn request(
         log,
     )?;
 
-    // XXX
-    //
-    // What happens on 0 rows, like a precondition on a non-existent object?
-    //
-    // What about >1 rows?  Do we need to handle all cases like `response` does?
+    /*
+     *
+     * What happens on 0 rows, like a precondition on a non-existent object?  Do we return Ok()
+     * here and expect/hope the followup query also returns nothing?  That doesn't feel right, so
+     * perhaps this should also be returning a "not found" error?
+     *
+     * What about >1 rows?  Do we need to handle all cases like `response` does?
+     */
 
     crit!(log, "got {} rows from conditional query", rows.len());
 
     if rows.len() == 1 {
-        let row = &rows[0];
-
-        match check_conditional(&p, row.get("id"), row.get("modified")) {
-            Ok(x) => x,
-            Err(e) => {
-                return Err(ConditionalError::Conditional(e));
-            }
-        };
+        check_conditional(&conditions, rows[0].get("id"), rows[0].get("modified"))?
     }
 
     Ok(())
@@ -169,84 +176,63 @@ pub fn check_conditional(
     headers: &types::Hstore,
     etag: Uuid,
     last_modified: types::Timestamptz,
-) -> Result<(), error::BucketsMdapiError> {
-    if let Some(x) = headers.get("if-match") {
-        if let Some(if_match) = x {
+) -> Result<(), String> {
+    if let Some(header) = headers.get("if-match") {
+        if let Some(if_match) = header {
             let match_client_etags = if_match.split(",").collect();
             if !check_if_match(etag.to_string(), match_client_etags) {
-                return Err(error::BucketsMdapiError::with_message(
-                    error::BucketsMdapiErrorType::PreconditionFailedError,
-                    format!(
-                        "if-match '{}' didn't match etag '{}'",
-                        if_match, etag
-                    ),
-                ));
+                return Err(format!("if-match '{}' didn't match etag '{}'", if_match, etag));
             }
         }
     }
 
-    if let Some(x) = headers.get("if-unmodified-since") {
-        if let Some(client_modified_string) = x {
-            if let Ok(client_modified) =
-                client_modified_string.parse::<types::Timestamptz>()
+    if let Some(header) = headers.get("if-unmodified-since") {
+        if let Some(client_unmodified_string) = header {
+            if let Ok(client_unmodified) =
+                client_unmodified_string.parse::<types::Timestamptz>()
             {
-                if check_if_modified(last_modified, client_modified) {
-                    return Err(error::BucketsMdapiError::with_message(
-                        error::BucketsMdapiErrorType::PreconditionFailedError,
-                        format!(
-                            "object was modified at '{}'; if-unmodified-since '{}'",
-                            last_modified.to_rfc3339(), client_modified.to_rfc3339(),
-                        ),
+                if check_if_modified(last_modified, client_unmodified) {
+                    return Err(format!(
+                        "object was modified at '{}'; if-unmodified-since '{}'",
+                        last_modified.to_rfc3339(), client_unmodified.to_rfc3339(),
                     ));
                 }
             } else {
-                return Err(error::BucketsMdapiError::with_message(
-                    error::BucketsMdapiErrorType::BadRequestError,
-                    format!(
-                        "unable to parse '{}' as a valid date",
-                        client_modified_string,
-                    ),
+                /*
+                 * XXX Moving to String errors means we've lost BadRequestError.
+                 */
+                return Err(format!(
+                    "unable to parse '{}' as a valid date",
+                    client_unmodified_string,
                 ));
             }
         }
     }
 
-    if let Some(x) = headers.get("if-none-match") {
-        if let Some(if_match) = x {
-            let match_client_etags = if_match.split(",").collect();
+    if let Some(header) = headers.get("if-none-match") {
+        if let Some(if_none_match) = header {
+            let match_client_etags = if_none_match.split(",").collect();
             if check_if_match(etag.to_string(), match_client_etags) {
-                return Err(error::BucketsMdapiError::with_message(
-                    error::BucketsMdapiErrorType::PreconditionFailedError,
-                    format!(
-                        "if-none-match '{}' matched etag '{}'",
-                        if_match, etag
-                    ),
-                ));
+                return Err(format!("if-none-match '{}' matched etag '{}'", if_none_match, etag));
             }
         }
     }
 
-    if let Some(x) = headers.get("if-modified-since") {
-        if let Some(client_modified_string) = x {
+    if let Some(header) = headers.get("if-modified-since") {
+        if let Some(client_modified_string) = header {
             if let Ok(client_modified) =
                 client_modified_string.parse::<types::Timestamptz>()
             {
                 if !check_if_modified(last_modified, client_modified) {
-                    return Err(error::BucketsMdapiError::with_message(
-                        error::BucketsMdapiErrorType::PreconditionFailedError,
-                        format!(
-                            "object was modified at '{}'; if-modified-since '{}'",
-                            last_modified.to_rfc3339(), client_modified.to_rfc3339(),
-                        ),
+                    return Err(format!(
+                        "object was modified at '{}'; if-modified-since '{}'",
+                        last_modified.to_rfc3339(), client_modified.to_rfc3339(),
                     ));
                 }
             } else {
-                return Err(error::BucketsMdapiError::with_message(
-                    error::BucketsMdapiErrorType::BadRequestError,
-                    format!(
-                        "unable to parse '{}' as a valid date",
-                        client_modified_string,
-                    ),
+                return Err(format!(
+                    "unable to parse '{}' as a valid date",
+                    client_modified_string,
                 ));
             }
         }
@@ -274,6 +260,9 @@ fn check_if_modified(
     last_modified: types::Timestamptz,
     client_modified: types::Timestamptz,
 ) -> bool {
+    /*
+     * XXX What about timestamps that are exactly the same?
+     */
     last_modified > client_modified
 }
 
@@ -368,10 +357,7 @@ mod tests {
             assert!(check_res.is_err());
             assert_eq!(
                 check_res.unwrap_err(),
-                error::BucketsMdapiError::with_message(
-                    error::BucketsMdapiErrorType::PreconditionFailedError,
-                    format!("if-match '{}' didn't match etag '{}'", client_etag, res.id),
-                )
+                format!("if-match '{}' didn't match etag '{}'", client_etag, res.id),
             );
         }
     }
@@ -400,10 +386,7 @@ mod tests {
             assert!(check_res.is_err());
             assert_eq!(
                 check_res.unwrap_err(),
-                error::BucketsMdapiError::with_message(
-                    error::BucketsMdapiErrorType::PreconditionFailedError,
-                    format!("if-none-match '{}' matched etag '{}'", client_etag, res.id),
-                )
+                format!("if-none-match '{}' matched etag '{}'", client_etag, res.id),
             );
         }
     }
@@ -418,10 +401,7 @@ mod tests {
             assert!(check_res.is_err());
             assert_eq!(
                 check_res.unwrap_err(),
-                error::BucketsMdapiError::with_message(
-                    error::BucketsMdapiErrorType::PreconditionFailedError,
-                    format!("if-none-match '{}' matched etag '{}'", client_etag, res.id),
-                )
+                format!("if-none-match '{}' matched etag '{}'", client_etag, res.id),
             );
         }
     }
@@ -458,13 +438,10 @@ mod tests {
             assert!(check_res.is_err());
             assert_eq!(
                 check_res.unwrap_err(),
-                error::BucketsMdapiError::with_message(
-                    error::BucketsMdapiErrorType::PreconditionFailedError,
-                    format!(
-                        "object was modified at '{}'; if-modified-since '{}'",
-                        res.modified.to_rfc3339(), client_modified.to_rfc3339(),
-                    ),
-                )
+                format!(
+                    "object was modified at '{}'; if-modified-since '{}'",
+                    res.modified.to_rfc3339(), client_modified.to_rfc3339(),
+                ),
             );
         }
     }
@@ -483,10 +460,7 @@ mod tests {
             assert!(check_res.is_err());
             assert_eq!(
                 check_res.unwrap_err(),
-                error::BucketsMdapiError::with_message(
-                    error::BucketsMdapiErrorType::BadRequestError,
-                    format!("unable to parse '{}' as a valid date", client_modified),
-                )
+                format!("unable to parse '{}' as a valid date", client_modified),
             );
         }
     }
@@ -520,13 +494,10 @@ mod tests {
             assert!(check_res.is_err());
             assert_eq!(
                 check_res.unwrap_err(),
-                error::BucketsMdapiError::with_message(
-                    error::BucketsMdapiErrorType::PreconditionFailedError,
-                    format!(
-                        "object was modified at '{}'; if-unmodified-since '2010-01-01T10:00:00+00:00'",
-                        res.modified.to_rfc3339(),
-                    ),
-                )
+                format!(
+                    "object was modified at '{}'; if-unmodified-since '2010-01-01T10:00:00+00:00'",
+                    res.modified.to_rfc3339(),
+                ),
             );
         }
     }
