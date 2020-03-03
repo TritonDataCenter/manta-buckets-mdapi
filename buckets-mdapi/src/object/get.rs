@@ -48,16 +48,22 @@ pub(crate) fn action(
             Ok(msg)
         })
         .or_else(|e| {
-            // Handle database error response
+            /*
+             * At this point we've seen some kind of failure processing the request.  It could be
+             * that the database has returned an error of some kind, or that there has been a
+             * failure in evaluating the preconditions of the request.  Either way they are handed
+             * back to the application as fast messages.
+             */
 
-            // XXX
-            //
-            // We only really care about this failure if it's a postgres error, but by this time
-            // the error is a Value so I think it's harder to match on.
-            error!(log, "operation failed"; "error" => &e.to_string());
-
-            // Database errors are returned to as regular Fast messages
-            // to be handled by the calling application
+            /*
+             * XXX
+             *
+             * Is reaching into the Value like this safe?  I think we get `Value::Null` on a bad
+             * value, so possibly it's ok.  Is it fast enough?
+             */
+            if e["name"] == "PostgresError" {
+                error!(log, "operation failed"; "error" => &e.to_string());
+            }
 
             let msg_data =
                 FastMessageData::new(method.into(), array_wrap(e));
@@ -99,23 +105,11 @@ fn do_get(
             metrics,
             log,
         )
-        // XXX
-        //
-        // I think this was added when I was messing around with Box<Error>.  I am not sure why
-        // it's needed.
-        .map_err(|e| e.into())
+        .map_err(|e| { sql::postgres_error(e.to_string()) })
     })
     .and_then(|rows| {
-        txn.commit()?;
+        txn.commit().map_err(|e| { sql::postgres_error(e.to_string()) })?;
         Ok(rows)
-    })
-    .map_err(|e| match e {
-        precondition::ConditionalError::Conditional(e) => {
-            precondition::error(e.to_string())
-        },
-        precondition::ConditionalError::Pg(e) => {
-            sql::postgres_error(e.to_string())
-        },
     })
     .and_then(|rows| response(method, &rows))
 }
