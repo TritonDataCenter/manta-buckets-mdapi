@@ -41,6 +41,11 @@ pub fn request(
         return Ok(());
     }
 
+    /*
+     * XXX Pretty confident we can unwrap() here because is_conditional() has confirmed that
+     * `conditions` contains something.  Still though, is_conditional() is nice and all, but would
+     * it be better to consume `conditions` and return the value inside instead?
+     */
     let conditions = conditions.as_ref().unwrap();
 
     /*
@@ -60,9 +65,7 @@ pub fn request(
         metrics,
         log,
     )
-    .map_err(|e| {
-        sql::postgres_error(e.to_string())
-    })
+    .map_err(|e| { sql::postgres_error(e.to_string()) })
     .and_then(|rows| {
         if rows.len() == 0 {
             /*
@@ -75,7 +78,7 @@ pub fn request(
 
             return Err(err);
         } else if rows.len() > 1 {
-            return Err(sql::postgres_error("expected 1 row".to_string()));
+            return Err(sql::postgres_error("expected 1 row from precondition query".to_string()));
         }
 
         debug!(log, "got {} rows from conditional query", rows.len());
@@ -94,7 +97,7 @@ pub fn is_conditional(headers: &Option<types::Hstore>) -> bool {
                 || headers.contains_key("if-modified-since")
                 || headers.contains_key("if-unmodified-since")
         },
-        None => false
+        None => false,
     }
 }
 
