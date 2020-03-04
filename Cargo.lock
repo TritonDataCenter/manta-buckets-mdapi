@@ -162,6 +162,7 @@ dependencies = [
  "quickcheck 0.8.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "quickcheck_helpers 0.1.0 (git+https://github.com/joyent/rust-quickcheck-helpers)",
  "rand 0.7.2 (git+https://github.com/rust-random/rand)",
+ "regex 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rust_fast 0.2.0 (git+https://github.com/joyent/rust-fast?tag=v0.2.0)",
  "serde 1.0.103 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.103 (registry+https://github.com/rust-lang/crates.io-index)",

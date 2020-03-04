@@ -3,6 +3,7 @@
 use serde_json::Value;
 use postgres::types::ToSql;
 use postgres::Transaction;
+use regex::Regex;
 use serde_json;
 use slog::{debug, trace, Logger};
 use uuid::Uuid;
@@ -83,7 +84,9 @@ pub fn request(
 
         debug!(log, "got {} rows from conditional query", rows.len());
 
-        check_conditional(&conditions, rows[0].get("id"), rows[0].get("modified"))?;
+        let object_id: Uuid = rows[0].get("id");
+        let object_modified: types::Timestamptz = rows[0].get("modified");
+        check_conditional(&conditions, object_id.to_string(), object_modified)?;
 
         Ok(())
     })
@@ -112,12 +115,14 @@ pub fn is_conditional(headers: &Option<types::Hstore>) -> bool {
  */
 pub fn check_conditional(
     headers: &types::Hstore,
-    etag: Uuid,
+    etag: String,
     last_modified: types::Timestamptz,
 ) -> Result<(), Value> {
+    let split_word_re = Regex::new(r"\s*,\s*").unwrap();
+
     if let Some(header) = headers.get("if-match") {
         if let Some(if_match) = header {
-            let match_client_etags = if_match.split(",").collect();
+            let match_client_etags = split_word_re.split(if_match).collect();
             if !check_if_match(etag.to_string(), match_client_etags) {
                 return Err(error(
                     error::BucketsMdapiErrorType::PreconditionFailedError,
@@ -155,7 +160,7 @@ pub fn check_conditional(
 
     if let Some(header) = headers.get("if-none-match") {
         if let Some(if_none_match) = header {
-            let match_client_etags = if_none_match.split(",").collect();
+            let match_client_etags = split_word_re.split(if_none_match).collect();
             if check_if_match(etag.to_string(), match_client_etags) {
                 return Err(error(
                     error::BucketsMdapiErrorType::PreconditionFailedError,
@@ -195,14 +200,13 @@ pub fn check_conditional(
 }
 
 fn check_if_match(etag: String, client_etags: Vec<&str>) -> bool {
-    /*
-     * XXX
-     *
-     * - How is this handling whitespace around the comma?
-     * - Are we still ignoring weak comparisons?
-     */
+    let weak_re = Regex::new("^W/").unwrap();
+    let outside_quotes_re = Regex::new("^\"(?P<inside>[[:ascii:]]*)\"$").unwrap();
+
     for client_etag in client_etags {
-        let client_etag = client_etag.replace("\"", "");
+        let client_etag = weak_re.replace(&client_etag, "");
+        let client_etag = outside_quotes_re.replace(&client_etag, "$inside");
+
         if client_etag == "*" || etag == client_etag {
             return true;
         }
@@ -273,15 +277,15 @@ mod tests {
             let mut h = HashMap::new();
             let _ = h.insert("if-match".into(), Some(res.id.to_string()));
 
-            assert!(check_conditional(&h, res.id, res.modified).is_ok());
+            assert!(check_conditional(&h, res.id.to_string(), res.modified).is_ok());
         }
     }
     quickcheck! {
         fn precon_check_if_match_list(res: ObjectResponse) -> () {
             let mut h = HashMap::new();
-            let _ = h.insert("if-match".into(), Some(format!("thing,\"{}\"", res.id)));
+            let _ = h.insert("if-match".into(), Some(format!("thing, \"{}\"", res.id)));
 
-            assert!(check_conditional(&h, res.id, res.modified).is_ok());
+            assert!(check_conditional(&h, res.id.to_string(), res.modified).is_ok());
         }
     }
     quickcheck! {
@@ -289,7 +293,7 @@ mod tests {
             let mut h = HashMap::new();
             let _ = h.insert("if-match".into(), Some("\"test\",thing,*".into()));
 
-            assert!(check_conditional(&h, res.id, res.modified).is_ok());
+            assert!(check_conditional(&h, res.id.to_string(), res.modified).is_ok());
         }
     }
     quickcheck! {
@@ -297,7 +301,7 @@ mod tests {
             let mut h = HashMap::new();
             let _ = h.insert("if-match".into(), Some("*".into()));
 
-            assert!(check_conditional(&h, res.id, res.modified).is_ok());
+            assert!(check_conditional(&h, res.id.to_string(), res.modified).is_ok());
         }
     }
     quickcheck! {
@@ -307,7 +311,7 @@ mod tests {
             let mut h = HashMap::new();
             let _ = h.insert("if-match".into(), Some(client_etag.to_string()));
 
-            let check_res = check_conditional(&h, res.id, res.modified);
+            let check_res = check_conditional(&h, res.id.to_string(), res.modified);
 
             assert!(check_res.is_err());
             let err = &check_res.unwrap_err()["error"];
@@ -326,13 +330,43 @@ mod tests {
      * if-none-match
      */
     quickcheck! {
+        fn precon_check_if_none_match_list_spaced(res: ObjectResponse) -> () {
+            let mut h = HashMap::new();
+            let _ = h.insert("if-none-match".into(), Some("\"test\", thing, *".into()));
+
+            let check_res = check_conditional(&h, "test".to_string(), res.modified);
+            assert!(check_res.is_err());
+            let err = &check_res.unwrap_err()["error"];
+            assert_eq!(
+                err["message"],
+                "if-none-match '\"test\", thing, *' matched etag 'test'"
+            );
+        }
+    }
+    quickcheck! {
+        fn precon_check_if_none_match_list_ignore_weak(res: ObjectResponse) -> () {
+            let mut h = HashMap::new();
+            let _ = h.insert("if-none-match".into(), Some("W/\"test\", thing, *".into()));
+
+            let check_res = check_conditional(&h, "test".to_string(), res.modified);
+            assert!(check_res.is_err());
+            let err = &check_res.unwrap_err()["error"];
+            assert_eq!(
+                err["message"],
+                "if-none-match 'W/\"test\", thing, *' matched etag 'test'"
+            );
+        }
+    }
+    // check """
+    // check "*"
+    quickcheck! {
         fn precon_check_if_none_match_single(res: ObjectResponse) -> () {
             let client_etag = Uuid::new_v4();
 
             let mut h = HashMap::new();
             let _ = h.insert("if-none-match".into(), Some(client_etag.to_string()));
 
-            assert!(check_conditional(&h, res.id, res.modified).is_ok());
+            assert!(check_conditional(&h, res.id.to_string(), res.modified).is_ok());
         }
     }
     quickcheck! {
@@ -341,7 +375,7 @@ mod tests {
             let client_etag = format!("thing,\"{}\"", res.id);
             let _ = h.insert("if-none-match".into(), Some(client_etag.clone()));
 
-            let check_res = check_conditional(&h, res.id, res.modified);
+            let check_res = check_conditional(&h, res.id.to_string(), res.modified);
 
             assert!(check_res.is_err());
             let err = &check_res.unwrap_err()["error"];
@@ -361,7 +395,7 @@ mod tests {
             let client_etag = "\"test\",thing,*";
             let _ = h.insert("if-none-match".into(), Some(client_etag.into()));
 
-            let check_res = check_conditional(&h, res.id, res.modified);
+            let check_res = check_conditional(&h, res.id.to_string(), res.modified);
 
             assert!(check_res.is_err());
             let err = &check_res.unwrap_err()["error"];
@@ -389,7 +423,7 @@ mod tests {
                 Some(client_modified.into()),
             );
 
-            assert!(check_conditional(&h, res.id, res.modified).is_ok());
+            assert!(check_conditional(&h, res.id.to_string(), res.modified).is_ok());
         }
     }
     quickcheck! {
@@ -403,7 +437,7 @@ mod tests {
                 Some(format!("{}", client_modified.to_rfc3339())),
             );
 
-            let check_res = check_conditional(&h, res.id, res.modified);
+            let check_res = check_conditional(&h, res.id.to_string(), res.modified);
 
             assert!(check_res.is_err());
             let err = &check_res.unwrap_err()["error"];
@@ -430,7 +464,7 @@ mod tests {
                 Some(client_modified.to_string()),
             );
 
-            let check_res = check_conditional(&h, res.id, res.modified);
+            let check_res = check_conditional(&h, res.id.to_string(), res.modified);
 
             assert!(check_res.is_err());
             let err = &check_res.unwrap_err()["error"];
@@ -459,7 +493,7 @@ mod tests {
                 Some(format!("{}", client_modified.to_rfc3339())),
             );
 
-            assert!(check_conditional(&h, res.id, res.modified).is_ok());
+            assert!(check_conditional(&h, res.id.to_string(), res.modified).is_ok());
         }
     }
     quickcheck! {
@@ -469,7 +503,7 @@ mod tests {
             let mut h = HashMap::new();
             let _ = h.insert("if-unmodified-since".into(), Some(client_modified.into()));
 
-            let check_res = check_conditional(&h, res.id, res.modified);
+            let check_res = check_conditional(&h, res.id.to_string(), res.modified);
 
             assert!(check_res.is_err());
             let err = &check_res.unwrap_err()["error"];
