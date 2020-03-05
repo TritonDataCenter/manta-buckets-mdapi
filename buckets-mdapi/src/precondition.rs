@@ -72,7 +72,7 @@ pub fn request(
     )
     .map_err(|e| { sql::postgres_error(e.to_string()) })
     .and_then(|rows| {
-        if rows.len() == 0 {
+        if rows.is_empty() {
             /*
              * XXX Why isn't object::object_not_found() public?
              */
@@ -203,6 +203,11 @@ pub fn check_conditional(
     Ok(())
 }
 
+/*
+ * Allow trivial_regex here because of weak_re.  str::starts_with is surely a better way to do
+ * this, but in this case we want to split on this regex so I don't think this is applicable.
+ */
+#[allow(clippy::trivial_regex)]
 fn check_if_match(etag: String, client_etags: Vec<&str>) -> bool {
     let weak_re = Regex::new("^W/").unwrap();
     let outside_quotes_re = Regex::new("^\"(?P<inside>[[:ascii:]]*)\"$").unwrap();
