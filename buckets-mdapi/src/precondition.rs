@@ -28,6 +28,10 @@ pub fn error(error_type: error::BucketsMdapiErrorType, msg: String) -> serde_jso
  * because of the get request case.  In that case the actual call is exactly the same as what is
  * done in this conditional call, so we might as well just return the object(s) and have the caller
  * skip the separate call to the database.
+ *
+ * Should `conditions` be a real Rust struct that Serde will try and deserialise?  This way we'd
+ * have to make sure buckets-api is slicing up the object properly, but I think it would take a lot
+ * of the lifting out of this method (such as splitting strings and parsing dates).
  */
 pub fn request(
     mut txn: &mut Transaction,
