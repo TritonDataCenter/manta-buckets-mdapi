@@ -7,6 +7,7 @@ use std::process::Command;
 use std::sync::Mutex;
 
 use slog::{error, info, o, Drain, Level, LevelFilter, Logger};
+use serde_json::json;
 use url::Url;
 use uuid::Uuid;
 
@@ -24,6 +25,7 @@ use buckets_mdapi::gc;
 use buckets_mdapi::metrics;
 use buckets_mdapi::object;
 use buckets_mdapi::util;
+use buckets_mdapi::precondition;
 use utils::{config, schema};
 
 // This test suite requires PostgreSQL and pg_tmp
@@ -463,9 +465,10 @@ fn verify_rpc_handlers() {
 
     // Get object with "if-match: correctETag"
     let request_id = Uuid::new_v4();
-    let mut precondition = HashMap::new();
-    let _ = precondition
-        .insert("if-match".into(), Some(object_id.to_string()));
+
+    let precondition = serde_json::from_value::<precondition::Pre>(json!({
+        "if-match": [ object_id.to_string() ],
+    })).unwrap();
     let precondition = Some(precondition);
 
     let get_object_payload = object::GetObjectPayload {
@@ -499,10 +502,11 @@ fn verify_rpc_handlers() {
 
     // Try get object with "if-match: wrongETag"
     let request_id = Uuid::new_v4();
-    let mut precondition = HashMap::new();
+
     let if_match_etag = Uuid::new_v4();
-    let _ = precondition
-        .insert("if-match".into(), Some(if_match_etag.to_string()));
+    let precondition = serde_json::from_value::<precondition::Pre>(json!({
+        "if-match": [ if_match_etag ],
+    })).unwrap();
     let precondition = Some(precondition);
 
     let mut get_object_payload = object::GetObjectPayload {
@@ -534,7 +538,7 @@ fn verify_rpc_handlers() {
         get_object_response_result.unwrap(),
         BucketsMdapiError::with_message(
             BucketsMdapiErrorType::PreconditionFailedError,
-            format!("if-match '{}' didn't match etag '{}'", if_match_etag, object_id),
+            format!("if-match '\"{}\"' didn't match etag '{}'", if_match_etag, object_id),
         ),
     );
 

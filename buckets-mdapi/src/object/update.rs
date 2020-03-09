@@ -29,7 +29,7 @@ pub struct UpdateObjectPayload {
     pub headers: Hstore,
     pub properties: Option<Value>,
     pub request_id: Uuid,
-    pub precondition: Option<Hstore>,
+    pub precondition: Option<precondition::Pre>,
 }
 
 impl HasRequestId for UpdateObjectPayload {

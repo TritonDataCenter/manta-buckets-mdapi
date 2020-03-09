@@ -36,7 +36,7 @@ pub struct CreateObjectPayload {
     pub sharks: Vec<StorageNodeIdentifier>,
     pub properties: Option<Value>,
     pub request_id: Uuid,
-    pub precondition: Option<Hstore>,
+    pub precondition: Option<precondition::Pre>,
 }
 
 impl HasRequestId for CreateObjectPayload {
