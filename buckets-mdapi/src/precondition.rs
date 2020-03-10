@@ -67,18 +67,6 @@ pub fn error(error_type: error::BucketsMdapiErrorType, msg: String) -> serde_jso
     .expect("failed to encode a PreconditionFailedError error")
 }
 
-/*
- * XXX
- *
- * This perhaps could return an Option, but I think it's going to have to be Result at least
- * because of the get request case.  In that case the actual call is exactly the same as what is
- * done in this conditional call, so we might as well just return the object(s) and have the caller
- * skip the separate call to the database.
- *
- * Should `conditions` be a real Rust struct that Serde will try and deserialise?  This way we'd
- * have to make sure buckets-api is slicing up the object properly, but I think it would take a lot
- * of the lifting out of this method (such as splitting strings and parsing dates).
- */
 pub fn request(
     mut txn: &mut Transaction,
     items: &[&dyn ToSql],
@@ -99,15 +87,6 @@ pub fn request(
      */
     let conditions = conditions.as_ref().unwrap();
 
-    /*
-     * XXX
-     *
-     * Should this be exactly the same as ObjectGet?  I think we only need the etag and
-     * last_modified, so it's a shame to return all the other fields for no reason.
-     *
-     * Using ObjectGet has the advantage of possibly returning this as-is in the event that the
-     * request is a GetObject.  We can just return `rows`.
-     */
     sql::txn_query(
         sql::Method::ObjectGet,
         &mut txn,
@@ -120,7 +99,7 @@ pub fn request(
     .and_then(|rows| {
         if rows.is_empty() {
             /*
-             * XXX Why isn't object::object_not_found() public?
+             * XXX Why isn't object::object_not_found() public?  Can we use it?
              */
             let err = serde_json::to_value(error::BucketsMdapiError::new(
                 error::BucketsMdapiErrorType::ObjectNotFound,
@@ -154,15 +133,6 @@ pub fn is_conditional(conditions: &Option<Pre>) -> bool {
     }
 }
 
-/*
- * XXX
- *
- * I think this needs to only return the first issue in the conditional request it comes across, as
- * opposed to a mixed bag of all failures.  I guess this is part of the RFC, but for now I'll do
- * this in the same order as joyent/manta-buckets-api, which is:
- *
- *      if-match > if-unmodified-since > if-none-match > if-modified-since
- */
 pub fn check_conditional(
     conditions: &Pre,
     etag: String,
@@ -178,7 +148,7 @@ pub fn check_conditional(
     }
 
     if let Some(client_unmodified) = conditions.if_unmodified_since {
-        if check_if_modified(last_modified, client_unmodified) {
+        if last_modified > client_unmodified {
             return Err(error(
                 error::BucketsMdapiErrorType::PreconditionFailedError,
                 format!(
@@ -199,7 +169,7 @@ pub fn check_conditional(
     }
 
     if let Some(client_modified) = conditions.if_modified_since {
-        if !check_if_modified(last_modified, client_modified) {
+        if last_modified <= client_modified {
             return Err(error(
                 error::BucketsMdapiErrorType::PreconditionFailedError,
                 format!(
@@ -213,11 +183,6 @@ pub fn check_conditional(
     Ok(())
 }
 
-/*
- * Allow trivial_regex here because of weak_re.  str::starts_with is surely a better way to do
- * this, but in this case we want to split on this regex so I don't think this is applicable.
- */
-#[allow(clippy::trivial_regex)]
 fn check_if_match(etag: &String, client_etags: &ETags) -> bool {
     for client_etag in client_etags {
         if client_etag == "*" || etag == client_etag {
@@ -228,16 +193,6 @@ fn check_if_match(etag: &String, client_etags: &ETags) -> bool {
     false
 }
 
-fn check_if_modified(
-    last_modified: types::Timestamptz,
-    client_modified: types::Timestamptz,
-) -> bool {
-    /*
-     * XXX What about timestamps that are exactly the same?
-     */
-    last_modified > client_modified
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -246,10 +201,6 @@ mod tests {
     use chrono;
 
     use crate::object::ObjectResponse;
-
-    /*
-     * XXX Somehow we get object.rs's Arbitrary implementation for free?
-     */
 
     #[test]
     fn precon_empty_headers() {
