@@ -469,7 +469,6 @@ fn verify_rpc_handlers() {
     let conditions = serde_json::from_value::<conditional::Conditions>(json!({
         "if-match": [ object_id.to_string() ],
     })).unwrap();
-    let conditions = Some(conditions);
 
     let get_object_payload = object::GetObjectPayload {
         owner: owner_id,
@@ -477,7 +476,7 @@ fn verify_rpc_handlers() {
         name: object.clone(),
         vnode: 1,
         request_id,
-        conditions,
+        conditions: Some(conditions),
     };
 
     let get_object_json =
@@ -507,7 +506,6 @@ fn verify_rpc_handlers() {
     let conditions = serde_json::from_value::<conditional::Conditions>(json!({
         "if-match": [ if_match_etag ],
     })).unwrap();
-    let conditions = Some(conditions);
 
     let mut get_object_payload = object::GetObjectPayload {
         owner: owner_id,
@@ -515,7 +513,7 @@ fn verify_rpc_handlers() {
         name: object.clone(),
         vnode: 1,
         request_id,
-        conditions,
+        conditions: Some(conditions),
     };
 
     let get_object_json =
@@ -547,7 +545,7 @@ fn verify_rpc_handlers() {
     // Delete object
 
     // The get and delete object args are the same so we can reuse
-    // get_object_json here.  Just lets empty the headers first.
+    // get_object_json here.  Just lets empty the conditions first.
 
     get_object_payload.conditions = None;
     let delete_object_json =
