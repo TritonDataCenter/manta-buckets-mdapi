@@ -304,7 +304,7 @@ fn verify_rpc_handlers() {
         name: object.clone(),
         vnode: 1,
         request_id,
-        precondition: None,
+        conditions: None,
     };
 
     let get_object_json =
@@ -351,7 +351,7 @@ fn verify_rpc_handlers() {
         headers: update_headers,
         properties: None,
         request_id,
-        precondition: None,
+        conditions: None,
     };
 
     let update_object_json =
@@ -398,7 +398,7 @@ fn verify_rpc_handlers() {
         sharks: vec![shark1, shark2],
         properties: None,
         request_id,
-        precondition: None,
+        conditions: None,
     };
 
     let create_object_json =
@@ -466,10 +466,10 @@ fn verify_rpc_handlers() {
     // Get object with "if-match: correctETag"
     let request_id = Uuid::new_v4();
 
-    let precondition = serde_json::from_value::<precondition::Pre>(json!({
+    let conditions = serde_json::from_value::<precondition::Conditions>(json!({
         "if-match": [ object_id.to_string() ],
     })).unwrap();
-    let precondition = Some(precondition);
+    let conditions = Some(conditions);
 
     let get_object_payload = object::GetObjectPayload {
         owner: owner_id,
@@ -477,7 +477,7 @@ fn verify_rpc_handlers() {
         name: object.clone(),
         vnode: 1,
         request_id,
-        precondition,
+        conditions,
     };
 
     let get_object_json =
@@ -504,10 +504,10 @@ fn verify_rpc_handlers() {
     let request_id = Uuid::new_v4();
 
     let if_match_etag = Uuid::new_v4();
-    let precondition = serde_json::from_value::<precondition::Pre>(json!({
+    let conditions = serde_json::from_value::<precondition::Conditions>(json!({
         "if-match": [ if_match_etag ],
     })).unwrap();
-    let precondition = Some(precondition);
+    let conditions = Some(conditions);
 
     let mut get_object_payload = object::GetObjectPayload {
         owner: owner_id,
@@ -515,7 +515,7 @@ fn verify_rpc_handlers() {
         name: object.clone(),
         vnode: 1,
         request_id,
-        precondition,
+        conditions,
     };
 
     let get_object_json =
@@ -549,7 +549,7 @@ fn verify_rpc_handlers() {
     // The get and delete object args are the same so we can reuse
     // get_object_json here.  Just lets empty the headers first.
 
-    get_object_payload.precondition = None;
+    get_object_payload.conditions = None;
     let delete_object_json =
         serde_json::to_value(vec![get_object_payload]).unwrap();
     let delete_object_fast_msg_data =

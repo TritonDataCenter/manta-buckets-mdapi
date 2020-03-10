@@ -29,7 +29,7 @@ pub struct UpdateObjectPayload {
     pub headers: Hstore,
     pub properties: Option<Value>,
     pub request_id: Uuid,
-    pub precondition: Option<precondition::Pre>,
+    pub conditions: Option<precondition::Conditions>,
 }
 
 impl HasRequestId for UpdateObjectPayload {
@@ -95,7 +95,7 @@ fn do_update(
         &mut txn,
         &[&payload.owner, &payload.bucket_id, &payload.name],
         payload.vnode,
-        &payload.precondition,
+        &payload.conditions,
         metrics,
         log,
     )
@@ -210,7 +210,7 @@ mod test {
 
             let properties = None;
             let request_id = Uuid::new_v4();
-            let precondition = None;
+            let conditions = None;
 
             UpdateObjectPayload {
                 owner,
@@ -222,7 +222,7 @@ mod test {
                 headers,
                 properties,
                 request_id,
-                precondition
+                conditions
             }
         }
     }

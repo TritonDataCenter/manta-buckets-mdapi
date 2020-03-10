@@ -81,7 +81,7 @@ fn do_delete(
         &mut txn,
         &[&payload.owner, &payload.bucket_id, &payload.name],
         payload.vnode,
-        &payload.precondition,
+        &payload.conditions,
         metrics,
         log,
     )

@@ -17,7 +17,7 @@ use crate::types;
  * XXX Maybe a new type of etag list so it can be printed?
  */
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct Pre {
+pub struct Conditions {
     #[serde(alias = "if-match")]
     pub if_match: Option<ETags>,
 
@@ -33,14 +33,13 @@ pub struct Pre {
 
 type ETags = Vec<String>;
 
-impl Pre {
+impl Conditions {
     fn display_if_match(&self) -> String {
         match &self.if_match {
             Some(etags) => {
-                let x: String = etags.into_iter().map(|e| {
+                etags.into_iter().map(|e| {
                     format!("\"{}\"", e)
-                }).collect();
-                format!("{}", x)
+                }).collect::<Vec<String>>().join(", ")
             },
             None => "".to_string(),
         }
@@ -49,10 +48,9 @@ impl Pre {
     fn display_if_none_match(&self) -> String {
         match &self.if_none_match {
             Some(etags) => {
-                let x: String = etags.into_iter().map(|e| {
+                etags.into_iter().map(|e| {
                     format!("\"{}\"", e)
-                }).collect::<Vec<String>>().join(", ");
-                format!("{}", x)
+                }).collect::<Vec<String>>().join(", ")
             },
             None => "".to_string(),
         }
@@ -71,7 +69,7 @@ pub fn request(
     mut txn: &mut Transaction,
     items: &[&dyn ToSql],
     vnode: u64,
-    conditions: &Option<Pre>,
+    conditions: &Option<Conditions>,
     metrics: &metrics::RegisteredMetrics,
     log: &Logger,
 ) -> Result<(), Value> {
@@ -80,11 +78,6 @@ pub fn request(
         return Ok(());
     }
 
-    /*
-     * XXX Pretty confident we can unwrap() here because is_conditional() has confirmed that
-     * `conditions` contains something.  Still though, is_conditional() is nice and all, but would
-     * it be better to consume `conditions` and return the value inside instead?
-     */
     let conditions = conditions.as_ref().unwrap();
 
     sql::txn_query(
@@ -121,7 +114,7 @@ pub fn request(
     })
 }
 
-pub fn is_conditional(conditions: &Option<Pre>) -> bool {
+pub fn is_conditional(conditions: &Option<Conditions>) -> bool {
     match conditions {
         Some(conditions) => {
             conditions.if_match.is_some()
@@ -134,7 +127,7 @@ pub fn is_conditional(conditions: &Option<Pre>) -> bool {
 }
 
 pub fn check_conditional(
-    conditions: &Pre,
+    conditions: &Conditions,
     etag: String,
     last_modified: types::Timestamptz,
 ) -> Result<(), Value> {
@@ -197,41 +190,45 @@ fn check_if_match(etag: &String, client_etags: &ETags) -> bool {
 mod tests {
     use super::*;
     use quickcheck::quickcheck;
-    use serde_json::json;
+    use serde_json::{json, Value};
     use chrono;
 
     use crate::object::ObjectResponse;
 
+    fn conditions_from_value(v: Value) -> Conditions {
+        serde_json::from_value::<Conditions>(v).unwrap()
+    }
+
     #[test]
     fn precon_empty_headers() {
-        let h = serde_json::from_value::<Pre>(json!({})).unwrap();
+        let h = conditions_from_value(json!({}));
         assert_eq!(is_conditional(&Some(h)), false);
     }
 
     #[test]
     fn precon_undefined_headers() {
-        let h = serde_json::from_value::<Pre>(json!({
+        let h = conditions_from_value(json!({
             "if-modified-since": null,
-        })).unwrap();
+        }));
         assert_eq!(is_conditional(&Some(h)), false);
     }
 
     #[test]
     fn precon_not_applicable_headers() {
-        let h = serde_json::from_value::<Pre>(json!({
+        let h = conditions_from_value(json!({
             "if-something": [ "test" ],
             "accept": [ "test" ],
-        })).unwrap();
+        }));
         assert_eq!(is_conditional(&Some(h)), false);
     }
 
     #[test]
     fn precon_mix_headers() {
-        let h = serde_json::from_value::<Pre>(json!({
+        let h = conditions_from_value(json!({
             "if-match": [ "test" ],
             "if-modified-since": "2020-10-01T10:00:00Z",
             "if-none-match": [ "test" ],
-        })).unwrap();
+        }));
         assert_eq!(is_conditional(&Some(h)), true);
     }
 
@@ -240,36 +237,36 @@ mod tests {
      */
     quickcheck! {
         fn precon_check_if_match_single(res: ObjectResponse) -> () {
-            let h = serde_json::from_value::<Pre>(json!({
+            let h = conditions_from_value(json!({
                 "if-match": [ res.id ],
-            })).unwrap();
+            }));
 
             assert!(check_conditional(&h, res.id.to_string(), res.modified).is_ok());
         }
     }
     quickcheck! {
         fn precon_check_if_match_list(res: ObjectResponse) -> () {
-            let h = serde_json::from_value::<Pre>(json!({
+            let h = conditions_from_value(json!({
                 "if-match": [ "thing", res.id ],
-            })).unwrap();
+            }));
 
             assert!(check_conditional(&h, res.id.to_string(), res.modified).is_ok());
         }
     }
     quickcheck! {
         fn precon_check_if_match_list_with_any(res: ObjectResponse) -> () {
-            let h = serde_json::from_value::<Pre>(json!({
+            let h = conditions_from_value(json!({
                 "if-match": [ "test", "thing", "*" ],
-            })).unwrap();
+            }));
 
             assert!(check_conditional(&h, res.id.to_string(), res.modified).is_ok());
         }
     }
     quickcheck! {
         fn precon_check_if_match_any(res: ObjectResponse) -> () {
-            let h = serde_json::from_value::<Pre>(json!({
+            let h = conditions_from_value(json!({
                 "if-match": [ "*" ],
-            })).unwrap();
+            }));
 
             assert!(check_conditional(&h, res.id.to_string(), res.modified).is_ok());
         }
@@ -278,9 +275,9 @@ mod tests {
         fn precon_check_if_match_single_fail(res: ObjectResponse) -> () {
             let client_etag = Uuid::new_v4();
 
-            let h = serde_json::from_value::<Pre>(json!({
+            let h = conditions_from_value(json!({
                 "if-match": [ client_etag ],
-            })).unwrap();
+            }));
 
             println!("{:?}", h);
             let check_res = check_conditional(&h, res.id.to_string(), res.modified);
@@ -305,18 +302,18 @@ mod tests {
         fn precon_check_if_none_match_single(res: ObjectResponse) -> () {
             let client_etag = Uuid::new_v4();
 
-            let h = serde_json::from_value::<Pre>(json!({
+            let h = conditions_from_value(json!({
                 "if-none-match": [ client_etag ],
-            })).unwrap();
+            }));
 
             assert!(check_conditional(&h, res.id.to_string(), res.modified).is_ok());
         }
     }
     quickcheck! {
         fn precon_check_if_none_match_list_fail(res: ObjectResponse) -> () {
-            let h = serde_json::from_value::<Pre>(json!({
+            let h = conditions_from_value(json!({
                 "if-none-match": [ "test", "thing", res.id ],
-            })).unwrap();
+            }));
 
             let check_res = check_conditional(&h, res.id.to_string(), res.modified);
 
@@ -334,9 +331,9 @@ mod tests {
     }
     quickcheck! {
         fn precon_check_if_none_match_list_with_any_fail(res: ObjectResponse) -> () {
-            let h = serde_json::from_value::<Pre>(json!({
+            let h = conditions_from_value(json!({
                 "if-none-match": [ "test", "thing", "*" ],
-            })).unwrap();
+            }));
 
             let check_res = check_conditional(&h, res.id.to_string(), res.modified);
 
@@ -360,9 +357,9 @@ mod tests {
         fn precon_check_if_modified(res: ObjectResponse) -> () {
             let client_modified = "2000-01-01T10:00:00Z";
 
-            let h = serde_json::from_value::<Pre>(json!({
+            let h = conditions_from_value(json!({
                 "if-modified-since": client_modified,
-            })).unwrap();
+            }));
 
             assert!(check_conditional(&h, res.id.to_string(), res.modified).is_ok());
         }
@@ -372,9 +369,9 @@ mod tests {
             let client_modified: types::Timestamptz =
                 chrono::Utc::now() + chrono::Duration::days(1);
 
-            let h = serde_json::from_value::<Pre>(json!({
+            let h = conditions_from_value(json!({
                 "if-modified-since": client_modified.to_rfc3339(),
-            })).unwrap();
+            }));
 
             let check_res = check_conditional(&h, res.id.to_string(), res.modified);
 
@@ -399,9 +396,9 @@ mod tests {
         fn precon_check_if_modified_fail_invalid_date(res: ObjectResponse) -> () {
             let client_modified = "not a valid date";
 
-            let h = serde_json::from_value::<Pre>(json!({
+            let h = conditions_from_value(json!({
                 "if-modified-since": client_modified,
-            })).unwrap();
+            }));
 
             let check_res = check_conditional(&h, res.id.to_string(), res.modified);
 
@@ -427,9 +424,9 @@ mod tests {
             let client_modified: types::Timestamptz =
                 chrono::Utc::now() + chrono::Duration::days(1);
 
-            let h = serde_json::from_value::<Pre>(json!({
+            let h = conditions_from_value(json!({
                 "if-unmodified-since": client_modified.to_rfc3339(),
-            })).unwrap();
+            }));
 
             assert!(check_conditional(&h, res.id.to_string(), res.modified).is_ok());
         }
@@ -438,9 +435,9 @@ mod tests {
         fn precon_check_if_unmodified_fail(res: ObjectResponse) -> () {
             let client_modified = "2010-01-01T10:00:00Z";
 
-            let h = serde_json::from_value::<Pre>(json!({
+            let h = conditions_from_value(json!({
                 "if-unmodified-since": client_modified,
-            })).unwrap();
+            }));
 
             let check_res = check_conditional(&h, res.id.to_string(), res.modified);
 
