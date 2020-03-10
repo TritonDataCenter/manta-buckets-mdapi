@@ -14,7 +14,7 @@ use crate::object::{
     insert_delete_table_sql, object_not_found, DeleteObjectPayload,
     DeleteObjectResponse,
 };
-use crate::precondition;
+use crate::conditional;
 use crate::sql;
 use crate::types::HandlerResponse;
 use crate::util::array_wrap;
@@ -77,7 +77,7 @@ fn do_delete(
     let move_sql = insert_delete_table_sql(payload.vnode);
     let delete_sql = delete_sql(payload.vnode);
 
-    precondition::request(
+    conditional::request(
         &mut txn,
         &[&payload.owner, &payload.bucket_id, &payload.name],
         payload.vnode,

@@ -17,7 +17,7 @@ use crate::object::{
     insert_delete_table_sql, response, to_json, ObjectResponse,
     StorageNodeIdentifier,
 };
-use crate::precondition;
+use crate::conditional;
 use crate::sql;
 use crate::types::{HandlerResponse, HasRequestId, Hstore};
 use crate::util::array_wrap;
@@ -36,7 +36,7 @@ pub struct CreateObjectPayload {
     pub sharks: Vec<StorageNodeIdentifier>,
     pub properties: Option<Value>,
     pub request_id: Uuid,
-    pub conditions: Option<precondition::Conditions>,
+    pub conditions: Option<conditional::Conditions>,
 }
 
 impl HasRequestId for CreateObjectPayload {
@@ -113,7 +113,7 @@ fn do_create(
             )
         })?;
 
-    precondition::request(
+    conditional::request(
         &mut txn,
         &[&payload.owner, &payload.bucket_id, &payload.name],
         payload.vnode,

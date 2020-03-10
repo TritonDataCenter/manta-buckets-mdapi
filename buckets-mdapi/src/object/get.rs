@@ -13,7 +13,7 @@ use crate::metrics::RegisteredMetrics;
 use crate::object::{
     object_not_found, response, to_json, GetObjectPayload, ObjectResponse,
 };
-use crate::precondition;
+use crate::conditional;
 use crate::sql;
 use crate::types::HandlerResponse;
 use crate::util::array_wrap;
@@ -51,7 +51,7 @@ pub(crate) fn action(
             /*
              * At this point we've seen some kind of failure processing the request.  It could be
              * that the database has returned an error of some kind, or that there has been a
-             * failure in evaluating the preconditions of the request.  Either way they are handed
+             * failure in evaluating the conditions of the request.  Either way they are handed
              * back to the application as fast messages.
              */
 
@@ -83,7 +83,7 @@ fn do_get(
     let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
     let get_sql = sql::get_sql(payload.vnode);
 
-    precondition::request(
+    conditional::request(
         &mut txn,
         &[&payload.owner, &payload.bucket_id, &payload.name],
         payload.vnode,

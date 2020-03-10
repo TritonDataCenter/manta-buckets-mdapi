@@ -25,7 +25,7 @@ use buckets_mdapi::gc;
 use buckets_mdapi::metrics;
 use buckets_mdapi::object;
 use buckets_mdapi::util;
-use buckets_mdapi::precondition;
+use buckets_mdapi::conditional;
 use utils::{config, schema};
 
 // This test suite requires PostgreSQL and pg_tmp
@@ -466,7 +466,7 @@ fn verify_rpc_handlers() {
     // Get object with "if-match: correctETag"
     let request_id = Uuid::new_v4();
 
-    let conditions = serde_json::from_value::<precondition::Conditions>(json!({
+    let conditions = serde_json::from_value::<conditional::Conditions>(json!({
         "if-match": [ object_id.to_string() ],
     })).unwrap();
     let conditions = Some(conditions);
@@ -504,7 +504,7 @@ fn verify_rpc_handlers() {
     let request_id = Uuid::new_v4();
 
     let if_match_etag = Uuid::new_v4();
-    let conditions = serde_json::from_value::<precondition::Conditions>(json!({
+    let conditions = serde_json::from_value::<conditional::Conditions>(json!({
         "if-match": [ if_match_etag ],
     })).unwrap();
     let conditions = Some(conditions);

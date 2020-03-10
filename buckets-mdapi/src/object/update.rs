@@ -13,7 +13,7 @@ use rust_fast::protocol::{FastMessage, FastMessageData};
 
 use crate::metrics::RegisteredMetrics;
 use crate::object::{object_not_found, response, to_json, ObjectResponse};
-use crate::precondition;
+use crate::conditional;
 use crate::sql;
 use crate::types::{HandlerResponse, HasRequestId, Hstore};
 use crate::util::array_wrap;
@@ -29,7 +29,7 @@ pub struct UpdateObjectPayload {
     pub headers: Hstore,
     pub properties: Option<Value>,
     pub request_id: Uuid,
-    pub conditions: Option<precondition::Conditions>,
+    pub conditions: Option<conditional::Conditions>,
 }
 
 impl HasRequestId for UpdateObjectPayload {
@@ -91,7 +91,7 @@ fn do_update(
     let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
     let update_sql = update_sql(payload.vnode);
 
-    precondition::request(
+    conditional::request(
         &mut txn,
         &[&payload.owner, &payload.bucket_id, &payload.name],
         payload.vnode,

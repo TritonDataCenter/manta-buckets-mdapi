@@ -8,7 +8,7 @@ pub mod gc;
 pub mod metrics;
 pub mod object;
 pub mod opts;
-pub mod precondition;
+pub mod conditional;
 pub mod sql;
 
 pub mod util {

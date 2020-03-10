@@ -13,7 +13,7 @@ use uuid::Uuid;
 use crate::error::{BucketsMdapiError, BucketsMdapiErrorType};
 use crate::sql;
 use crate::types::{HasRequestId, Hstore, RowSlice, Timestamptz};
-use crate::precondition;
+use crate::conditional;
 
 pub mod create;
 pub mod delete;
@@ -28,7 +28,7 @@ pub struct GetObjectPayload {
     pub name: String,
     pub vnode: u64,
     pub request_id: Uuid,
-    pub conditions: Option<precondition::Conditions>,
+    pub conditions: Option<conditional::Conditions>,
 }
 
 impl HasRequestId for GetObjectPayload {

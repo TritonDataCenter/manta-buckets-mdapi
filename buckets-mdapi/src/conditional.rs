@@ -13,9 +13,6 @@ use crate::metrics;
 use crate::sql;
 use crate::types;
 
-/*
- * XXX Maybe a new type of etag list so it can be printed?
- */
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Conditions {
     #[serde(alias = "if-match")]
@@ -31,6 +28,9 @@ pub struct Conditions {
     pub if_unmodified_since: Option<types::Timestamptz>,
 }
 
+/*
+ * XXX Want to implement my own struct here so that we can have a custom Display.
+ */
 type ETags = Vec<String>;
 
 impl Conditions {
@@ -101,7 +101,7 @@ pub fn request(
 
             return Err(err);
         } else if rows.len() > 1 {
-            return Err(sql::postgres_error("expected 1 row from precondition query".to_string()));
+            return Err(sql::postgres_error("expected 1 row from conditional query".to_string()));
         }
 
         debug!(log, "got {} rows from conditional query", rows.len());
@@ -458,6 +458,6 @@ mod tests {
     }
 
     /*
-     * mixture of match and modified preconditions.
+     * mixture of match and modified conditions.
      */
 }
