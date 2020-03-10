@@ -16,10 +16,10 @@ use crate::types;
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Conditions {
     #[serde(alias = "if-match")]
-    pub if_match: Option<ETags>,
+    pub if_match: Option<Vec<String>>,
 
     #[serde(alias = "if-none-match")]
-    pub if_none_match: Option<ETags>,
+    pub if_none_match: Option<Vec<String>>,
 
     #[serde(alias = "if-modified-since")]
     pub if_modified_since: Option<types::Timestamptz>,
@@ -28,33 +28,10 @@ pub struct Conditions {
     pub if_unmodified_since: Option<types::Timestamptz>,
 }
 
-/*
- * XXX Want to implement my own struct here so that we can have a custom Display.
- */
-type ETags = Vec<String>;
-
-impl Conditions {
-    fn display_if_match(&self) -> String {
-        match &self.if_match {
-            Some(etags) => {
-                etags.into_iter().map(|e| {
-                    format!("\"{}\"", e)
-                }).collect::<Vec<String>>().join(", ")
-            },
-            None => "".to_string(),
-        }
-    }
-
-    fn display_if_none_match(&self) -> String {
-        match &self.if_none_match {
-            Some(etags) => {
-                etags.into_iter().map(|e| {
-                    format!("\"{}\"", e)
-                }).collect::<Vec<String>>().join(", ")
-            },
-            None => "".to_string(),
-        }
-    }
+fn print_etags(etags: &Vec<String>) -> String {
+    etags.into_iter().map(|e| {
+        format!("\"{}\"", e)
+    }).collect::<Vec<String>>().join(", ")
 }
 
 pub fn error(error_type: error::BucketsMdapiErrorType, msg: String) -> serde_json::Value {
@@ -135,7 +112,7 @@ pub fn check_conditional(
         if !check_if_match(&etag, client_etags) {
             return Err(error(
                 error::BucketsMdapiErrorType::PreconditionFailedError,
-                format!("if-match '{}' didn't match etag '{}'", conditions.display_if_match(), etag),
+                format!("if-match '{}' didn't match etag '{}'", print_etags(&client_etags), etag),
             ));
         }
     }
@@ -156,7 +133,7 @@ pub fn check_conditional(
         if check_if_match(&etag, client_etags) {
             return Err(error(
                 error::BucketsMdapiErrorType::PreconditionFailedError,
-                format!("if-none-match '{}' matched etag '{}'", conditions.display_if_none_match(), etag),
+                format!("if-none-match '{}' matched etag '{}'", print_etags(&client_etags), etag),
             ));
         }
     }
@@ -176,7 +153,7 @@ pub fn check_conditional(
     Ok(())
 }
 
-fn check_if_match(etag: &String, client_etags: &ETags) -> bool {
+fn check_if_match(etag: &String, client_etags: &Vec<String>) -> bool {
     for client_etag in client_etags {
         if client_etag == "*" || etag == client_etag {
             return true;
@@ -286,7 +263,7 @@ mod tests {
             let err = &check_res.unwrap_err()["error"];
             assert_eq!(
                 err["message"],
-                format!("if-match '{}' didn't match etag '{}'", h.display_if_match(), res.id),
+                format!("if-match '\"{}\"' didn't match etag '{}'", client_etag, res.id),
             );
             assert_eq!(
                 err["name"],
@@ -321,7 +298,7 @@ mod tests {
             let err = &check_res.unwrap_err()["error"];
             assert_eq!(
                 err["message"],
-                format!("if-none-match '{}' matched etag '{}'", h.display_if_none_match(), res.id),
+                format!("if-none-match '\"test\", \"thing\", \"{}\"' matched etag '{}'", res.id, res.id),
             );
             assert_eq!(
                 err["name"],
@@ -341,7 +318,7 @@ mod tests {
             let err = &check_res.unwrap_err()["error"];
             assert_eq!(
                 err["message"],
-                format!("if-none-match '{}' matched etag '{}'", h.display_if_none_match(), res.id),
+                format!("if-none-match '\"test\", \"thing\", \"*\"' matched etag '{}'", res.id),
             );
             assert_eq!(
                 err["name"],

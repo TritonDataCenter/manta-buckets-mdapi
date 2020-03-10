@@ -10,7 +10,6 @@ pub enum BucketsMdapiErrorType {
     PostgresError,
     LimitConstraintError,
     PreconditionFailedError,
-    BadRequestError,
 }
 
 impl ToString for BucketsMdapiErrorType {
@@ -22,7 +21,6 @@ impl ToString for BucketsMdapiErrorType {
             BucketsMdapiErrorType::PostgresError => "PostgresError".into(),
             BucketsMdapiErrorType::LimitConstraintError => "LimitConstraintError".into(),
             BucketsMdapiErrorType::PreconditionFailedError => "PreconditionFailedError".into(),
-            BucketsMdapiErrorType::BadRequestError => "BadRequestError".into(),
         }
     }
 }
@@ -36,7 +34,6 @@ impl BucketsMdapiErrorType {
             BucketsMdapiErrorType::PostgresError => "postgres encountered an error".into(),
             BucketsMdapiErrorType::LimitConstraintError => "a limit constraint was violated".into(),
             BucketsMdapiErrorType::PreconditionFailedError => "precondition failed".into(),
-            BucketsMdapiErrorType::BadRequestError => "bad request".into(),
         }
     }
 }
