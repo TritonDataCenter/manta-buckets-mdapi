@@ -28,8 +28,8 @@ pub struct Conditions {
     pub if_unmodified_since: Option<types::Timestamptz>,
 }
 
-fn print_etags(etags: &Vec<String>) -> String {
-    etags.into_iter().map(|e| {
+fn print_etags(etags: &[String]) -> String {
+    etags.iter().map(|e| {
         format!("\"{}\"", e)
     }).collect::<Vec<String>>().join(", ")
 }
@@ -153,7 +153,7 @@ pub fn check_conditional(
     Ok(())
 }
 
-fn check_if_match(etag: &String, client_etags: &Vec<String>) -> bool {
+fn check_if_match(etag: &str, client_etags: &[String]) -> bool {
     for client_etag in client_etags {
         if client_etag == "*" || etag == client_etag {
             return true;
