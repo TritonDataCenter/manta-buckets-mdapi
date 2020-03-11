@@ -17,7 +17,7 @@ use cueball_postgres_connection::{
     PostgresConnection, PostgresConnectionConfig, TlsConfig,
 };
 use cueball_static_resolver::StaticIpResolver;
-use rust_fast::protocol::{FastMessage, FastMessageData};
+use fast_rpc::protocol::{FastMessage, FastMessageData};
 
 use buckets_mdapi::bucket;
 use buckets_mdapi::error::{BucketsMdapiError, BucketsMdapiErrorType};

@@ -1,4 +1,4 @@
-// Copyright 2019 Joyent, Inc.
+// Copyright 2020 Joyent, Inc.
 
 use std::io::{Error, ErrorKind};
 use std::path::Path;
@@ -17,8 +17,8 @@ use cueball_postgres_connection::{
     PostgresConnection, PostgresConnectionConfig,
 };
 use cueball_tcp_stream_connection::TcpStreamWrapper;
-use rust_fast::client as fast_client;
-use rust_fast::protocol::{FastMessage, FastMessageId};
+use fast_rpc::client as fast_client;
+use fast_rpc::protocol::{FastMessage, FastMessageId};
 use sapi::{ZoneConfig, SAPI};
 
 use utils::config;

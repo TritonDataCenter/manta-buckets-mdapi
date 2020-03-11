@@ -7,7 +7,7 @@ use slog::{debug, error, Logger};
 use uuid::Uuid;
 
 use cueball_postgres_connection::PostgresConnection;
-use rust_fast::protocol::{FastMessage, FastMessageData};
+use fast_rpc::protocol::{FastMessage, FastMessageData};
 
 use crate::bucket::{bucket_already_exists, response, to_json, BucketResponse};
 use crate::metrics::RegisteredMetrics;
