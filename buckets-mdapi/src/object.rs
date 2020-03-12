@@ -144,7 +144,7 @@ pub(self) fn to_json(objr: ObjectResponse) -> Value {
     serde_json::to_value(objr).expect("failed to serialize ObjectResponse")
 }
 
-pub(self) fn object_not_found() -> Value {
+pub fn object_not_found() -> Value {
     // The data for this JSON conversion is locally controlled
     // so unwrapping the result is ok here.
     serde_json::to_value(BucketsMdapiError::new(

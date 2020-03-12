@@ -8,6 +8,7 @@ use slog::{debug, trace, Logger};
 use uuid::Uuid;
 use serde_derive::{Deserialize, Serialize};
 
+use crate::object;
 use crate::error;
 use crate::metrics;
 use crate::sql;
@@ -26,12 +27,6 @@ pub struct Conditions {
 
     #[serde(alias = "if-unmodified-since")]
     pub if_unmodified_since: Option<types::Timestamptz>,
-}
-
-fn print_etags(etags: &[String]) -> String {
-    etags.iter().map(|e| {
-        format!("\"{}\"", e)
-    }).collect::<Vec<String>>().join(", ")
 }
 
 pub fn error(error_type: error::BucketsMdapiErrorType, msg: String) -> serde_json::Value {
@@ -68,15 +63,7 @@ pub fn request(
     .map_err(|e| { sql::postgres_error(e.to_string()) })
     .and_then(|rows| {
         if rows.is_empty() {
-            /*
-             * XXX Why isn't object::object_not_found() public?  Can we use it?
-             */
-            let err = serde_json::to_value(error::BucketsMdapiError::new(
-                error::BucketsMdapiErrorType::ObjectNotFound,
-            ))
-            .expect("failed to encode a ObjectNotFound error");
-
-            return Err(err);
+            return Err(object::object_not_found());
         } else if rows.len() > 1 {
             return Err(sql::postgres_error("expected 1 row from conditional query".to_string()));
         }
@@ -91,7 +78,7 @@ pub fn request(
     })
 }
 
-pub fn is_conditional(conditions: &Option<Conditions>) -> bool {
+fn is_conditional(conditions: &Option<Conditions>) -> bool {
     match conditions {
         Some(conditions) => {
             conditions.if_match.is_some()
@@ -103,7 +90,7 @@ pub fn is_conditional(conditions: &Option<Conditions>) -> bool {
     }
 }
 
-pub fn check_conditional(
+fn check_conditional(
     conditions: &Conditions,
     etag: String,
     last_modified: types::Timestamptz,
@@ -161,6 +148,12 @@ fn check_if_match(etag: &str, client_etags: &[String]) -> bool {
     }
 
     false
+}
+
+fn print_etags(etags: &[String]) -> String {
+    etags.iter().map(|e| {
+        format!("\"{}\"", e)
+    }).collect::<Vec<String>>().join(", ")
 }
 
 #[cfg(test)]
