@@ -29,7 +29,9 @@ pub struct UpdateObjectPayload {
     pub headers: Hstore,
     pub properties: Option<Value>,
     pub request_id: Uuid,
-    pub conditions: Option<conditional::Conditions>,
+
+    #[serde(default)]
+    pub conditions: conditional::Conditions,
 }
 
 impl HasRequestId for UpdateObjectPayload {
@@ -210,7 +212,7 @@ mod test {
 
             let properties = None;
             let request_id = Uuid::new_v4();
-            let conditions = None;
+            let conditions: conditional::Conditions = Default::default();
 
             UpdateObjectPayload {
                 owner,

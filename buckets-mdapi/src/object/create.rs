@@ -36,7 +36,9 @@ pub struct CreateObjectPayload {
     pub sharks: Vec<StorageNodeIdentifier>,
     pub properties: Option<Value>,
     pub request_id: Uuid,
-    pub conditions: Option<conditional::Conditions>,
+
+    #[serde(default)]
+    pub conditions: conditional::Conditions,
 }
 
 impl HasRequestId for CreateObjectPayload {
@@ -290,7 +292,7 @@ mod test {
             let sharks = vec![shark_1, shark_2];
             let properties = None;
             let request_id = Uuid::new_v4();
-            let conditions = None;
+            let conditions: conditional::Conditions = Default::default();
 
             CreateObjectPayload {
                 owner,

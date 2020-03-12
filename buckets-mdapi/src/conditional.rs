@@ -4,7 +4,7 @@ use serde_json::Value;
 use postgres::types::ToSql;
 use postgres::Transaction;
 use serde_json;
-use slog::{debug, trace, Logger};
+use slog::{trace, Logger};
 use uuid::Uuid;
 use serde_derive::{Deserialize, Serialize};
 
@@ -14,7 +14,7 @@ use crate::metrics;
 use crate::sql;
 use crate::types;
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Default, Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Conditions {
     #[serde(alias = "if-match")]
     pub if_match: Option<Vec<String>>,
@@ -41,7 +41,7 @@ pub fn request(
     mut txn: &mut Transaction,
     items: &[&dyn ToSql],
     vnode: u64,
-    conditions: &Option<Conditions>,
+    conditions: &Conditions,
     metrics: &metrics::RegisteredMetrics,
     log: &Logger,
 ) -> Result<(), Value> {
@@ -49,8 +49,6 @@ pub fn request(
         trace!(log, "request not conditional; returning");
         return Ok(());
     }
-
-    let conditions = conditions.as_ref().unwrap();
 
     sql::txn_query(
         sql::Method::ObjectGet,
@@ -68,8 +66,6 @@ pub fn request(
             return Err(sql::postgres_error("expected 1 row from conditional query".to_string()));
         }
 
-        debug!(log, "got {} rows from conditional query", rows.len());
-
         let object_id: Uuid = rows[0].get("id");
         let object_modified: types::Timestamptz = rows[0].get("modified");
         check_conditional(&conditions, object_id.to_string(), object_modified)?;
@@ -78,16 +74,11 @@ pub fn request(
     })
 }
 
-fn is_conditional(conditions: &Option<Conditions>) -> bool {
-    match conditions {
-        Some(conditions) => {
-            conditions.if_match.is_some()
-                || conditions.if_none_match.is_some()
-                || conditions.if_modified_since.is_some()
-                || conditions.if_unmodified_since.is_some()
-        },
-        None => false,
-    }
+fn is_conditional(conditions: &Conditions) -> bool {
+    conditions.if_match.is_some()
+        || conditions.if_none_match.is_some()
+        || conditions.if_modified_since.is_some()
+        || conditions.if_unmodified_since.is_some()
 }
 
 fn check_conditional(
@@ -172,7 +163,7 @@ mod tests {
     #[test]
     fn precon_empty_headers() {
         let h = conditions_from_value(json!({}));
-        assert_eq!(is_conditional(&Some(h)), false);
+        assert_eq!(is_conditional(&h), false);
     }
 
     #[test]
@@ -180,7 +171,7 @@ mod tests {
         let h = conditions_from_value(json!({
             "if-modified-since": null,
         }));
-        assert_eq!(is_conditional(&Some(h)), false);
+        assert_eq!(is_conditional(&h), false);
     }
 
     #[test]
@@ -189,7 +180,7 @@ mod tests {
             "if-something": [ "test" ],
             "accept": [ "test" ],
         }));
-        assert_eq!(is_conditional(&Some(h)), false);
+        assert_eq!(is_conditional(&h), false);
     }
 
     #[test]
@@ -199,7 +190,7 @@ mod tests {
             "if-modified-since": "2020-10-01T10:00:00Z",
             "if-none-match": [ "test" ],
         }));
-        assert_eq!(is_conditional(&Some(h)), true);
+        assert_eq!(is_conditional(&h), true);
     }
 
     /*
@@ -362,31 +353,6 @@ mod tests {
     }
 
     /*
-    quickcheck! {
-        fn precon_check_if_modified_fail_invalid_date(res: ObjectResponse) -> () {
-            let client_modified = "not a valid date";
-
-            let h = conditions_from_value(json!({
-                "if-modified-since": client_modified,
-            }));
-
-            let check_res = check_conditional(&h, res.id.to_string(), res.modified);
-
-            assert!(check_res.is_err());
-            let err = &check_res.unwrap_err()["error"];
-            assert_eq!(
-                err["message"],
-                format!("unable to parse '{}' as a valid date", client_modified),
-            );
-            assert_eq!(
-                err["name"],
-                "BadRequestError".to_string(),
-            );
-        }
-    }
-    */
-
-    /*
      * if-unmodified-since
      */
     quickcheck! {
@@ -426,8 +392,4 @@ mod tests {
             );
         }
     }
-
-    /*
-     * mixture of match and modified conditions.
-     */
 }

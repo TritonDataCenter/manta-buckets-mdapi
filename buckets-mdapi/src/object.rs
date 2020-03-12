@@ -28,7 +28,9 @@ pub struct GetObjectPayload {
     pub name: String,
     pub vnode: u64,
     pub request_id: Uuid,
-    pub conditions: Option<conditional::Conditions>,
+
+    #[serde(default)]
+    pub conditions: conditional::Conditions,
 }
 
 impl HasRequestId for GetObjectPayload {
@@ -268,7 +270,7 @@ pub mod test {
             let name = random::string(g, 32);
             let vnode = u64::arbitrary(g);
             let request_id = Uuid::new_v4();
-            let conditions = None;
+            let conditions: conditional::Conditions = Default::default();
 
             GetObjectPayload {
                 owner,

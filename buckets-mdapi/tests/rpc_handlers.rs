@@ -298,13 +298,14 @@ fn verify_rpc_handlers() {
     // Try to read an object
     let bucket_id = Uuid::new_v4();
     let object: String = "testobject".into();
+    let conditions: conditional::Conditions = Default::default();
     let get_object_payload = object::GetObjectPayload {
         owner: owner_id,
         bucket_id,
         name: object.clone(),
         vnode: 1,
         request_id,
-        conditions: None,
+        conditions,
     };
 
     let get_object_json =
@@ -340,6 +341,7 @@ fn verify_rpc_handlers() {
         "m-custom-header2".to_string(),
         Some("customheaderval2".to_string()),
     );
+    let conditions: conditional::Conditions = Default::default();
 
     let update_object_payload = object::update::UpdateObjectPayload {
         owner: owner_id,
@@ -351,7 +353,7 @@ fn verify_rpc_handlers() {
         headers: update_headers,
         properties: None,
         request_id,
-        conditions: None,
+        conditions,
     };
 
     let update_object_json =
@@ -384,6 +386,7 @@ fn verify_rpc_handlers() {
         datacenter: "us-east-2".into(),
         manta_storage_id: "3.stor.us-east.joyent.com".into(),
     };
+    let conditions: conditional::Conditions = Default::default();
 
     let create_object_payload = object::create::CreateObjectPayload {
         owner: owner_id,
@@ -398,7 +401,7 @@ fn verify_rpc_handlers() {
         sharks: vec![shark1, shark2],
         properties: None,
         request_id,
-        conditions: None,
+        conditions,
     };
 
     let create_object_json =
@@ -476,7 +479,7 @@ fn verify_rpc_handlers() {
         name: object.clone(),
         vnode: 1,
         request_id,
-        conditions: Some(conditions),
+        conditions,
     };
 
     let get_object_json =
@@ -513,7 +516,7 @@ fn verify_rpc_handlers() {
         name: object.clone(),
         vnode: 1,
         request_id,
-        conditions: Some(conditions),
+        conditions,
     };
 
     let get_object_json =
@@ -547,7 +550,7 @@ fn verify_rpc_handlers() {
     // The get and delete object args are the same so we can reuse
     // get_object_json here.  Just lets empty the conditions first.
 
-    get_object_payload.conditions = None;
+    get_object_payload.conditions = Default::default();
     let delete_object_json =
         serde_json::to_value(vec![get_object_payload]).unwrap();
     let delete_object_fast_msg_data =
