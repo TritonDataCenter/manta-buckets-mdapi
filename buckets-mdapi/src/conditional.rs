@@ -29,9 +29,64 @@ pub struct Conditions {
     pub if_unmodified_since: Option<types::Timestamptz>,
 }
 
-pub fn error(error_type: error::BucketsMdapiErrorType, msg: String) -> serde_json::Value {
+impl Conditions {
+    fn is_conditional(&self) -> bool {
+        self.if_match.is_some()
+            || self.if_none_match.is_some()
+            || self.if_modified_since.is_some()
+            || self.if_unmodified_since.is_some()
+    }
+
+    fn check(
+        &self,
+        etag: String,
+        last_modified: types::Timestamptz,
+    ) -> Result<(), Value> {
+        if let Some(client_etags) = &self.if_match {
+            if !check_if_match(&etag, client_etags) {
+                return Err(error(
+                    format!("if-match '{}' didn't match etag '{}'", print_etags(&client_etags), etag),
+                ));
+            }
+        }
+
+        if let Some(client_unmodified) = self.if_unmodified_since {
+            if last_modified > client_unmodified {
+                return Err(error(
+                    format!(
+                        "object was modified at '{}'; if-unmodified-since '{}'",
+                        last_modified.to_rfc3339(), client_unmodified.to_rfc3339(),
+                    ),
+                ));
+            }
+        }
+
+        if let Some(client_etags) = &self.if_none_match {
+            if check_if_match(&etag, client_etags) {
+                return Err(error(
+                    format!("if-none-match '{}' matched etag '{}'", print_etags(&client_etags), etag),
+                ));
+            }
+        }
+
+        if let Some(client_modified) = self.if_modified_since {
+            if last_modified <= client_modified {
+                return Err(error(
+                    format!(
+                        "object was modified at '{}'; if-modified-since '{}'",
+                        last_modified.to_rfc3339(), client_modified.to_rfc3339(),
+                    ),
+                ));
+            }
+        }
+
+        Ok(())
+    }
+}
+
+fn error(msg: String) -> serde_json::Value {
     serde_json::to_value(error::BucketsMdapiError::with_message(
-        error_type,
+        error::BucketsMdapiErrorType::PreconditionFailedError,
         msg,
     ))
     .expect("failed to encode a PreconditionFailedError error")
@@ -44,10 +99,10 @@ pub fn request(
     conditions: &Conditions,
     metrics: &metrics::RegisteredMetrics,
     log: &Logger,
-) -> Result<(), Value> {
-    if !is_conditional(conditions) {
+) -> Result<Option<types::Rows>, Value> {
+    if !conditions.is_conditional() {
         trace!(log, "request not conditional; returning");
-        return Ok(());
+        return Ok(None);
     }
 
     sql::txn_query(
@@ -68,67 +123,10 @@ pub fn request(
 
         let object_id: Uuid = rows[0].get("id");
         let object_modified: types::Timestamptz = rows[0].get("modified");
-        check_conditional(&conditions, object_id.to_string(), object_modified)?;
+        conditions.check(object_id.to_string(), object_modified)?;
 
-        Ok(())
+        Ok(Some(rows))
     })
-}
-
-fn is_conditional(conditions: &Conditions) -> bool {
-    conditions.if_match.is_some()
-        || conditions.if_none_match.is_some()
-        || conditions.if_modified_since.is_some()
-        || conditions.if_unmodified_since.is_some()
-}
-
-fn check_conditional(
-    conditions: &Conditions,
-    etag: String,
-    last_modified: types::Timestamptz,
-) -> Result<(), Value> {
-    if let Some(client_etags) = &conditions.if_match {
-        if !check_if_match(&etag, client_etags) {
-            return Err(error(
-                error::BucketsMdapiErrorType::PreconditionFailedError,
-                format!("if-match '{}' didn't match etag '{}'", print_etags(&client_etags), etag),
-            ));
-        }
-    }
-
-    if let Some(client_unmodified) = conditions.if_unmodified_since {
-        if last_modified > client_unmodified {
-            return Err(error(
-                error::BucketsMdapiErrorType::PreconditionFailedError,
-                format!(
-                    "object was modified at '{}'; if-unmodified-since '{}'",
-                    last_modified.to_rfc3339(), client_unmodified.to_rfc3339(),
-                ),
-            ));
-        }
-    }
-
-    if let Some(client_etags) = &conditions.if_none_match {
-        if check_if_match(&etag, client_etags) {
-            return Err(error(
-                error::BucketsMdapiErrorType::PreconditionFailedError,
-                format!("if-none-match '{}' matched etag '{}'", print_etags(&client_etags), etag),
-            ));
-        }
-    }
-
-    if let Some(client_modified) = conditions.if_modified_since {
-        if last_modified <= client_modified {
-            return Err(error(
-                error::BucketsMdapiErrorType::PreconditionFailedError,
-                format!(
-                    "object was modified at '{}'; if-modified-since '{}'",
-                    last_modified.to_rfc3339(), client_modified.to_rfc3339(),
-                ),
-            ));
-        }
-    }
-
-    Ok(())
 }
 
 fn check_if_match(etag: &str, client_etags: &[String]) -> bool {
@@ -163,7 +161,7 @@ mod tests {
     #[test]
     fn precon_empty_headers() {
         let h = conditions_from_value(json!({}));
-        assert_eq!(is_conditional(&h), false);
+        assert_eq!(h.is_conditional(), false);
     }
 
     #[test]
@@ -171,7 +169,7 @@ mod tests {
         let h = conditions_from_value(json!({
             "if-modified-since": null,
         }));
-        assert_eq!(is_conditional(&h), false);
+        assert_eq!(h.is_conditional(), false);
     }
 
     #[test]
@@ -180,7 +178,7 @@ mod tests {
             "if-something": [ "test" ],
             "accept": [ "test" ],
         }));
-        assert_eq!(is_conditional(&h), false);
+        assert_eq!(h.is_conditional(), false);
     }
 
     #[test]
@@ -190,7 +188,7 @@ mod tests {
             "if-modified-since": "2020-10-01T10:00:00Z",
             "if-none-match": [ "test" ],
         }));
-        assert_eq!(is_conditional(&h), true);
+        assert_eq!(h.is_conditional(), true);
     }
 
     /*
@@ -202,7 +200,7 @@ mod tests {
                 "if-match": [ res.id ],
             }));
 
-            assert!(check_conditional(&h, res.id.to_string(), res.modified).is_ok());
+            assert!(h.check(res.id.to_string(), res.modified).is_ok());
         }
     }
     quickcheck! {
@@ -211,7 +209,7 @@ mod tests {
                 "if-match": [ "thing", res.id ],
             }));
 
-            assert!(check_conditional(&h, res.id.to_string(), res.modified).is_ok());
+            assert!(h.check(res.id.to_string(), res.modified).is_ok());
         }
     }
     quickcheck! {
@@ -220,7 +218,7 @@ mod tests {
                 "if-match": [ "test", "thing", "*" ],
             }));
 
-            assert!(check_conditional(&h, res.id.to_string(), res.modified).is_ok());
+            assert!(h.check(res.id.to_string(), res.modified).is_ok());
         }
     }
     quickcheck! {
@@ -229,7 +227,7 @@ mod tests {
                 "if-match": [ "*" ],
             }));
 
-            assert!(check_conditional(&h, res.id.to_string(), res.modified).is_ok());
+            assert!(h.check(res.id.to_string(), res.modified).is_ok());
         }
     }
     quickcheck! {
@@ -240,8 +238,7 @@ mod tests {
                 "if-match": [ client_etag ],
             }));
 
-            println!("{:?}", h);
-            let check_res = check_conditional(&h, res.id.to_string(), res.modified);
+            let check_res = h.check(res.id.to_string(), res.modified);
 
             assert!(check_res.is_err());
             let err = &check_res.unwrap_err()["error"];
@@ -267,7 +264,7 @@ mod tests {
                 "if-none-match": [ client_etag ],
             }));
 
-            assert!(check_conditional(&h, res.id.to_string(), res.modified).is_ok());
+            assert!(h.check(res.id.to_string(), res.modified).is_ok());
         }
     }
     quickcheck! {
@@ -276,7 +273,7 @@ mod tests {
                 "if-none-match": [ "test", "thing", res.id ],
             }));
 
-            let check_res = check_conditional(&h, res.id.to_string(), res.modified);
+            let check_res = h.check(res.id.to_string(), res.modified);
 
             assert!(check_res.is_err());
             let err = &check_res.unwrap_err()["error"];
@@ -296,7 +293,7 @@ mod tests {
                 "if-none-match": [ "test", "thing", "*" ],
             }));
 
-            let check_res = check_conditional(&h, res.id.to_string(), res.modified);
+            let check_res = h.check(res.id.to_string(), res.modified);
 
             assert!(check_res.is_err());
             let err = &check_res.unwrap_err()["error"];
@@ -322,7 +319,7 @@ mod tests {
                 "if-modified-since": client_modified,
             }));
 
-            assert!(check_conditional(&h, res.id.to_string(), res.modified).is_ok());
+            assert!(h.check(res.id.to_string(), res.modified).is_ok());
         }
     }
     quickcheck! {
@@ -334,7 +331,7 @@ mod tests {
                 "if-modified-since": client_modified.to_rfc3339(),
             }));
 
-            let check_res = check_conditional(&h, res.id.to_string(), res.modified);
+            let check_res = h.check(res.id.to_string(), res.modified);
 
             assert!(check_res.is_err());
             let err = &check_res.unwrap_err()["error"];
@@ -364,7 +361,7 @@ mod tests {
                 "if-unmodified-since": client_modified.to_rfc3339(),
             }));
 
-            assert!(check_conditional(&h, res.id.to_string(), res.modified).is_ok());
+            assert!(h.check(res.id.to_string(), res.modified).is_ok());
         }
     }
     quickcheck! {
@@ -375,7 +372,7 @@ mod tests {
                 "if-unmodified-since": client_modified,
             }));
 
-            let check_res = check_conditional(&h, res.id.to_string(), res.modified);
+            let check_res = h.check(res.id.to_string(), res.modified);
 
             assert!(check_res.is_err());
             let err = &check_res.unwrap_err()["error"];

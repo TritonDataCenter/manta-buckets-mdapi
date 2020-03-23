@@ -91,12 +91,20 @@ fn do_get(
         metrics,
         log,
     )
-    .and_then(|_rows| {
-        // XXX
-        //
-        // Somehow this should skip this second get if the above conditional already gets the
-        // object that we want successfully.
+    .and_then(|rows| {
+        /*
+         * conditional::request will perform the same query as this method, so if it returns
+         * Some(rows) then it means the request was both conditional and a success, so we can just
+         * return those rows as-is.
+         */
+        if let Some(r) = rows {
+            return Ok(r);
+        }
 
+        /*
+         * A non-conditional request would not have queried the database yet (and returned
+         * Ok(None)), so we run the query directly if not.
+         */
         sql::txn_query(
             sql::Method::ObjectGet,
             &mut txn,
