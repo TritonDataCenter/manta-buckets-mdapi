@@ -656,7 +656,6 @@ fn verify_rpc_handlers() {
     get_garbage_response_result =
         serde_json::from_value(get_garbage_response[0].data.d[0].clone());
 
-    println!("gc response result: {:?}", get_garbage_response[0].data);
     assert!(get_garbage_response_result.is_ok());
     get_garbage_unwrapped_result = get_garbage_response_result.unwrap();
     assert!(get_garbage_unwrapped_result.batch_id.is_some());

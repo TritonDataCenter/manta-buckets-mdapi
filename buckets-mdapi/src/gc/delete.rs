@@ -100,7 +100,7 @@ fn do_delete(
     })?;
 
     // The batch id serves as a means to avoid uninentionally deleting a batch
-    // of garbage that may not have bee fully cleaned up yet. This could happen
+    // of garbage that may not have been fully cleaned up yet. This could happen
     // due to concurrent calls to the `deletegcbatch` RPC function. If the batch
     // ids do not match we still indicate success in the response, but do not
     // actually delete the current garbage batch.

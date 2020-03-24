@@ -21,12 +21,15 @@ pub(crate) fn update_garbage_batch_id_sql() -> &'static str {
 
 pub(crate) fn handle_batch_id_result(rows: &RowSlice) -> Result<Uuid, String> {
     if rows.len() == 1 {
-        // let mut batch_id: Option<Uuid> = None;
         let batch_id = rows[0].get("batch_id");
         Ok(batch_id)
     } else if rows.is_empty() {
         Err("garbage batch id not found".into())
     } else {
+        // This case should never occur because it would mean that a query using
+        // the primary key of the garbage_batch_id table returned more than one
+        // result. This condition will require manual intervention should it
+        // occur.
         Err(
             "database invariant failure: found more than one garbage batch id"
                 .into(),
