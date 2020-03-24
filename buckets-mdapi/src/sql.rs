@@ -33,6 +33,7 @@ pub enum Method {
     GarbageGet,
     GarbageDelete,
     GarbageRecordDelete,
+    GarbageBatchIdGet,
     GarbageBatchIdUpdate,
     GarbageRefresh,
 }
@@ -55,6 +56,7 @@ impl Method {
             Method::GarbageGet => "GarbageGet",
             Method::GarbageDelete => "GarbageDelete",
             Method::GarbageRecordDelete => "GarbageRecordDelete",
+            Method::GarbageBatchIdGet => "GarbageBatchIdGet",
             Method::GarbageBatchIdUpdate => "GarbageBatchIdUpdate",
             Method::GarbageRefresh => "GarbageRefresh",
         }

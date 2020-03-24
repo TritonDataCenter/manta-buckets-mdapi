@@ -90,41 +90,78 @@ pub(crate) fn action(
 
 fn do_get(
     method: &str,
-    mut conn: &mut PostgresConnection,
+    conn: &mut PostgresConnection,
     metrics: &RegisteredMetrics,
     log: &Logger,
 ) -> Result<GetGarbageResponse, String> {
+    let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
     let sql = get_sql();
+    let mut batch_id: Option<Uuid> = None;
 
-    sql::query(sql::Method::GarbageGet, &mut conn, sql, &[], metrics, log)
+    sql::txn_query(sql::Method::GarbageGet, &mut txn, sql, &[], metrics, log)
         .map_err(|e| e.to_string())
         .and_then(|rows| {
             if rows.is_empty() {
                 // Try to refresh the garbage view in case the view is stale
-                sql::execute(
+                sql::txn_execute(
                     sql::Method::GarbageRefresh,
-                    &mut conn,
+                    &mut txn,
                     gc::refresh_garbage_view_sql(),
                     &[],
                     metrics,
                     log,
                 )
+                .map_err(|e| e.to_string())
                 .and_then(|_| {
-                    sql::query(
+                    // Update the batch id
+                    batch_id = Some(Uuid::new_v4());
+                    sql::txn_query(
+                        sql::Method::GarbageBatchIdUpdate,
+                        &mut txn,
+                        gc::update_garbage_batch_id_sql(),
+                        &[&batch_id.unwrap()],
+                        metrics,
+                        log,
+                    )
+                    .map_err(|e| e.to_string())
+                })
+                .and_then(|_| {
+                    sql::txn_query(
                         sql::Method::GarbageGet,
-                        &mut conn,
+                        &mut txn,
                         sql,
                         &[],
                         metrics,
                         log,
                     )
+                    .map_err(|e| e.to_string())
                 })
-                .map_err(|e| e.to_string())
             } else {
-                Ok(rows)
+                // Read the current batch id
+                sql::txn_query(
+                    sql::Method::GarbageBatchIdGet,
+                    &mut txn,
+                    gc::get_garbage_batch_id_sql(),
+                    &[],
+                    metrics,
+                    log,
+                )
+                .map_err(|e| e.to_string())
+                .and_then(|batch_id_rows| {
+                    gc::handle_batch_id_result(batch_id_rows.as_ref())
+                })
+                .and_then(|b_id| {
+                    batch_id = Some(b_id);
+                    Ok(rows)
+                })
             }
         })
-        .and_then(|rows| response(method, &rows))
+        .and_then(|rows| {
+            // All steps completed without error so commit the transaction
+            txn.commit().map_err(|e| e.to_string())?;
+            Ok(rows)
+        })
+        .and_then(|rows| response(method, batch_id, &rows))
 }
 
 fn get_sql() -> &'static str {
@@ -133,6 +170,7 @@ fn get_sql() -> &'static str {
 
 pub(self) fn response(
     _method: &str,
+    batch_id: Option<Uuid>,
     rows: &RowSlice,
 ) -> Result<GetGarbageResponse, String> {
     let mut garbage: Vec<ObjectResponse> = Vec::with_capacity(1024);
@@ -156,11 +194,7 @@ pub(self) fn response(
         garbage.push(garbage_item);
     }
 
-    let batch_id = if !rows.is_empty() {
-        Some(Uuid::new_v4())
-    } else {
-        None
-    };
+    let batch_id = if !rows.is_empty() { batch_id } else { None };
 
     Ok(GetGarbageResponse { batch_id, garbage })
 }
