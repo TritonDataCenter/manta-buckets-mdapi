@@ -78,12 +78,42 @@ pub(crate) fn action(
 }
 
 fn do_delete(
-    _payload: &DeleteGarbagePayload,
+    payload: &DeleteGarbagePayload,
     conn: &mut PostgresConnection,
     metrics: &RegisteredMetrics,
     log: &Logger,
 ) -> Result<(), String> {
     let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
+
+    // Read the current batch id
+    let batch_id = sql::txn_query(
+        sql::Method::GarbageBatchIdGet,
+        &mut txn,
+        gc::get_garbage_batch_id_sql(),
+        &[],
+        metrics,
+        log,
+    )
+    .map_err(|e| e.to_string())
+    .and_then(|batch_id_rows| {
+        gc::handle_batch_id_result(batch_id_rows.as_ref())
+    })?;
+
+    // The batch id serves as a means to avoid uninentionally deleting a batch
+    // of garbage that may not have been fully cleaned up yet. This could happen
+    // due to concurrent calls to the `deletegcbatch` RPC function. If the batch
+    // ids do not match we still indicate success in the response, but do not
+    // actually delete the current garbage batch.
+    if batch_id != payload.batch_id {
+        debug!(
+            log,
+            "gc batch delete request with invalid batch id. current \
+             batch id: {} request batch id: {}",
+            payload.batch_id,
+            batch_id
+        );
+        return Ok(());
+    }
 
     sql::txn_query(
         sql::Method::GarbageGet,
@@ -139,7 +169,7 @@ fn do_delete(
         sql::txn_query(
             sql::Method::GarbageBatchIdUpdate,
             &mut txn,
-            update_garbage_batch_id_sql(),
+            gc::update_garbage_batch_id_sql(),
             &[&batch_id],
             metrics,
             log,
@@ -164,10 +194,6 @@ fn delete_garbage_sql(schema: String) -> String {
          name = $3 AND id = $4",
     ]
     .concat()
-}
-
-fn update_garbage_batch_id_sql() -> &'static str {
-    "UPDATE garbage_batch_id SET batch_id = $1 WHERE id = 1"
 }
 
 #[cfg(test)]
