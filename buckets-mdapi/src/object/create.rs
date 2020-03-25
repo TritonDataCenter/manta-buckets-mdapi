@@ -12,6 +12,7 @@ use uuid::Uuid;
 use cueball_postgres_connection::PostgresConnection;
 use fast_rpc::protocol::{FastMessage, FastMessageData};
 
+use crate::error::BucketsMdapiError;
 use crate::metrics::RegisteredMetrics;
 use crate::object::{
     insert_delete_table_sql, response, to_json, ObjectResponse,
@@ -85,12 +86,12 @@ pub(crate) fn action(
             Ok(msg)
         })
         .or_else(|e| {
-            if e["name"] == "PostgresError" {
-                error!(log, "operation failed"; "error" => &e.to_string());
+            if let BucketsMdapiError::PostgresError(_) = &e {
+                error!(log, "operation failed"; "error" => e.message());
             }
 
             let msg_data =
-                FastMessageData::new(method.into(), array_wrap(e));
+                FastMessageData::new(method.into(), array_wrap(e.into_fast()));
             let msg: HandlerResponse =
                 FastMessage::data(msg_id, msg_data).into();
             Ok(msg)
@@ -103,17 +104,14 @@ fn do_create(
     conn: &mut PostgresConnection,
     metrics: &RegisteredMetrics,
     log: &Logger,
-) -> Result<Option<ObjectResponse>, Value> {
-    let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
+) -> Result<Option<ObjectResponse>, BucketsMdapiError> {
+    let mut txn = (*conn).transaction().map_err(|e| {
+        BucketsMdapiError::PostgresError(e.to_string())
+    })?;
     let create_sql = create_sql(payload.vnode);
     let move_sql = insert_delete_table_sql(payload.vnode);
     let content_md5_bytes =
-        base64::decode(&payload.content_md5).map_err(|e| {
-            format!(
-                "content_md5 is not valid base64 encoded data: {}",
-                e.to_string()
-            )
-        })?;
+        base64::decode(&payload.content_md5).map_err(|e| BucketsMdapiError::ContentMd5Error(e.to_string()))?;
 
     conditional::request(
         &mut txn,
@@ -154,11 +152,11 @@ fn do_create(
             )
         })
         .map_err(|e| {
-            sql::postgres_error(e.to_string())
+            BucketsMdapiError::PostgresError(e.to_string())
         })
     })
     .and_then(|rows| {
-        txn.commit().map_err(|e| { sql::postgres_error(e.to_string()) })?;
+        txn.commit().map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))?;
         Ok(rows)
     })
     .and_then(|rows| response(method, &rows))
@@ -192,7 +190,8 @@ fn create_sql(vnode: u64) -> String {
 // This error is only here for completeness. In practice it should never
 // actually be called. See the invocation in this module for more information.
 fn object_create_failed() -> Value {
-    sql::postgres_error("Create statement failed to return any results".into())
+    serde_json::to_value(BucketsMdapiError::PostgresError("Create statement failed to return any results".to_string()))
+        .expect("failed to encode a PostgresError error")
 }
 
 #[cfg(test)]

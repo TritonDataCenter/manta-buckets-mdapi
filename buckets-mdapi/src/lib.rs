@@ -29,7 +29,7 @@ pub mod util {
     use fast_rpc::protocol::{FastMessage, FastMessageData};
 
     use crate::bucket;
-    use crate::error::{BucketsMdapiError, BucketsMdapiErrorType};
+    use crate::error::BucketsMdapiError;
     use crate::gc;
     use crate::metrics::RegisteredMetrics;
     use crate::object;
@@ -243,11 +243,8 @@ pub mod util {
 
     // Create a LimitConstraintError error object
     pub fn limit_constraint_error(msg: String) -> Value {
-        serde_json::to_value(BucketsMdapiError::with_message(
-            BucketsMdapiErrorType::LimitConstraintError,
-            msg,
-        ))
-        .expect("failed to encode a LimitConstraintError error")
+        serde_json::to_value(BucketsMdapiError::LimitConstraintError(msg))
+            .expect("failed to encode a LimitConstraintError error")
     }
 
     #[allow(clippy::cast_precision_loss)]

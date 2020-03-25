@@ -9,6 +9,7 @@ use slog::{debug, error, Logger};
 use cueball_postgres_connection::PostgresConnection;
 use fast_rpc::protocol::{FastMessage, FastMessageData};
 
+use crate::error::BucketsMdapiError;
 use crate::metrics::RegisteredMetrics;
 use crate::object::{
     insert_delete_table_sql, object_not_found, DeleteObjectPayload,
@@ -55,12 +56,12 @@ pub(crate) fn action(
             Ok(msg)
         })
         .or_else(|e| {
-            if e["name"] == "PostgresError" {
-                error!(log, "operation failed"; "error" => &e.to_string());
+            if let BucketsMdapiError::PostgresError(_) = &e {
+                error!(log, "operation failed"; "error" => e.message());
             }
 
             let msg_data =
-                FastMessageData::new(method.into(), array_wrap(e));
+                FastMessageData::new(method.into(), array_wrap(e.into_fast()));
             let msg: HandlerResponse =
                 FastMessage::data(msg_id, msg_data).into();
             Ok(msg)
@@ -72,8 +73,10 @@ fn do_delete(
     conn: &mut PostgresConnection,
     metrics: &RegisteredMetrics,
     log: &Logger,
-) -> Result<Vec<DeleteObjectResponse>, Value> {
-    let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
+) -> Result<Vec<DeleteObjectResponse>, BucketsMdapiError> {
+    let mut txn = (*conn).transaction().map_err(|e| {
+        BucketsMdapiError::PostgresError(e.to_string())
+    })?;
     let move_sql = insert_delete_table_sql(payload.vnode);
     let delete_sql = delete_sql(payload.vnode);
 
@@ -131,10 +134,10 @@ fn do_delete(
 
             Ok(objs)
         })
-        .map_err(|e| { sql::postgres_error(e.to_string()) })
+        .map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))
     })
     .and_then(|rows| {
-        txn.commit().map_err(|e| { sql::postgres_error(e.to_string()) })?;
+        txn.commit().map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))?;
         Ok(rows)
     })
 }

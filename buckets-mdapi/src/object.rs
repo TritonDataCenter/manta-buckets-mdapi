@@ -10,8 +10,7 @@ use serde_json::Value;
 use tokio_postgres::{accepts, to_sql_checked};
 use uuid::Uuid;
 
-use crate::error::{BucketsMdapiError, BucketsMdapiErrorType};
-use crate::sql;
+use crate::error::BucketsMdapiError;
 use crate::types::{HasRequestId, Hstore, RowSlice, Timestamptz};
 use crate::conditional;
 
@@ -147,18 +146,13 @@ pub(self) fn to_json(objr: ObjectResponse) -> Value {
 }
 
 pub fn object_not_found() -> Value {
-    // The data for this JSON conversion is locally controlled
-    // so unwrapping the result is ok here.
-    serde_json::to_value(BucketsMdapiError::new(
-        BucketsMdapiErrorType::ObjectNotFound,
-    ))
-    .expect("failed to encode a ObjectNotFound error")
+    BucketsMdapiError::ObjectNotFound.into_fast()
 }
 
 pub(self) fn response(
     method: &str,
     rows: &RowSlice,
-) -> Result<Option<ObjectResponse>, Value> {
+) -> Result<Option<ObjectResponse>, BucketsMdapiError> {
     if rows.is_empty() {
         Ok(None)
     } else if rows.len() == 1 {
@@ -189,7 +183,7 @@ pub(self) fn response(
                  but 12 were expected.",
                 method, cols
             );
-            Err(sql::postgres_error(err.to_string()))
+            Err(BucketsMdapiError::PostgresError(err.to_string()))
         }
     } else {
         let err = format!(
@@ -197,7 +191,7 @@ pub(self) fn response(
             method,
             rows.len()
         );
-        Err(sql::postgres_error(err.to_string()))
+        Err(BucketsMdapiError::PostgresError(err.to_string()))
     }
 }
 

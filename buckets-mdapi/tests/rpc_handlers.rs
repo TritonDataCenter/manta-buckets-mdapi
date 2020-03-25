@@ -20,7 +20,7 @@ use cueball_static_resolver::StaticIpResolver;
 use fast_rpc::protocol::{FastMessage, FastMessageData};
 
 use buckets_mdapi::bucket;
-use buckets_mdapi::error::{BucketsMdapiError, BucketsMdapiErrorType};
+use buckets_mdapi::error::{BucketsMdapiError, BucketsMdapiWrappedError};
 use buckets_mdapi::gc;
 use buckets_mdapi::metrics;
 use buckets_mdapi::object;
@@ -173,12 +173,21 @@ fn verify_rpc_handlers() {
     let get_bucket_response = get_bucket_result.unwrap();
     assert_eq!(get_bucket_response.len(), 1);
 
-    let get_bucket_response_result: Result<BucketsMdapiError, _> =
-        serde_json::from_value(get_bucket_response[0].data.d[0].clone());
+    let get_bucket_response_result_data = get_bucket_response[0].data.d[0].clone();
+    /*
+     * All errors should have a "name" and "message" property to comply with the error format in
+     * the Fast protocol.
+     */
+    assert_eq!(get_bucket_response_result_data, json!({"error": {
+        "name": "BucketNotFound",
+        "message": "requested bucket not found",
+    }}));
+    let get_bucket_response_result: Result<BucketsMdapiWrappedError, _> =
+        serde_json::from_value(get_bucket_response_result_data);
     assert!(get_bucket_response_result.is_ok());
     assert_eq!(
         get_bucket_response_result.unwrap(),
-        BucketsMdapiError::new(BucketsMdapiErrorType::BucketNotFound)
+        BucketsMdapiWrappedError::new(BucketsMdapiError::BucketNotFound),
     );
 
     // Create a bucket
@@ -229,12 +238,12 @@ fn verify_rpc_handlers() {
     let create_bucket_response = create_bucket_result.unwrap();
     assert_eq!(create_bucket_response.len(), 1);
 
-    let create_bucket_response_result: Result<BucketsMdapiError, _> =
+    let create_bucket_response_result: Result<BucketsMdapiWrappedError, _> =
         serde_json::from_value(create_bucket_response[0].data.d[0].clone());
     assert!(create_bucket_response_result.is_ok());
     assert_eq!(
         create_bucket_response_result.unwrap(),
-        BucketsMdapiError::new(BucketsMdapiErrorType::BucketAlreadyExists)
+        BucketsMdapiWrappedError::new(BucketsMdapiError::BucketAlreadyExists),
     );
 
     // Delete bucket
@@ -271,12 +280,12 @@ fn verify_rpc_handlers() {
     let get_bucket_response = get_bucket_result.unwrap();
     assert_eq!(get_bucket_response.len(), 1);
 
-    let get_bucket_response_result: Result<BucketsMdapiError, _> =
+    let get_bucket_response_result: Result<BucketsMdapiWrappedError, _> =
         serde_json::from_value(get_bucket_response[0].data.d[0].clone());
     assert!(get_bucket_response_result.is_ok());
     assert_eq!(
         get_bucket_response_result.unwrap(),
-        BucketsMdapiError::new(BucketsMdapiErrorType::BucketNotFound)
+        BucketsMdapiWrappedError::new(BucketsMdapiError::BucketNotFound),
     );
 
     // Attempt to delete a nonexistent bucket and verify an error is returned
@@ -287,12 +296,12 @@ fn verify_rpc_handlers() {
     let delete_bucket_response = delete_bucket_result.unwrap();
     assert_eq!(delete_bucket_response.len(), 1);
 
-    let delete_bucket_response_result: Result<BucketsMdapiError, _> =
+    let delete_bucket_response_result: Result<BucketsMdapiWrappedError, _> =
         serde_json::from_value(delete_bucket_response[0].data.d[0].clone());
     assert!(delete_bucket_response_result.is_ok());
     assert_eq!(
         delete_bucket_response_result.unwrap(),
-        BucketsMdapiError::new(BucketsMdapiErrorType::BucketNotFound)
+        BucketsMdapiWrappedError::new(BucketsMdapiError::BucketNotFound),
     );
 
     // Try to read an object
@@ -321,12 +330,12 @@ fn verify_rpc_handlers() {
     let get_object_response = get_object_result.unwrap();
     assert_eq!(get_object_response.len(), 1);
 
-    let get_object_response_result: Result<BucketsMdapiError, _> =
+    let get_object_response_result: Result<BucketsMdapiWrappedError, _> =
         serde_json::from_value(get_object_response[0].data.d[0].clone());
     assert!(get_object_response_result.is_ok());
     assert_eq!(
         get_object_response_result.unwrap(),
-        BucketsMdapiError::new(BucketsMdapiErrorType::ObjectNotFound)
+        BucketsMdapiWrappedError::new(BucketsMdapiError::ObjectNotFound),
     );
 
     // Try to update an nonexistent object's metadata
@@ -369,12 +378,12 @@ fn verify_rpc_handlers() {
     let mut update_object_response = update_object_result.unwrap();
     assert_eq!(update_object_response.len(), 1);
 
-    let update_object_response_result: Result<BucketsMdapiError, _> =
+    let update_object_response_result: Result<BucketsMdapiWrappedError, _> =
         serde_json::from_value(update_object_response[0].data.d[0].clone());
     assert!(update_object_response_result.is_ok());
     assert_eq!(
         update_object_response_result.unwrap(),
-        BucketsMdapiError::new(BucketsMdapiErrorType::ObjectNotFound)
+        BucketsMdapiWrappedError::new(BucketsMdapiError::ObjectNotFound),
     );
 
     // Create an object
@@ -532,24 +541,20 @@ fn verify_rpc_handlers() {
     let get_object_response = get_object_result.unwrap();
     assert_eq!(get_object_response.len(), 1);
 
-    let get_object_response_result: Result<BucketsMdapiError, _> =
+    let get_object_response_result: Result<BucketsMdapiWrappedError, _> =
         serde_json::from_value(get_object_response[0].data.d[0].clone());
     assert!(get_object_response_result.is_ok());
     assert_eq!(
         get_object_response_result.unwrap(),
-        BucketsMdapiError::with_message(
-            BucketsMdapiErrorType::PreconditionFailedError,
-            format!("if-match '\"{}\"' didn't match etag '{}'", if_match_etag, object_id),
+        BucketsMdapiWrappedError::new(BucketsMdapiError::PreconditionFailedError(
+            format!("if-match '\"{}\"' didn't match etag '{}'", if_match_etag, object_id))
         ),
     );
-
-    // Get object with "if-match: *"
 
     // Delete object
 
     // The get and delete object args are the same so we can reuse
     // get_object_json here.  Just lets empty the conditions first.
-
     get_object_payload.conditions = Default::default();
     let delete_object_json =
         serde_json::to_value(vec![get_object_payload]).unwrap();
@@ -583,12 +588,12 @@ fn verify_rpc_handlers() {
     let get_object_response = get_object_result.unwrap();
     assert_eq!(get_object_response.len(), 1);
 
-    let get_object_response_result: Result<BucketsMdapiError, _> =
+    let get_object_response_result: Result<BucketsMdapiWrappedError, _> =
         serde_json::from_value(get_object_response[0].data.d[0].clone());
     assert!(get_object_response_result.is_ok());
     assert_eq!(
         get_object_response_result.unwrap(),
-        BucketsMdapiError::new(BucketsMdapiErrorType::ObjectNotFound)
+        BucketsMdapiWrappedError::new(BucketsMdapiError::ObjectNotFound),
     );
 
     // Delete the object again and verify it is not found
@@ -599,12 +604,12 @@ fn verify_rpc_handlers() {
     let delete_object_response = delete_object_result.unwrap();
     assert_eq!(delete_object_response.len(), 1);
 
-    let delete_object_response_result: Result<BucketsMdapiError, _> =
+    let delete_object_response_result: Result<BucketsMdapiWrappedError, _> =
         serde_json::from_value(delete_object_response[0].data.d[0].clone());
     assert!(delete_object_response_result.is_ok());
     assert_eq!(
         delete_object_response_result.unwrap(),
-        BucketsMdapiError::new(BucketsMdapiErrorType::ObjectNotFound)
+        BucketsMdapiWrappedError::new(BucketsMdapiError::ObjectNotFound),
     );
 
     // List buckets and confirm none are found

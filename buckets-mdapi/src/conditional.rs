@@ -1,15 +1,12 @@
 // Copyright 2020 Joyent, Inc.
 
-use serde_json::Value;
 use postgres::types::ToSql;
 use postgres::Transaction;
-use serde_json;
 use slog::{trace, Logger};
 use uuid::Uuid;
 use serde_derive::{Deserialize, Serialize};
 
-use crate::object;
-use crate::error;
+use crate::error::BucketsMdapiError;
 use crate::metrics;
 use crate::sql;
 use crate::types;
@@ -41,11 +38,12 @@ impl Conditions {
         &self,
         etag: String,
         last_modified: types::Timestamptz,
-    ) -> Result<(), Value> {
+    ) -> Result<(), BucketsMdapiError> {
         if let Some(client_etags) = &self.if_match {
             if !check_if_match(&etag, client_etags) {
                 return Err(error(
-                    format!("if-match '{}' didn't match etag '{}'", print_etags(&client_etags), etag),
+                    format!("if-match '{}' didn't match etag '{}'",
+                        print_etags(&client_etags), etag),
                 ));
             }
         }
@@ -64,7 +62,8 @@ impl Conditions {
         if let Some(client_etags) = &self.if_none_match {
             if check_if_match(&etag, client_etags) {
                 return Err(error(
-                    format!("if-none-match '{}' matched etag '{}'", print_etags(&client_etags), etag),
+                    format!("if-none-match '{}' matched etag '{}'",
+                        print_etags(&client_etags), etag),
                 ));
             }
         }
@@ -84,12 +83,8 @@ impl Conditions {
     }
 }
 
-fn error(msg: String) -> serde_json::Value {
-    serde_json::to_value(error::BucketsMdapiError::with_message(
-        error::BucketsMdapiErrorType::PreconditionFailedError,
-        msg,
-    ))
-    .expect("failed to encode a PreconditionFailedError error")
+fn error(msg: String) -> BucketsMdapiError {
+    BucketsMdapiError::PreconditionFailedError(msg)
 }
 
 pub fn request(
@@ -99,7 +94,7 @@ pub fn request(
     conditions: &Conditions,
     metrics: &metrics::RegisteredMetrics,
     log: &Logger,
-) -> Result<Option<types::Rows>, Value> {
+) -> Result<Option<types::Rows>, BucketsMdapiError> {
     if !conditions.is_conditional() {
         trace!(log, "request not conditional; returning");
         return Ok(None);
@@ -113,12 +108,12 @@ pub fn request(
         metrics,
         log,
     )
-    .map_err(|e| { sql::postgres_error(e.to_string()) })
+    .map_err(|e| { BucketsMdapiError::PostgresError(e.to_string()) })
     .and_then(|rows| {
         if rows.is_empty() {
-            return Err(object::object_not_found());
+            return Err(BucketsMdapiError::ObjectNotFound);
         } else if rows.len() > 1 {
-            return Err(sql::postgres_error("expected 1 row from conditional query".to_string()));
+            return Err(BucketsMdapiError::PostgresError("expected 1 row from conditional query".to_string()));
         }
 
         let object_id: Uuid = rows[0].get("id");
@@ -241,13 +236,13 @@ mod tests {
             let check_res = h.check(res.id.to_string(), res.modified);
 
             assert!(check_res.is_err());
-            let err = &check_res.unwrap_err()["error"];
+            let err = check_res.unwrap_err();
             assert_eq!(
-                err["message"],
+                err.message(),
                 format!("if-match '\"{}\"' didn't match etag '{}'", client_etag, res.id),
             );
             assert_eq!(
-                err["name"],
+                err.to_string(),
                 "PreconditionFailedError".to_string(),
             );
         }
@@ -276,13 +271,14 @@ mod tests {
             let check_res = h.check(res.id.to_string(), res.modified);
 
             assert!(check_res.is_err());
-            let err = &check_res.unwrap_err()["error"];
+            let err = check_res.unwrap_err();
             assert_eq!(
-                err["message"],
-                format!("if-none-match '\"test\", \"thing\", \"{}\"' matched etag '{}'", res.id, res.id),
+                err.message(),
+                format!("if-none-match '\"test\", \"thing\", \"{}\"' matched etag '{}'",
+                    res.id, res.id),
             );
             assert_eq!(
-                err["name"],
+                err.to_string(),
                 "PreconditionFailedError".to_string(),
             );
         }
@@ -296,13 +292,13 @@ mod tests {
             let check_res = h.check(res.id.to_string(), res.modified);
 
             assert!(check_res.is_err());
-            let err = &check_res.unwrap_err()["error"];
+            let err = check_res.unwrap_err();
             assert_eq!(
-                err["message"],
+                err.message(),
                 format!("if-none-match '\"test\", \"thing\", \"*\"' matched etag '{}'", res.id),
             );
             assert_eq!(
-                err["name"],
+                err.to_string(),
                 "PreconditionFailedError".to_string(),
             );
         }
@@ -334,16 +330,16 @@ mod tests {
             let check_res = h.check(res.id.to_string(), res.modified);
 
             assert!(check_res.is_err());
-            let err = &check_res.unwrap_err()["error"];
+            let err = check_res.unwrap_err();
             assert_eq!(
-                err["message"],
+                err.message(),
                 format!(
                     "object was modified at '{}'; if-modified-since '{}'",
                     res.modified.to_rfc3339(), client_modified.to_rfc3339(),
                 ),
             );
             assert_eq!(
-                err["name"],
+                err.to_string(),
                 "PreconditionFailedError".to_string(),
             );
         }
@@ -375,17 +371,13 @@ mod tests {
             let check_res = h.check(res.id.to_string(), res.modified);
 
             assert!(check_res.is_err());
-            let err = &check_res.unwrap_err()["error"];
+            let err = check_res.unwrap_err();
             assert_eq!(
-                err["message"],
+                err.message(),
                 format!(
                     "object was modified at '{}'; if-unmodified-since '2010-01-01T10:00:00+00:00'",
                     res.modified.to_rfc3339(),
                 ),
-            );
-            assert_eq!(
-                err["name"],
-                "PreconditionFailedError".to_string(),
             );
         }
     }

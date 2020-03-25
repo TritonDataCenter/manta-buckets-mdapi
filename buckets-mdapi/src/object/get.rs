@@ -9,6 +9,7 @@ use slog::{debug, error, Logger};
 use cueball_postgres_connection::PostgresConnection;
 use fast_rpc::protocol::{FastMessage, FastMessageData};
 
+use crate::error::BucketsMdapiError;
 use crate::metrics::RegisteredMetrics;
 use crate::object::{
     object_not_found, response, to_json, GetObjectPayload, ObjectResponse,
@@ -48,25 +49,18 @@ pub(crate) fn action(
             Ok(msg)
         })
         .or_else(|e| {
+            if let BucketsMdapiError::PostgresError(_) = &e {
+                error!(log, "operation failed"; "error" => e.message());
+            }
+
             /*
              * At this point we've seen some kind of failure processing the request.  It could be
              * that the database has returned an error of some kind, or that there has been a
              * failure in evaluating the conditions of the request.  Either way they are handed
              * back to the application as fast messages.
              */
-
-            /*
-             * XXX
-             *
-             * Is reaching into the Value like this safe?  I think we get `Value::Null` on a bad
-             * value, so possibly it's ok.  Is it fast enough?
-             */
-            if e["name"] == "PostgresError" {
-                error!(log, "operation failed"; "error" => &e.to_string());
-            }
-
             let msg_data =
-                FastMessageData::new(method.into(), array_wrap(e));
+                FastMessageData::new(method.into(), array_wrap(e.into_fast()));
             let msg: HandlerResponse =
                 FastMessage::data(msg_id, msg_data).into();
             Ok(msg)
@@ -79,8 +73,11 @@ fn do_get(
     conn: &mut PostgresConnection,
     metrics: &RegisteredMetrics,
     log: &Logger,
-) -> Result<Option<ObjectResponse>, Value> {
-    let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
+) -> Result<Option<ObjectResponse>, BucketsMdapiError> {
+    let mut txn = (*conn).transaction().map_err(|e| {
+        BucketsMdapiError::PostgresError(e.to_string())
+    })?;
+
     let get_sql = sql::get_sql(payload.vnode);
 
     conditional::request(
@@ -113,10 +110,10 @@ fn do_get(
             metrics,
             log,
         )
-        .map_err(|e| { sql::postgres_error(e.to_string()) })
+        .map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))
     })
     .and_then(|rows| {
-        txn.commit().map_err(|e| { sql::postgres_error(e.to_string()) })?;
+        txn.commit().map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))?;
         Ok(rows)
     })
     .and_then(|rows| response(method, &rows))
