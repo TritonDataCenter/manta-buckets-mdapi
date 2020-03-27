@@ -8,6 +8,7 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::error::BucketsMdapiError;
 use crate::metrics;
+use crate::object;
 use crate::sql;
 use crate::types;
 
@@ -103,7 +104,7 @@ pub fn request(
     sql::txn_query(
         sql::Method::ObjectGet,
         &mut txn,
-        sql::get_sql(vnode).as_str(),
+        object::get_sql(vnode).as_str(),
         items,
         metrics,
         log,

@@ -12,7 +12,7 @@ use fast_rpc::protocol::{FastMessage, FastMessageData};
 use crate::error::BucketsMdapiError;
 use crate::metrics::RegisteredMetrics;
 use crate::object::{
-    object_not_found, response, to_json, GetObjectPayload, ObjectResponse,
+    get_sql, object_not_found, response, to_json, GetObjectPayload, ObjectResponse,
 };
 use crate::conditional;
 use crate::sql;
@@ -78,8 +78,6 @@ fn do_get(
         BucketsMdapiError::PostgresError(e.to_string())
     })?;
 
-    let get_sql = sql::get_sql(payload.vnode);
-
     conditional::request(
         &mut txn,
         &[&payload.owner, &payload.bucket_id, &payload.name],
@@ -102,6 +100,7 @@ fn do_get(
          * A non-conditional request would not have queried the database yet (and returned
          * Ok(None)), so we run the query directly if not.
          */
+        let get_sql = get_sql(payload.vnode);
         sql::txn_query(
             sql::Method::ObjectGet,
             &mut txn,

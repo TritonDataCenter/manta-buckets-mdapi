@@ -217,6 +217,19 @@ pub(self) fn insert_delete_table_sql(vnode: u64) -> String {
     .concat()
 }
 
+pub fn get_sql(vnode: u64) -> String {
+    [
+        "SELECT id, owner, bucket_id, name, created, modified, content_length, \
+         content_md5, content_type, headers, sharks, properties \
+         FROM manta_bucket_",
+        &vnode.to_string(),
+        &".manta_bucket_object WHERE owner = $1 \
+          AND bucket_id = $2 \
+          AND name = $3",
+    ]
+    .concat()
+}
+
 #[cfg(test)]
 pub mod test {
     use super::*;
