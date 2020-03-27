@@ -35,6 +35,7 @@ const BUCKETS_MDAPI_CONFIG_FILE_PATH: &str =
 const TEMPLATE_DIR: &str = "/opt/smartdc/buckets-mdapi/schema_templates";
 const MIGRATIONS_DIR: &str = "/opt/smartdc/buckets-mdapi/migrations";
 const BUCKET_PLACEMENT_SVC: &str = "_buckets-mdplacement._tcp";
+const VNODE_CHUNK_SIZE: usize = 100;
 
 // Get the config on the local buckets-mdapi zone
 fn get_buckets_mdapi_config() -> config::Config {
@@ -72,6 +73,13 @@ fn parse_opts<'a>(app: String) -> ArgMatches<'a> {
         .arg(
             Arg::with_name("fast_args")
                 .help("JSON-encoded arguments for RPC method call")
+                .long("args")
+                .takes_value(true)
+                .required(false),
+        )
+        .arg(
+            Arg::with_name("vnode_chunks")
+                .help("Chunk size of vnode list for database schema creation.")
                 .long("args")
                 .takes_value(true)
                 .required(false),
@@ -153,22 +161,25 @@ fn vnode_response_handler(
                     })
                 })
                 .and_then(|vnodes| {
-                    let resolver = ManateePrimaryResolver::new(
-                        zk_config.connection_string.clone(),
-                        zk_config.path.clone(),
-                        Some(log.new(o!(
-                            "component" => "ManateePrimaryResolver"
-                        ))),
-                    );
-                    schema::create_bucket_schemas(
-                        conn,
-                        database_config,
-                        resolver,
-                        TEMPLATE_DIR,
-                        Path::new(MIGRATIONS_DIR),
-                        vnodes,
-                        log,
-                    )
+                    for vnode_chunk in vnodes.chunks(VNODE_CHUNK_SIZE) {
+                        let resolver = ManateePrimaryResolver::new(
+                            zk_config.connection_string.clone(),
+                            zk_config.path.clone(),
+                            Some(log.new(o!(
+                                "component" => "ManateePrimaryResolver"
+                            ))),
+                        );
+                        schema::create_bucket_schemas(
+                            conn,
+                            database_config,
+                            resolver,
+                            TEMPLATE_DIR,
+                            Path::new(MIGRATIONS_DIR),
+                            vnode_chunk.to_vec(),
+                            log,
+                        )?;
+                    }
+                    Ok(())
                 })
         }
         _ => {
