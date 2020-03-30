@@ -12,9 +12,8 @@ use fast_rpc::protocol::{FastMessage, FastMessageData};
 use crate::error::BucketsMdapiError;
 use crate::metrics::RegisteredMetrics;
 use crate::object::{
-    get_sql, object_not_found, response, to_json, GetObjectPayload, ObjectResponse,
+    get_sql, response, to_json, GetObjectPayload, ObjectResponse,
 };
-use crate::conditional;
 use crate::sql;
 use crate::types::HandlerResponse;
 use crate::util::array_wrap;
@@ -36,13 +35,10 @@ pub(crate) fn action(
 ) -> Result<HandlerResponse, String> {
     // Make database request
     do_get(method, &payload, conn, metrics, log)
-        .and_then(|maybe_resp| {
+        .and_then(|object_resp| {
             // Handle the successful database response
             debug!(log, "operation successful");
-            let value = match maybe_resp {
-                Some(resp) => array_wrap(to_json(resp)),
-                None => array_wrap(object_not_found()),
-            };
+            let value = array_wrap(to_json(object_resp));
             let msg_data = FastMessageData::new(method.into(), value);
             let msg: HandlerResponse =
                 FastMessage::data(msg_id, msg_data).into();
@@ -54,10 +50,11 @@ pub(crate) fn action(
             }
 
             /*
-             * At this point we've seen some kind of failure processing the request.  It could be
-             * that the database has returned an error of some kind, or that there has been a
-             * failure in evaluating the conditions of the request.  Either way they are handed
-             * back to the application as fast messages.
+             * At this point we've seen some kind of failure processing the
+             * request.  It could be that the database has returned an error of
+             * some kind, or that there has been a failure in evaluating the
+             * conditions of the request.  Either way they are handed back to
+             * the application as fast messages.
              */
             let msg_data =
                 FastMessageData::new(method.into(), array_wrap(e.into_fast()));
@@ -70,50 +67,35 @@ pub(crate) fn action(
 fn do_get(
     method: &str,
     payload: &GetObjectPayload,
-    conn: &mut PostgresConnection,
+    mut conn: &mut PostgresConnection,
     metrics: &RegisteredMetrics,
     log: &Logger,
-) -> Result<Option<ObjectResponse>, BucketsMdapiError> {
-    let mut txn = (*conn).transaction().map_err(|e| {
-        BucketsMdapiError::PostgresError(e.to_string())
-    })?;
+) -> Result<ObjectResponse, BucketsMdapiError> {
+    let sql = get_sql(payload.vnode);
 
-    conditional::request(
-        &mut txn,
+    /*
+     * This request is conditional, but the contitional::request method will run
+     * the same SQL as this, so we can save a roundtrip by running the query
+     * ourselves and just pass the result to the conditional check.
+     */
+    sql::query(
+        sql::Method::ObjectGet,
+        &mut conn,
+        sql.as_str(),
         &[&payload.owner, &payload.bucket_id, &payload.name],
-        payload.vnode,
-        &payload.conditions,
         metrics,
         log,
     )
-    .and_then(|rows| {
-        /*
-         * conditional::request will perform the same query as this method, so if it returns
-         * Some(rows) then it means the request was both conditional and a success, so we can just
-         * return those rows as-is.
-         */
-        if let Some(r) = rows {
-            return Ok(r);
-        }
-
-        /*
-         * A non-conditional request would not have queried the database yet (and returned
-         * Ok(None)), so we run the query directly if not.
-         */
-        let get_sql = get_sql(payload.vnode);
-        sql::txn_query(
-            sql::Method::ObjectGet,
-            &mut txn,
-            get_sql.as_str(),
-            &[&payload.owner, &payload.bucket_id, &payload.name],
-            metrics,
-            log,
-        )
-        .map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))
-    })
-    .and_then(|rows| {
-        txn.commit().map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))?;
-        Ok(rows)
-    })
+    .map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))
     .and_then(|rows| response(method, &rows))
+    .and_then(|maybe_resp| {
+        match maybe_resp {
+            None => Err(BucketsMdapiError::ObjectNotFound),
+            Some(object) => {
+                payload.conditions.check(&object)?;
+
+                Ok(object)
+            },
+        }
+    })
 }

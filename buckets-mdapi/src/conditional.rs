@@ -3,12 +3,11 @@
 use postgres::types::ToSql;
 use postgres::Transaction;
 use slog::{trace, Logger};
-use uuid::Uuid;
 use serde_derive::{Deserialize, Serialize};
 
 use crate::error::BucketsMdapiError;
 use crate::metrics;
-use crate::object;
+use crate::object::{get_sql, response, ObjectResponse};
 use crate::sql;
 use crate::types;
 
@@ -35,11 +34,14 @@ impl Conditions {
             || self.if_unmodified_since.is_some()
     }
 
-    fn check(
+    pub fn check(
         &self,
-        etag: String,
-        last_modified: types::Timestamptz,
+        object: &ObjectResponse,
     ) -> Result<(), BucketsMdapiError> {
+
+        let etag = object.id.to_string();
+        let last_modified = object.modified;
+
         if let Some(client_etags) = &self.if_match {
             if !check_if_match(&etag, client_etags) {
                 return Err(error(
@@ -95,33 +97,27 @@ pub fn request(
     conditions: &Conditions,
     metrics: &metrics::RegisteredMetrics,
     log: &Logger,
-) -> Result<Option<types::Rows>, BucketsMdapiError> {
+) -> Result<(), BucketsMdapiError> {
     if !conditions.is_conditional() {
         trace!(log, "request not conditional; returning");
-        return Ok(None);
+        return Ok(());
     }
 
     sql::txn_query(
         sql::Method::ObjectGet,
         &mut txn,
-        object::get_sql(vnode).as_str(),
+        get_sql(vnode).as_str(),
         items,
         metrics,
         log,
     )
     .map_err(|e| { BucketsMdapiError::PostgresError(e.to_string()) })
-    .and_then(|rows| {
-        if rows.is_empty() {
-            return Err(BucketsMdapiError::ObjectNotFound);
-        } else if rows.len() > 1 {
-            return Err(BucketsMdapiError::PostgresError("expected 1 row from conditional query".to_string()));
+    .and_then(|rows| { response("getobject", &rows) })
+    .and_then(|maybe_resp| {
+        match maybe_resp {
+            None => Err(BucketsMdapiError::ObjectNotFound),
+            Some(object) => conditions.check(&object),
         }
-
-        let object_id: Uuid = rows[0].get("id");
-        let object_modified: types::Timestamptz = rows[0].get("modified");
-        conditions.check(object_id.to_string(), object_modified)?;
-
-        Ok(Some(rows))
     })
 }
 
@@ -147,8 +143,7 @@ mod tests {
     use quickcheck::quickcheck;
     use serde_json::{json, Value};
     use chrono;
-
-    use crate::object::ObjectResponse;
+    use uuid::Uuid;
 
     fn conditions_from_value(v: Value) -> Conditions {
         serde_json::from_value::<Conditions>(v).unwrap()
@@ -196,7 +191,7 @@ mod tests {
                 "if-match": [ res.id ],
             }));
 
-            assert!(h.check(res.id.to_string(), res.modified).is_ok());
+            assert!(h.check(&res).is_ok());
         }
     }
     quickcheck! {
@@ -205,7 +200,7 @@ mod tests {
                 "if-match": [ "thing", res.id ],
             }));
 
-            assert!(h.check(res.id.to_string(), res.modified).is_ok());
+            assert!(h.check(&res).is_ok());
         }
     }
     quickcheck! {
@@ -214,7 +209,7 @@ mod tests {
                 "if-match": [ "test", "thing", "*" ],
             }));
 
-            assert!(h.check(res.id.to_string(), res.modified).is_ok());
+            assert!(h.check(&res).is_ok());
         }
     }
     quickcheck! {
@@ -223,7 +218,7 @@ mod tests {
                 "if-match": [ "*" ],
             }));
 
-            assert!(h.check(res.id.to_string(), res.modified).is_ok());
+            assert!(h.check(&res).is_ok());
         }
     }
     quickcheck! {
@@ -234,7 +229,7 @@ mod tests {
                 "if-match": [ client_etag ],
             }));
 
-            let check_res = h.check(res.id.to_string(), res.modified);
+            let check_res = h.check(&res);
 
             assert!(check_res.is_err());
             let err = check_res.unwrap_err();
@@ -260,7 +255,7 @@ mod tests {
                 "if-none-match": [ client_etag ],
             }));
 
-            assert!(h.check(res.id.to_string(), res.modified).is_ok());
+            assert!(h.check(&res).is_ok());
         }
     }
     quickcheck! {
@@ -269,7 +264,7 @@ mod tests {
                 "if-none-match": [ "test", "thing", res.id ],
             }));
 
-            let check_res = h.check(res.id.to_string(), res.modified);
+            let check_res = h.check(&res);
 
             assert!(check_res.is_err());
             let err = check_res.unwrap_err();
@@ -290,7 +285,7 @@ mod tests {
                 "if-none-match": [ "test", "thing", "*" ],
             }));
 
-            let check_res = h.check(res.id.to_string(), res.modified);
+            let check_res = h.check(&res);
 
             assert!(check_res.is_err());
             let err = check_res.unwrap_err();
@@ -316,7 +311,7 @@ mod tests {
                 "if-modified-since": client_modified,
             }));
 
-            assert!(h.check(res.id.to_string(), res.modified).is_ok());
+            assert!(h.check(&res).is_ok());
         }
     }
     quickcheck! {
@@ -328,7 +323,7 @@ mod tests {
                 "if-modified-since": client_modified.to_rfc3339(),
             }));
 
-            let check_res = h.check(res.id.to_string(), res.modified);
+            let check_res = h.check(&res);
 
             assert!(check_res.is_err());
             let err = check_res.unwrap_err();
@@ -358,7 +353,7 @@ mod tests {
                 "if-unmodified-since": client_modified.to_rfc3339(),
             }));
 
-            assert!(h.check(res.id.to_string(), res.modified).is_ok());
+            assert!(h.check(&res).is_ok());
         }
     }
     quickcheck! {
@@ -369,7 +364,7 @@ mod tests {
                 "if-unmodified-since": client_modified,
             }));
 
-            let check_res = h.check(res.id.to_string(), res.modified);
+            let check_res = h.check(&res);
 
             assert!(check_res.is_err());
             let err = check_res.unwrap_err();

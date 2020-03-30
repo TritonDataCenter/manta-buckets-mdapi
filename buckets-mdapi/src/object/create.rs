@@ -121,7 +121,7 @@ fn do_create(
         metrics,
         log,
     )
-    .and_then(|_rows| {
+    .and_then(|_| {
         sql::txn_execute(
             sql::Method::ObjectCreateMove,
             &mut txn,

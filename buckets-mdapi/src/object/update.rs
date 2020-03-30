@@ -104,7 +104,7 @@ fn do_update(
         metrics,
         log,
     )
-    .and_then(|_fetched_rows| {
+    .and_then(|_| {
         sql::txn_query(
             sql::Method::ObjectUpdate,
             &mut txn,

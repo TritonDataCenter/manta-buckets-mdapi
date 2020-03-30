@@ -149,7 +149,7 @@ pub fn object_not_found() -> Value {
     BucketsMdapiError::ObjectNotFound.into_fast()
 }
 
-pub(self) fn response(
+pub fn response(
     method: &str,
     rows: &RowSlice,
 ) -> Result<Option<ObjectResponse>, BucketsMdapiError> {
