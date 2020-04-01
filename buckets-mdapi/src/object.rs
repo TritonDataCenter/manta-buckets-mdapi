@@ -212,7 +212,8 @@ pub(self) fn insert_delete_table_sql(vnode: u64) -> String {
         &".manta_bucket_object \
           WHERE owner = $1 \
           AND bucket_id = $2 \
-          AND name = $3",
+          AND name = $3 \
+          AND content_length > 0",
     ]
     .concat()
 }

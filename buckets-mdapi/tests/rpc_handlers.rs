@@ -705,23 +705,25 @@ fn verify_rpc_handlers() {
 
     // First request a batch of garbage
     let request_id = Uuid::new_v4();
-    let get_garbage_payload = gc::get::GetGarbagePayload { request_id };
+    let mut get_garbage_payload = gc::get::GetGarbagePayload { request_id };
 
-    let get_garbage_json =
+    let mut get_garbage_json =
         serde_json::to_value(vec![&get_garbage_payload]).unwrap();
-    let get_garbage_fast_msg_data =
+    let mut get_garbage_fast_msg_data =
         FastMessageData::new("getgcbatch".into(), get_garbage_json);
-    let get_garbage_fast_msg =
+    let mut get_garbage_fast_msg =
         FastMessage::data(msg_id, get_garbage_fast_msg_data);
     let mut get_garbage_result =
         util::handle_msg(&get_garbage_fast_msg, &pool, &metrics, &log);
 
     assert!(get_garbage_result.is_ok());
-    let get_garbage_response = get_garbage_result.unwrap();
+    let mut get_garbage_response = get_garbage_result.unwrap();
     assert_eq!(get_garbage_response.len(), 1);
 
-    let get_garbage_response_result: Result<gc::get::GetGarbageResponse, _> =
-        serde_json::from_value(get_garbage_response[0].data.d[0].clone());
+    let mut get_garbage_response_result: Result<
+        gc::get::GetGarbageResponse,
+        _,
+    > = serde_json::from_value(get_garbage_response[0].data.d[0].clone());
 
     assert!(get_garbage_response_result.is_ok());
     let mut get_garbage_unwrapped_result = get_garbage_response_result.unwrap();
@@ -730,29 +732,88 @@ fn verify_rpc_handlers() {
 
     let batch_id = get_garbage_unwrapped_result.batch_id.unwrap();
 
-    // Now indicate that the batch of garbage is processed and request for it to
-    // be deleted.
-    let delete_garbage_payload = gc::delete::DeleteGarbagePayload {
-        batch_id,
+    // Request the batch again and verify that the reported batch id matches the
+    // one from the previous request.
+
+    let request_id = Uuid::new_v4();
+    get_garbage_payload = gc::get::GetGarbagePayload { request_id };
+
+    get_garbage_json =
+        serde_json::to_value(vec![&get_garbage_payload]).unwrap();
+    get_garbage_fast_msg_data =
+        FastMessageData::new("getgcbatch".into(), get_garbage_json);
+    get_garbage_fast_msg = FastMessage::data(msg_id, get_garbage_fast_msg_data);
+    get_garbage_result =
+        util::handle_msg(&get_garbage_fast_msg, &pool, &metrics, &log);
+
+    assert!(get_garbage_result.is_ok());
+    get_garbage_response = get_garbage_result.unwrap();
+    assert_eq!(get_garbage_response.len(), 1);
+
+    get_garbage_response_result =
+        serde_json::from_value(get_garbage_response[0].data.d[0].clone());
+
+    assert!(get_garbage_response_result.is_ok());
+    get_garbage_unwrapped_result = get_garbage_response_result.unwrap();
+    assert!(get_garbage_unwrapped_result.batch_id.is_some());
+    assert!(!get_garbage_unwrapped_result.garbage.is_empty());
+
+    assert_eq!(batch_id, get_garbage_unwrapped_result.batch_id.unwrap());
+
+    // Indicate that the batch of garbage is processed and request for it to be
+    // deleted, but use a batch_id that does not match the id of the current
+    // batch.
+    let mut delete_garbage_payload = gc::delete::DeleteGarbagePayload {
+        batch_id: Uuid::new_v4(),
         request_id,
     };
-    let delete_garbage_json =
+    let mut delete_garbage_json =
         serde_json::to_value(vec![delete_garbage_payload]).unwrap();
-    let delete_garbage_fast_msg_data =
+    let mut delete_garbage_fast_msg_data =
         FastMessageData::new("deletegcbatch".into(), delete_garbage_json);
-    let delete_garbage_fast_msg =
+    let mut delete_garbage_fast_msg =
         FastMessage::data(msg_id, delete_garbage_fast_msg_data);
-    let delete_garbage_result =
+    let mut delete_garbage_result =
         util::handle_msg(&delete_garbage_fast_msg, &pool, &metrics, &log);
 
     assert!(delete_garbage_result.is_ok());
-    let delete_garbage_response = delete_garbage_result.unwrap();
-    assert_eq!(delete_garbage_response.len(), 1);
+    let mut delete_garbage_responses = delete_garbage_result.unwrap();
+    assert_eq!(delete_garbage_responses.len(), 1);
 
-    let delete_garbage_response_result: Result<String, _> =
-        serde_json::from_value(delete_garbage_response[0].data.d[0].clone());
+    let mut delete_garbage_response_result: Result<String, _> =
+        serde_json::from_value(delete_garbage_responses[0].data.d[0].clone());
     assert!(delete_garbage_response_result.is_ok());
-    let delete_garbage_response = delete_garbage_response_result.unwrap();
+    let mut delete_garbage_response = delete_garbage_response_result.unwrap();
+    assert_eq!(&delete_garbage_response, "ok");
+
+    // Now indicate that the batch of garbage is processed and request for it to
+    // be deleted. This also verifies the logic that ensures the previous
+    // request to delete the gc batch using an invalid batch id does not
+    // actually result in the garbage batch being removed.
+    delete_garbage_payload = gc::delete::DeleteGarbagePayload {
+        batch_id,
+        request_id,
+    };
+    delete_garbage_json =
+        serde_json::to_value(vec![delete_garbage_payload]).unwrap();
+    delete_garbage_fast_msg_data =
+        FastMessageData::new("deletegcbatch".into(), delete_garbage_json);
+    delete_garbage_fast_msg =
+        FastMessage::data(msg_id, delete_garbage_fast_msg_data);
+    delete_garbage_result =
+        util::handle_msg(&delete_garbage_fast_msg, &pool, &metrics, &log);
+
+    assert!(delete_garbage_result.is_ok());
+    // let mut delete_garbage_responses = delete_garbage_result.unwrap();
+    delete_garbage_responses = delete_garbage_result.unwrap();
+    assert_eq!(delete_garbage_responses.len(), 1);
+
+    // let mut delete_garbage_response_result: Result<String, _> =
+    //     serde_json::from_value(delete_garbage_response[0].data.d[0].clone());
+    delete_garbage_response_result =
+        serde_json::from_value(delete_garbage_responses[0].data.d[0].clone());
+    assert!(delete_garbage_response_result.is_ok());
+    delete_garbage_response = delete_garbage_response_result.unwrap();
     assert_eq!(&delete_garbage_response, "ok");
 
     // Request another batch of garbage and this time it should return an empty
