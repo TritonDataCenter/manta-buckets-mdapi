@@ -6,13 +6,11 @@ use std::vec::Vec;
 
 use postgres::types::ToSql;
 use postgres::{Client, ToStatement, Transaction};
-use serde_json::Value;
 use tokio_postgres::Error as PGError;
 use tokio_postgres::Row as PGRow;
 
 use slog::{o, trace, Logger};
 
-use crate::error::{BucketsMdapiError, BucketsMdapiErrorType};
 use crate::metrics;
 use crate::util;
 
@@ -61,15 +59,6 @@ impl Method {
             Method::GarbageRefresh => "GarbageRefresh",
         }
     }
-}
-
-// Create a postgres error object
-pub fn postgres_error(msg: String) -> Value {
-    serde_json::to_value(BucketsMdapiError::with_message(
-        BucketsMdapiErrorType::PostgresError,
-        msg,
-    ))
-    .expect("failed to encode a PostgresError error")
 }
 
 // conn.execute wrapper that posts metrics

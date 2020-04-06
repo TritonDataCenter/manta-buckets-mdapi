@@ -11,8 +11,10 @@ use uuid::Uuid;
 use cueball_postgres_connection::PostgresConnection;
 use fast_rpc::protocol::{FastMessage, FastMessageData};
 
+use crate::error::BucketsMdapiError;
 use crate::metrics::RegisteredMetrics;
 use crate::object::{object_not_found, response, to_json, ObjectResponse};
+use crate::conditional;
 use crate::sql;
 use crate::types::{HandlerResponse, HasRequestId, Hstore};
 use crate::util::array_wrap;
@@ -28,6 +30,9 @@ pub struct UpdateObjectPayload {
     pub headers: Hstore,
     pub properties: Option<Value>,
     pub request_id: Uuid,
+
+    #[serde(default)]
+    pub conditions: conditional::Conditions,
 }
 
 impl HasRequestId for UpdateObjectPayload {
@@ -67,14 +72,12 @@ pub(crate) fn action(
             Ok(msg)
         })
         .or_else(|e| {
-            // Handle database error response
-            error!(log, "operation failed"; "error" => &e);
+            if let BucketsMdapiError::PostgresError(_) = &e {
+                error!(log, "operation failed"; "error" => e.message());
+            }
 
-            // Database errors are returned to as regular Fast messages
-            // to be handled by the calling application
-            let value = sql::postgres_error(e);
             let msg_data =
-                FastMessageData::new(method.into(), array_wrap(value));
+                FastMessageData::new(method.into(), array_wrap(e.into_fast()));
             let msg: HandlerResponse =
                 FastMessage::data(msg_id, msg_data).into();
             Ok(msg)
@@ -87,30 +90,42 @@ fn do_update(
     conn: &mut PostgresConnection,
     metrics: &RegisteredMetrics,
     log: &Logger,
-) -> Result<Option<ObjectResponse>, String> {
-    let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
+) -> Result<Option<ObjectResponse>, BucketsMdapiError> {
+    let mut txn = (*conn).transaction().map_err(|e| {
+        BucketsMdapiError::PostgresError(e.to_string())
+    })?;
     let update_sql = update_sql(payload.vnode);
 
-    sql::txn_query(
-        sql::Method::ObjectUpdate,
+    conditional::request(
         &mut txn,
-        update_sql.as_str(),
-        &[
-            &payload.content_type,
-            &payload.headers,
-            &payload.properties,
-            &payload.owner,
-            &payload.bucket_id,
-            &payload.name,
-        ],
+        &[&payload.owner, &payload.bucket_id, &payload.name],
+        payload.vnode,
+        &payload.conditions,
         metrics,
         log,
     )
-    .and_then(|rows| {
-        txn.commit()?;
-        Ok(rows)
+    .and_then(|_| {
+        sql::txn_query(
+            sql::Method::ObjectUpdate,
+            &mut txn,
+            update_sql.as_str(),
+            &[
+                &payload.content_type,
+                &payload.headers,
+                &payload.properties,
+                &payload.owner,
+                &payload.bucket_id,
+                &payload.name,
+            ],
+            metrics,
+            log,
+        )
+        .map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))
     })
-    .map_err(|e| e.to_string())
+    .and_then(|updated_rows| {
+        txn.commit().map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))?;
+        Ok(updated_rows)
+    })
     .and_then(|rows| response(method, &rows))
 }
 
@@ -200,6 +215,7 @@ mod test {
 
             let properties = None;
             let request_id = Uuid::new_v4();
+            let conditions: conditional::Conditions = Default::default();
 
             UpdateObjectPayload {
                 owner,
@@ -211,6 +227,7 @@ mod test {
                 headers,
                 properties,
                 request_id,
+                conditions
             }
         }
     }

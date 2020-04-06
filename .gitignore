@@ -16,3 +16,6 @@ cover_html
 *.tar.bz2
 sapi_manifests/registrar/template
 config.toml
+/make_stamps
+/bits
+*.tar.gz

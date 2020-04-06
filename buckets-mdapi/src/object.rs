@@ -10,8 +10,9 @@ use serde_json::Value;
 use tokio_postgres::{accepts, to_sql_checked};
 use uuid::Uuid;
 
-use crate::error::{BucketsMdapiError, BucketsMdapiErrorType};
+use crate::error::BucketsMdapiError;
 use crate::types::{HasRequestId, Hstore, RowSlice, Timestamptz};
+use crate::conditional;
 
 pub mod create;
 pub mod delete;
@@ -26,6 +27,9 @@ pub struct GetObjectPayload {
     pub name: String,
     pub vnode: u64,
     pub request_id: Uuid,
+
+    #[serde(default)]
+    pub conditions: conditional::Conditions,
 }
 
 impl HasRequestId for GetObjectPayload {
@@ -141,19 +145,14 @@ pub(self) fn to_json(objr: ObjectResponse) -> Value {
     serde_json::to_value(objr).expect("failed to serialize ObjectResponse")
 }
 
-pub(self) fn object_not_found() -> Value {
-    // The data for this JSON conversion is locally controlled
-    // so unwrapping the result is ok here.
-    serde_json::to_value(BucketsMdapiError::new(
-        BucketsMdapiErrorType::ObjectNotFound,
-    ))
-    .expect("failed to encode a ObjectNotFound error")
+pub fn object_not_found() -> Value {
+    BucketsMdapiError::ObjectNotFound.into_fast()
 }
 
-pub(self) fn response(
+pub fn response(
     method: &str,
     rows: &RowSlice,
-) -> Result<Option<ObjectResponse>, String> {
+) -> Result<Option<ObjectResponse>, BucketsMdapiError> {
     if rows.is_empty() {
         Ok(None)
     } else if rows.len() == 1 {
@@ -184,7 +183,7 @@ pub(self) fn response(
                  but 12 were expected.",
                 method, cols
             );
-            Err(err.to_string())
+            Err(BucketsMdapiError::PostgresError(err.to_string()))
         }
     } else {
         let err = format!(
@@ -192,7 +191,7 @@ pub(self) fn response(
             method,
             rows.len()
         );
-        Err(err.to_string())
+        Err(BucketsMdapiError::PostgresError(err.to_string()))
     }
 }
 
@@ -215,6 +214,19 @@ pub(self) fn insert_delete_table_sql(vnode: u64) -> String {
           AND bucket_id = $2 \
           AND name = $3 \
           AND content_length > 0",
+    ]
+    .concat()
+}
+
+pub fn get_sql(vnode: u64) -> String {
+    [
+        "SELECT id, owner, bucket_id, name, created, modified, content_length, \
+         content_md5, content_type, headers, sharks, properties \
+         FROM manta_bucket_",
+        &vnode.to_string(),
+        &".manta_bucket_object WHERE owner = $1 \
+          AND bucket_id = $2 \
+          AND name = $3",
     ]
     .concat()
 }
@@ -266,6 +278,7 @@ pub mod test {
             let name = random::string(g, 32);
             let vnode = u64::arbitrary(g);
             let request_id = Uuid::new_v4();
+            let conditions: conditional::Conditions = Default::default();
 
             GetObjectPayload {
                 owner,
@@ -273,6 +286,7 @@ pub mod test {
                 name,
                 vnode,
                 request_id,
+                conditions,
             }
         }
     }

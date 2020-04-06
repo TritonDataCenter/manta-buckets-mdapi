@@ -9,9 +9,10 @@ use slog::{debug, error, Logger};
 use cueball_postgres_connection::PostgresConnection;
 use fast_rpc::protocol::{FastMessage, FastMessageData};
 
+use crate::error::BucketsMdapiError;
 use crate::metrics::RegisteredMetrics;
 use crate::object::{
-    object_not_found, response, to_json, GetObjectPayload, ObjectResponse,
+    get_sql, response, to_json, GetObjectPayload, ObjectResponse,
 };
 use crate::sql;
 use crate::types::HandlerResponse;
@@ -34,27 +35,29 @@ pub(crate) fn action(
 ) -> Result<HandlerResponse, String> {
     // Make database request
     do_get(method, &payload, conn, metrics, log)
-        .and_then(|maybe_resp| {
+        .and_then(|object_resp| {
             // Handle the successful database response
             debug!(log, "operation successful");
-            let value = match maybe_resp {
-                Some(resp) => array_wrap(to_json(resp)),
-                None => array_wrap(object_not_found()),
-            };
+            let value = array_wrap(to_json(object_resp));
             let msg_data = FastMessageData::new(method.into(), value);
             let msg: HandlerResponse =
                 FastMessage::data(msg_id, msg_data).into();
             Ok(msg)
         })
         .or_else(|e| {
-            // Handle database error response
-            error!(log, "operation failed"; "error" => &e);
+            if let BucketsMdapiError::PostgresError(_) = &e {
+                error!(log, "operation failed"; "error" => e.message());
+            }
 
-            // Database errors are returned to as regular Fast messages
-            // to be handled by the calling application
-            let value = sql::postgres_error(e);
+            /*
+             * At this point we've seen some kind of failure processing the
+             * request.  It could be that the database has returned an error of
+             * some kind, or that there has been a failure in evaluating the
+             * conditions of the request.  Either way they are handed back to
+             * the application as fast messages.
+             */
             let msg_data =
-                FastMessageData::new(method.into(), array_wrap(value));
+                FastMessageData::new(method.into(), array_wrap(e.into_fast()));
             let msg: HandlerResponse =
                 FastMessage::data(msg_id, msg_data).into();
             Ok(msg)
@@ -67,9 +70,14 @@ fn do_get(
     mut conn: &mut PostgresConnection,
     metrics: &RegisteredMetrics,
     log: &Logger,
-) -> Result<Option<ObjectResponse>, String> {
+) -> Result<ObjectResponse, BucketsMdapiError> {
     let sql = get_sql(payload.vnode);
 
+    /*
+     * This request is conditional, but the contitional::request method will run
+     * the same SQL as this, so we can save a roundtrip by running the query
+     * ourselves and just pass the result to the conditional check.
+     */
     sql::query(
         sql::Method::ObjectGet,
         &mut conn,
@@ -78,19 +86,16 @@ fn do_get(
         metrics,
         log,
     )
-    .map_err(|e| e.to_string())
+    .map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))
     .and_then(|rows| response(method, &rows))
-}
+    .and_then(|maybe_resp| {
+        match maybe_resp {
+            None => Err(BucketsMdapiError::ObjectNotFound),
+            Some(object) => {
+                payload.conditions.check(&object)?;
 
-fn get_sql(vnode: u64) -> String {
-    [
-        "SELECT id, owner, bucket_id, name, created, modified, content_length, \
-         content_md5, content_type, headers, sharks, properties \
-         FROM manta_bucket_",
-        &vnode.to_string(),
-        &".manta_bucket_object WHERE owner = $1 \
-          AND bucket_id = $2 \
-          AND name = $3",
-    ]
-    .concat()
+                Ok(object)
+            },
+        }
+    })
 }

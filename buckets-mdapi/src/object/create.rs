@@ -12,11 +12,13 @@ use uuid::Uuid;
 use cueball_postgres_connection::PostgresConnection;
 use fast_rpc::protocol::{FastMessage, FastMessageData};
 
+use crate::error::BucketsMdapiError;
 use crate::metrics::RegisteredMetrics;
 use crate::object::{
     insert_delete_table_sql, response, to_json, ObjectResponse,
     StorageNodeIdentifier,
 };
+use crate::conditional;
 use crate::sql;
 use crate::types::{HandlerResponse, HasRequestId, Hstore};
 use crate::util::array_wrap;
@@ -35,6 +37,9 @@ pub struct CreateObjectPayload {
     pub sharks: Vec<StorageNodeIdentifier>,
     pub properties: Option<Value>,
     pub request_id: Uuid,
+
+    #[serde(default)]
+    pub conditions: conditional::Conditions,
 }
 
 impl HasRequestId for CreateObjectPayload {
@@ -81,14 +86,12 @@ pub(crate) fn action(
             Ok(msg)
         })
         .or_else(|e| {
-            // Handle database error response
-            error!(log, "operation failed"; "error" => &e);
+            if let BucketsMdapiError::PostgresError(_) = &e {
+                error!(log, "operation failed"; "error" => e.message());
+            }
 
-            // Database errors are returned to as regular Fast messages
-            // to be handled by the calling application
-            let value = sql::postgres_error(e);
             let msg_data =
-                FastMessageData::new(method.into(), array_wrap(value));
+                FastMessageData::new(method.into(), array_wrap(e.into_fast()));
             let msg: HandlerResponse =
                 FastMessage::data(msg_id, msg_data).into();
             Ok(msg)
@@ -101,52 +104,61 @@ fn do_create(
     conn: &mut PostgresConnection,
     metrics: &RegisteredMetrics,
     log: &Logger,
-) -> Result<Option<ObjectResponse>, String> {
-    let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
+) -> Result<Option<ObjectResponse>, BucketsMdapiError> {
+    let mut txn = (*conn).transaction().map_err(|e| {
+        BucketsMdapiError::PostgresError(e.to_string())
+    })?;
     let create_sql = create_sql(payload.vnode);
     let move_sql = insert_delete_table_sql(payload.vnode);
     let content_md5_bytes =
-        base64::decode(&payload.content_md5).map_err(|e| {
-            format!(
-                "content_md5 is not valid base64 encoded data: {}",
-                e.to_string()
-            )
-        })?;
+        base64::decode(&payload.content_md5).map_err(|e| BucketsMdapiError::ContentMd5Error(e.to_string()))?;
 
-    sql::txn_execute(
-        sql::Method::ObjectCreateMove,
+    conditional::request(
         &mut txn,
-        move_sql.as_str(),
         &[&payload.owner, &payload.bucket_id, &payload.name],
+        payload.vnode,
+        &payload.conditions,
         metrics,
         log,
     )
-    .and_then(|_moved_rows| {
-        sql::txn_query(
-            sql::Method::ObjectCreate,
+    .and_then(|_| {
+        sql::txn_execute(
+            sql::Method::ObjectCreateMove,
             &mut txn,
-            create_sql.as_str(),
-            &[
-                &payload.id,
-                &payload.owner,
-                &payload.bucket_id,
-                &payload.name,
-                &payload.content_length,
-                &content_md5_bytes,
-                &payload.content_type,
-                &payload.headers,
-                &payload.sharks,
-                &payload.properties,
-            ],
+            move_sql.as_str(),
+            &[&payload.owner, &payload.bucket_id, &payload.name],
             metrics,
             log,
         )
+        .and_then(|_moved_rows| {
+            sql::txn_query(
+                sql::Method::ObjectCreate,
+                &mut txn,
+                create_sql.as_str(),
+                &[
+                    &payload.id,
+                    &payload.owner,
+                    &payload.bucket_id,
+                    &payload.name,
+                    &payload.content_length,
+                    &content_md5_bytes,
+                    &payload.content_type,
+                    &payload.headers,
+                    &payload.sharks,
+                    &payload.properties,
+                ],
+                metrics,
+                log,
+            )
+        })
+        .map_err(|e| {
+            BucketsMdapiError::PostgresError(e.to_string())
+        })
     })
     .and_then(|rows| {
-        txn.commit()?;
+        txn.commit().map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))?;
         Ok(rows)
     })
-    .map_err(|e| e.to_string())
     .and_then(|rows| response(method, &rows))
 }
 
@@ -178,7 +190,8 @@ fn create_sql(vnode: u64) -> String {
 // This error is only here for completeness. In practice it should never
 // actually be called. See the invocation in this module for more information.
 fn object_create_failed() -> Value {
-    sql::postgres_error("Create statement failed to return any results".into())
+    serde_json::to_value(BucketsMdapiError::PostgresError("Create statement failed to return any results".to_string()))
+        .expect("failed to encode a PostgresError error")
 }
 
 #[cfg(test)]
@@ -278,6 +291,7 @@ mod test {
             let sharks = vec![shark_1, shark_2];
             let properties = None;
             let request_id = Uuid::new_v4();
+            let conditions: conditional::Conditions = Default::default();
 
             CreateObjectPayload {
                 owner,
@@ -292,6 +306,7 @@ mod test {
                 sharks,
                 properties,
                 request_id,
+                conditions,
             }
         }
     }
