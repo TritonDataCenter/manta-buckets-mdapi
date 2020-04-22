@@ -73,7 +73,7 @@ pub fn register_metrics(config: &ConfigMetrics) -> RegisteredMetrics {
     const_labels.insert("service".to_string(), config.service.clone());
     const_labels.insert("server".to_string(), config.server.clone());
     const_labels.insert("datacenter".to_string(), config.datacenter.clone());
-    const_labels.insert("zonename".to_string(), hostname.clone());
+    const_labels.insert("zonename".to_string(), hostname);
 
     let fast_requests_opts = HistogramOpts::new(
         "fast_requests",

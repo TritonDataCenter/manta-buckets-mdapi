@@ -3,12 +3,12 @@
 #![allow(clippy::module_name_repetitions)]
 
 pub mod bucket;
+pub mod conditional;
 pub mod error;
 pub mod gc;
 pub mod metrics;
 pub mod object;
 pub mod opts;
-pub mod conditional;
 pub mod sql;
 
 pub mod util {
@@ -273,7 +273,7 @@ pub mod util {
                 operation
             );
             warn!(log, "{}", err_msg);
-            Err(err_msg.to_string())
+            Err(err_msg)
         } else {
             Ok(arr.remove(0))
         }

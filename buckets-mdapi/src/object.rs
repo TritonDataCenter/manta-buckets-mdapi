@@ -10,9 +10,9 @@ use serde_json::Value;
 use tokio_postgres::{accepts, to_sql_checked};
 use uuid::Uuid;
 
+use crate::conditional;
 use crate::error::BucketsMdapiError;
 use crate::types::{HasRequestId, Hstore, RowSlice, Timestamptz};
-use crate::conditional;
 
 pub mod create;
 pub mod delete;
@@ -183,7 +183,7 @@ pub fn response(
                  but 12 were expected.",
                 method, cols
             );
-            Err(BucketsMdapiError::PostgresError(err.to_string()))
+            Err(BucketsMdapiError::PostgresError(err))
         }
     } else {
         let err = format!(
@@ -191,7 +191,7 @@ pub fn response(
             method,
             rows.len()
         );
-        Err(BucketsMdapiError::PostgresError(err.to_string()))
+        Err(BucketsMdapiError::PostgresError(err))
     }
 }
 
