@@ -9,8 +9,8 @@ use uuid::Uuid;
 use cueball_postgres_connection::PostgresConnection;
 use fast_rpc::protocol::{FastMessage, FastMessageData};
 
-use crate::error::BucketsMdapiError;
 use crate::bucket::{bucket_already_exists, response, to_json, BucketResponse};
+use crate::error::BucketsMdapiError;
 use crate::metrics::RegisteredMetrics;
 use crate::sql;
 use crate::types::{HandlerResponse, HasRequestId};
@@ -66,9 +66,11 @@ pub(crate) fn action(
 
             // Database errors are returned to as regular Fast messages
             // to be handled by the calling application
-            let err = BucketsMdapiError::PostgresError(e.to_string());
-            let msg_data =
-                FastMessageData::new(method.into(), array_wrap(err.into_fast()));
+            let err = BucketsMdapiError::PostgresError(e);
+            let msg_data = FastMessageData::new(
+                method.into(),
+                array_wrap(err.into_fast()),
+            );
             let msg: HandlerResponse =
                 FastMessage::data(msg_id, msg_data).into();
             Ok(msg)
