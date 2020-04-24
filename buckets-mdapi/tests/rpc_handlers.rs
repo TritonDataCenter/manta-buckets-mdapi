@@ -386,7 +386,7 @@ fn verify_rpc_handlers() {
         BucketsMdapiWrappedError::new(BucketsMdapiError::ObjectNotFound),
     );
 
-    // Create an object
+    // Create an object, fail with bad etag
     let shark1 = object::StorageNodeIdentifier {
         datacenter: "us-east-1".into(),
         manta_storage_id: "1.stor.us-east.joyent.com".into(),
@@ -395,7 +395,9 @@ fn verify_rpc_handlers() {
         datacenter: "us-east-2".into(),
         manta_storage_id: "3.stor.us-east.joyent.com".into(),
     };
-    let conditions: conditional::Conditions = Default::default();
+    let conditions = serde_json::from_value::<conditional::Conditions>(json!({
+        "if-match": [ "*" ]
+    })).unwrap();
 
     let create_object_payload = object::create::CreateObjectPayload {
         owner: owner_id,
@@ -419,7 +421,59 @@ fn verify_rpc_handlers() {
         FastMessageData::new("createobject".into(), create_object_json);
     let create_object_fast_msg =
         FastMessage::data(msg_id, create_object_fast_msg_data);
-    let mut create_object_result =
+    let create_object_result =
+        util::handle_msg(&create_object_fast_msg, &pool, &metrics, &log);
+
+    assert!(create_object_result.is_ok());
+    let create_object_response = create_object_result.unwrap();
+    assert_eq!(create_object_response.len(), 1);
+
+    let create_object_response_result: Result<BucketsMdapiWrappedError, _> =
+        serde_json::from_value(create_object_response[0].data.d[0].clone());
+    assert!(create_object_response_result.is_ok());
+    assert_eq!(
+        create_object_response_result.unwrap(),
+        BucketsMdapiWrappedError::new(BucketsMdapiError::PreconditionFailedError(
+            format!("if-match '\"*\"' matched a non-existent object"))
+        ),
+    );
+
+    // Create an object, ensure nothing was there before us
+    let shark1 = object::StorageNodeIdentifier {
+        datacenter: "us-east-1".into(),
+        manta_storage_id: "1.stor.us-east.joyent.com".into(),
+    };
+    let shark2 = object::StorageNodeIdentifier {
+        datacenter: "us-east-2".into(),
+        manta_storage_id: "3.stor.us-east.joyent.com".into(),
+    };
+    let conditions = serde_json::from_value::<conditional::Conditions>(json!({
+        "if-none-match": [ "*" ]
+    })).unwrap();
+
+    let create_object_payload = object::create::CreateObjectPayload {
+        owner: owner_id,
+        bucket_id,
+        name: object.clone(),
+        id: object_id,
+        vnode: 1,
+        content_length: 5,
+        content_md5: "xzY5jJbR9rcrMRhlcmi/8g==".into(),
+        content_type: "text/plain".into(),
+        headers: HashMap::new(),
+        sharks: vec![shark1, shark2],
+        properties: None,
+        request_id,
+        conditions,
+    };
+
+    let create_object_json =
+        serde_json::to_value(vec![create_object_payload]).unwrap();
+    let create_object_fast_msg_data =
+        FastMessageData::new("createobject".into(), create_object_json);
+    let create_object_fast_msg =
+        FastMessage::data(msg_id, create_object_fast_msg_data);
+    let create_object_result =
         util::handle_msg(&create_object_fast_msg, &pool, &metrics, &log);
 
     assert!(create_object_result.is_ok());
@@ -430,6 +484,58 @@ fn verify_rpc_handlers() {
         serde_json::from_value(create_object_response[0].data.d[0].clone());
     assert!(create_object_response_result.is_ok());
     assert_eq!(create_object_response_result.unwrap().name, object);
+
+    // Create an object, fail with bad etag
+    let shark1 = object::StorageNodeIdentifier {
+        datacenter: "us-east-1".into(),
+        manta_storage_id: "1.stor.us-east.joyent.com".into(),
+    };
+    let shark2 = object::StorageNodeIdentifier {
+        datacenter: "us-east-2".into(),
+        manta_storage_id: "3.stor.us-east.joyent.com".into(),
+    };
+    let conditions = serde_json::from_value::<conditional::Conditions>(json!({
+        "if-none-match": [ "*" ]
+    })).unwrap();
+
+    let create_object_payload = object::create::CreateObjectPayload {
+        owner: owner_id,
+        bucket_id,
+        name: object.clone(),
+        id: object_id,
+        vnode: 1,
+        content_length: 5,
+        content_md5: "xzY5jJbR9rcrMRhlcmi/8g==".into(),
+        content_type: "text/plain".into(),
+        headers: HashMap::new(),
+        sharks: vec![shark1, shark2],
+        properties: None,
+        request_id,
+        conditions,
+    };
+
+    let create_object_json =
+        serde_json::to_value(vec![create_object_payload]).unwrap();
+    let create_object_fast_msg_data =
+        FastMessageData::new("createobject".into(), create_object_json);
+    let create_object_fast_msg =
+        FastMessage::data(msg_id, create_object_fast_msg_data);
+    let create_object_result =
+        util::handle_msg(&create_object_fast_msg, &pool, &metrics, &log);
+
+    assert!(create_object_result.is_ok());
+    let create_object_response = create_object_result.unwrap();
+    assert_eq!(create_object_response.len(), 1);
+
+    let create_object_response_result: Result<BucketsMdapiWrappedError, _> =
+        serde_json::from_value(create_object_response[0].data.d[0].clone());
+    assert!(create_object_response_result.is_ok());
+    assert_eq!(
+        create_object_response_result.unwrap(),
+        BucketsMdapiWrappedError::new(BucketsMdapiError::PreconditionFailedError(
+            format!("if-none-match '\"*\"' matched etag '{}'", object_id))
+        ),
+    );
 
     // Read object again and verify a successful response is returned
     get_object_result =
@@ -682,7 +788,7 @@ fn verify_rpc_handlers() {
     assert_eq!(list_objects_response.len(), 0);
 
     // Create an object and list objects again
-    create_object_result =
+    let create_object_result =
         util::handle_msg(&create_object_fast_msg, &pool, &metrics, &log);
 
     assert!(create_object_result.is_ok());
