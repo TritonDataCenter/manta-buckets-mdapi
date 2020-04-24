@@ -23,13 +23,13 @@ include ./deps/eng/tools/mk/Makefile.smf.defs
 #
 
 # TODO: Use this to download or verify install of expected rust version
-RUST_PREBUILT_VERSION =		1.33.0
+RUST_PREBUILT_VERSION =		1.40.0
 
 RELEASE_TARBALL :=	$(NAME)-pkg-$(STAMP).tar.gz
 ROOT :=			$(shell pwd)
 RELSTAGEDIR :=		/tmp/$(NAME)-$(STAMP)
 
-BASE_IMAGE_UUID   = cbf116a0-43a5-447c-ad8c-8fa57787351c
+BASE_IMAGE_UUID   = 59ba2e5e-976f-4e09-8aac-a4a7ef0395f5
 BUILDIMAGE_NAME   = mantav2-buckets-mdapi
 BUILDIMAGE_DESC   = Manta buckets metadata API
 AGENTS		  = amon config registrar

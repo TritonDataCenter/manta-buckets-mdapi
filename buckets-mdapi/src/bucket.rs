@@ -56,7 +56,10 @@ pub(self) fn bucket_already_exists() -> Value {
     BucketsMdapiError::BucketAlreadyExists.into_fast()
 }
 
-pub(self) fn response(method: &str, rows: &RowSlice) -> Result<Option<BucketResponse>, String> {
+pub(self) fn response(
+    method: &str,
+    rows: &RowSlice,
+) -> Result<Option<BucketResponse>, String> {
     if rows.is_empty() {
         Ok(None)
     } else if rows.len() == 1 {
@@ -77,7 +80,7 @@ pub(self) fn response(method: &str, rows: &RowSlice) -> Result<Option<BucketResp
                  but 4 were expected .",
                 method, cols
             );
-            Err(err.to_string())
+            Err(err)
         }
     } else {
         // The schema should prevent there ever being multiple rows in the query result
@@ -86,7 +89,7 @@ pub(self) fn response(method: &str, rows: &RowSlice) -> Result<Option<BucketResp
             method,
             rows.len()
         );
-        Err(err.to_string())
+        Err(err)
     }
 }
 

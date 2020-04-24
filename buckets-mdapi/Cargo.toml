@@ -22,11 +22,11 @@ serde = "1.0.84"
 serde_derive = "1.0.84"
 serde_json = "1.0.40"
 slog = { version = "2.4.1", features = [ "max_level_trace" ] }
-slog-bunyan = { git = "https://github.com/slog-rs/bunyan" }
+slog-bunyan = "2.2.0"
 tokio = "0.1.14"
 tokio-postgres = "0.4.0-rc.2"
 toml = "0.5"
-rand = { git = 'https://github.com/rust-random/rand' }
+rand = "0.7.3"
 unicode-normalization = "=0.1.5"
 utils = { path = "../utils" }
 uuid = { version = "0.7", features = ["serde", "v4"] }
