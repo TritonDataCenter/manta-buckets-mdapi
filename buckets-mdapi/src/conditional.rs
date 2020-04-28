@@ -41,7 +41,7 @@ impl Conditions {
         let object = match maybe_object {
             None => {
                 if let Some(client_etags) = &self.if_match {
-                    if check_if_match("*", client_etags) {
+                    if check_if_match_wildcard(client_etags) {
                         return Err(error(
                             format!("if-match '{}' matched a non-existent object",
                                 print_etags(&client_etags)),
@@ -50,7 +50,7 @@ impl Conditions {
                 }
 
                 if let Some(client_etags) = &self.if_none_match {
-                    if check_if_match("*", client_etags) {
+                    if check_if_match_wildcard(client_etags) {
                         return Ok(());
                     }
                 }
@@ -135,6 +135,10 @@ pub fn request(
     .map_err(|e| { BucketsMdapiError::PostgresError(e.to_string()) })
     .and_then(|rows| { response("getobject", &rows) })
     .and_then(|maybe_resp| { conditions.check(maybe_resp.as_ref()) })
+}
+
+fn check_if_match_wildcard(client_etags: &[String]) -> bool {
+    client_etags.iter().any(|x| x == "*")
 }
 
 fn check_if_match(etag: &str, client_etags: &[String]) -> bool {
