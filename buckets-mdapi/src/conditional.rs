@@ -36,8 +36,29 @@ impl Conditions {
 
     pub fn check(
         &self,
-        object: &ObjectResponse,
+        maybe_object: Option<&ObjectResponse>,
     ) -> Result<(), BucketsMdapiError> {
+        let object = match maybe_object {
+            None => {
+                if let Some(client_etags) = &self.if_match {
+                    if check_if_match_wildcard(client_etags) {
+                        return Err(error(
+                            format!("if-match '{}' matched a non-existent object",
+                                print_etags(&client_etags)),
+                        ));
+                    }
+                }
+
+                if let Some(client_etags) = &self.if_none_match {
+                    if check_if_match_wildcard(client_etags) {
+                        return Ok(());
+                    }
+                }
+
+                return Err(BucketsMdapiError::ObjectNotFound);
+            },
+            Some(object) => object,
+        };
 
         let etag = object.id.to_string();
         let last_modified = object.modified;
@@ -113,12 +134,11 @@ pub fn request(
     )
     .map_err(|e| { BucketsMdapiError::PostgresError(e.to_string()) })
     .and_then(|rows| { response("getobject", &rows) })
-    .and_then(|maybe_resp| {
-        match maybe_resp {
-            None => Err(BucketsMdapiError::ObjectNotFound),
-            Some(object) => conditions.check(&object),
-        }
-    })
+    .and_then(|maybe_resp| { conditions.check(maybe_resp.as_ref()) })
+}
+
+fn check_if_match_wildcard(client_etags: &[String]) -> bool {
+    client_etags.iter().any(|x| x == "*")
 }
 
 fn check_if_match(etag: &str, client_etags: &[String]) -> bool {
@@ -191,7 +211,7 @@ mod tests {
                 "if-match": [ res.id ],
             }));
 
-            assert!(h.check(&res).is_ok());
+            assert!(h.check(Some(&res)).is_ok());
         }
     }
     quickcheck! {
@@ -200,7 +220,7 @@ mod tests {
                 "if-match": [ "thing", res.id ],
             }));
 
-            assert!(h.check(&res).is_ok());
+            assert!(h.check(Some(&res)).is_ok());
         }
     }
     quickcheck! {
@@ -209,7 +229,7 @@ mod tests {
                 "if-match": [ "test", "thing", "*" ],
             }));
 
-            assert!(h.check(&res).is_ok());
+            assert!(h.check(Some(&res)).is_ok());
         }
     }
     quickcheck! {
@@ -218,7 +238,7 @@ mod tests {
                 "if-match": [ "*" ],
             }));
 
-            assert!(h.check(&res).is_ok());
+            assert!(h.check(Some(&res)).is_ok());
         }
     }
     quickcheck! {
@@ -229,7 +249,7 @@ mod tests {
                 "if-match": [ client_etag ],
             }));
 
-            let check_res = h.check(&res);
+            let check_res = h.check(Some(&res));
 
             assert!(check_res.is_err());
             let err = check_res.unwrap_err();
@@ -255,7 +275,7 @@ mod tests {
                 "if-none-match": [ client_etag ],
             }));
 
-            assert!(h.check(&res).is_ok());
+            assert!(h.check(Some(&res)).is_ok());
         }
     }
     quickcheck! {
@@ -264,7 +284,7 @@ mod tests {
                 "if-none-match": [ "test", "thing", res.id ],
             }));
 
-            let check_res = h.check(&res);
+            let check_res = h.check(Some(&res));
 
             assert!(check_res.is_err());
             let err = check_res.unwrap_err();
@@ -285,7 +305,7 @@ mod tests {
                 "if-none-match": [ "test", "thing", "*" ],
             }));
 
-            let check_res = h.check(&res);
+            let check_res = h.check(Some(&res));
 
             assert!(check_res.is_err());
             let err = check_res.unwrap_err();
@@ -311,7 +331,7 @@ mod tests {
                 "if-modified-since": client_modified,
             }));
 
-            assert!(h.check(&res).is_ok());
+            assert!(h.check(Some(&res)).is_ok());
         }
     }
     quickcheck! {
@@ -323,7 +343,7 @@ mod tests {
                 "if-modified-since": client_modified.to_rfc3339(),
             }));
 
-            let check_res = h.check(&res);
+            let check_res = h.check(Some(&res));
 
             assert!(check_res.is_err());
             let err = check_res.unwrap_err();
@@ -353,7 +373,7 @@ mod tests {
                 "if-unmodified-since": client_modified.to_rfc3339(),
             }));
 
-            assert!(h.check(&res).is_ok());
+            assert!(h.check(Some(&res)).is_ok());
         }
     }
     quickcheck! {
@@ -364,7 +384,7 @@ mod tests {
                 "if-unmodified-since": client_modified,
             }));
 
-            let check_res = h.check(&res);
+            let check_res = h.check(Some(&res));
 
             assert!(check_res.is_err());
             let err = check_res.unwrap_err();

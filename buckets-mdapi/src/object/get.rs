@@ -92,7 +92,7 @@ fn do_get(
         match maybe_resp {
             None => Err(BucketsMdapiError::ObjectNotFound),
             Some(object) => {
-                payload.conditions.check(&object)?;
+                payload.conditions.check(Some(&object))?;
 
                 Ok(object)
             },
