@@ -438,7 +438,6 @@ pub mod tls {
     }
 
     fn read_certificate(buf: &[u8]) -> Result<Certificate, CertificateError> {
-        Certificate::from_der(buf)?;
-        Certificate::from_pem(buf)
+        Certificate::from_der(buf).or_else(|_| Certificate::from_pem(buf))
     }
 }
