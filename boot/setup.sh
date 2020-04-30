@@ -79,7 +79,7 @@ function setup_buckets_mdapi {
     port=$(json metadata.BUCKETS_MDAPI_SERVER_PORT <<< "${SAPI_CONFIG}")
     [[ -n "${port}" ]] || port='2030'
     metrics_port=$(json metadata.BUCKETS_MDAPI_METRICS_PORT <<< "${SAPI_CONFIG}")
-    [[ -n "${metrics_port}" ]] || port='3020'
+    [[ -n "${metrics_port}" ]] || metrics_port='3020'
 
     #
     # Regenerate the registrar config with the real port included
