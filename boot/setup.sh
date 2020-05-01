@@ -68,14 +68,18 @@ function get_sapi_config {
 
 function setup_buckets_mdapi {
     local port
+    local metrics_port
     local RTPL
 
     #
-    # The default port value here must be kept in sync with the default value of
-    # BUCKETS_MDAPI_SERVER_PORT in sapi_manifests/buckets-mdapi/template and the Makefile.
+    # The default port values here must be kept in sync with the default value of
+    # BUCKETS_MDAPI_SERVER_PORT and BUCKETS_MDAPI_METRICS_PORT in
+    # sapi_manifests/buckets-mdapi/template and the Makefile.
     #
     port=$(json metadata.BUCKETS_MDAPI_SERVER_PORT <<< "${SAPI_CONFIG}")
     [[ -n "${port}" ]] || port='2030'
+    metrics_port=$(json metadata.BUCKETS_MDAPI_METRICS_PORT <<< "${SAPI_CONFIG}")
+    [[ -n "${metrics_port}" ]] || metrics_port='3020'
 
     #
     # Regenerate the registrar config with the real port included
@@ -94,6 +98,8 @@ function setup_buckets_mdapi {
 
     svccfg import /opt/smartdc/buckets-mdapi/smf/manifests/buckets-mdapi-setup.xml
     svccfg import /opt/smartdc/buckets-mdapi/smf/manifests/buckets-mdapi.xml
+
+    mdata-put metricPorts "${metrics_port}"
 }
 
 
