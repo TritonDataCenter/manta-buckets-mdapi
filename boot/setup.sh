@@ -99,7 +99,7 @@ function setup_buckets_mdapi {
     svccfg import /opt/smartdc/buckets-mdapi/smf/manifests/buckets-mdapi-setup.xml
     svccfg import /opt/smartdc/buckets-mdapi/smf/manifests/buckets-mdapi.xml
 
-    mdata-put metricPorts $(echo "${metrics_port}")
+    mdata-put metricPorts "${metrics_port}"
 }
 
 
