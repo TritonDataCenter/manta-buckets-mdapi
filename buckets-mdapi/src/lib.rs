@@ -22,7 +22,7 @@ pub mod util {
     use slog::{debug, error, o, warn, Logger};
 
     use cueball::backend::Backend;
-    use cueball::connection_pool::ConnectionPool;
+    use cueball::connection_pool::{ConnectionPool, PoolConnection};
     use cueball::error::Error as CueballError;
     use cueball::resolver::Resolver;
     use cueball_postgres_connection::PostgresConnection;
@@ -34,6 +34,44 @@ pub mod util {
     use crate::metrics::RegisteredMetrics;
     use crate::object;
     use crate::types::{HandlerError, HandlerResponse, HasRequestId};
+    use crate::util;
+
+    // Attempt to claim a connection from the cueball connection pool and track
+    // the time spent waiting
+    fn claim_pool_connection(
+        pool: &ConnectionPool<
+            PostgresConnection,
+            impl Resolver,
+            impl FnMut(&Backend) -> PostgresConnection + Send + 'static,
+        >,
+        metrics: &RegisteredMetrics,
+    ) -> Result<
+        PoolConnection<
+            PostgresConnection,
+            impl Resolver,
+            impl FnMut(&Backend) -> PostgresConnection + Send + 'static,
+        >,
+        CueballError,
+    > {
+        let now = Instant::now();
+        let claim_result = pool.claim();
+
+        let duration = now.elapsed();
+        let t = util::duration_to_seconds(duration);
+
+        let success = if claim_result.is_ok() {
+            "true"
+        } else {
+            "false"
+        };
+
+        metrics
+            .connection_claim_times
+            .with_label_values(&[success])
+            .observe(t);
+
+        claim_result
+    }
 
     pub fn handle_msg(
         msg: &FastMessage,
@@ -53,7 +91,7 @@ pub mod util {
         let mut connection_acquired = true;
         let method = msg.data.m.name.as_str();
 
-        pool.claim()
+        claim_pool_connection(pool, metrics)
             .map_err(HandlerError::Cueball)
             .and_then(|mut conn| {
                 // Dispatch the request
