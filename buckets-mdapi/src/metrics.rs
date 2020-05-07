@@ -25,6 +25,7 @@ pub struct RegisteredMetrics {
     pub metrics_request_count: Counter,
     pub fast_requests: HistogramVec,
     pub postgres_requests: HistogramVec,
+    pub connection_claim_times: HistogramVec,
 }
 
 impl RegisteredMetrics {
@@ -33,12 +34,14 @@ impl RegisteredMetrics {
         metrics_request_count: Counter,
         fast_requests: HistogramVec,
         postgres_requests: HistogramVec,
+        connection_claim_times: HistogramVec,
     ) -> Self {
         RegisteredMetrics {
             request_count,
             metrics_request_count,
             fast_requests,
             postgres_requests,
+            connection_claim_times,
         }
     }
 }
@@ -75,36 +78,54 @@ pub fn register_metrics(config: &ConfigMetrics) -> RegisteredMetrics {
     const_labels.insert("datacenter".to_string(), config.datacenter.clone());
     const_labels.insert("zonename".to_string(), hostname);
 
-    let fast_requests_opts = HistogramOpts::new(
+    let fast_requests = register_histogram(
         "fast_requests",
         "Latency of all fast requests processed.",
-    )
-    .const_labels(const_labels.clone());
-    let fast_requests =
-        HistogramVec::new(fast_requests_opts, &["method", "success"])
-            .expect("failed to create fast_requests histogram");
+        &const_labels,
+        vec!["method", "success"],
+    );
 
-    prometheus::register(Box::new(fast_requests.clone()))
-        .expect("failed to register fast_requests histogram");
-
-    let postgres_requests_opts = HistogramOpts::new(
+    let postgres_requests = register_histogram(
         "postgres_requests",
-        "Latency of all fast requests processed.",
-    )
-    .const_labels(const_labels);
-    let postgres_requests =
-        HistogramVec::new(postgres_requests_opts, &["method", "success"])
-            .expect("failed to create postgres_requests histogram");
+        "Latency of all postgres requests processed.",
+        &const_labels,
+        vec!["method", "success"],
+    );
 
-    prometheus::register(Box::new(postgres_requests.clone()))
-        .expect("failed to register postgres_requests histogram");
+    let connection_claim_times = register_histogram(
+        "connection_claim_times",
+        "Wait time to acquire a postgres connection from the connection pool.",
+        &const_labels,
+        vec!["success"],
+    );
 
     RegisteredMetrics::new(
         request_counter,
         metrics_request_counter,
         fast_requests,
         postgres_requests,
+        connection_claim_times,
     )
+}
+
+fn register_histogram(
+    name: &str,
+    description: &str,
+    const_labels: &HashMap<String, String>,
+    labels: Vec<&str>,
+) -> HistogramVec {
+    let opts = HistogramOpts::new(name, description)
+        .const_labels(const_labels.clone());
+    let h_vec =
+        HistogramVec::new(opts, labels.as_slice()).unwrap_or_else(|_| {
+            panic!(["failed to create ", name, " histogram"].concat())
+        });
+
+    prometheus::register(Box::new(h_vec.clone())).unwrap_or_else(|_| {
+        panic!(["failed to register ", name, " histogram"].concat())
+    });
+
+    h_vec
 }
 
 pub fn start_server(
