@@ -1,5 +1,7 @@
 // Copyright 2020 Joyent, Inc.
 
+use std::marker::Sync;
+
 use postgres::types::ToSql;
 use postgres::Transaction;
 use slog::{trace, Logger};
@@ -113,7 +115,7 @@ fn error(msg: String) -> BucketsMdapiError {
 
 pub fn request(
     mut txn: &mut Transaction,
-    items: &[&dyn ToSql],
+    items: &[&(dyn ToSql + Sync)],
     vnode: u64,
     conditions: &Conditions,
     metrics: &metrics::RegisteredMetrics,

@@ -398,10 +398,9 @@ pub mod tls {
                 let cert_option = cert_result.ok();
                 Ok(TlsConfig::prefer(cert_option))
             }
-            TlsConnectMode::Require if cert_ok => {
-                // Unwrapping the result since we've verifed the Result is Ok in
-                // the guard
-                Ok(TlsConfig::require(cert_result.unwrap()))
+            TlsConnectMode::Require => {
+                let cert_option = cert_result.ok();
+                Ok(TlsConfig::require(cert_option))
             }
             TlsConnectMode::VerifyCa if cert_ok => {
                 // Unwrapping the result since we've verifed the Result is Ok in

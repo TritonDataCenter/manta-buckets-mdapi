@@ -7,9 +7,9 @@ edition = "2018"
 
 [dependencies]
 clap = "2.32"
-cueball = "0.3.3"
-cueball-manatee-primary-resolver = "0.3.0"
-cueball-postgres-connection = "0.3.0"
+cueball = { git = "https://github.com/joyent/rust-cueball", branch = "MANTA-5256" }
+cueball-manatee-primary-resolver = { git = "https://github.com/joyent/rust-cueball", branch = "MANTA-5256" }
+cueball-postgres-connection = { git = "https://github.com/joyent/rust-cueball", branch = "MANTA-5256" }
 itertools = "0.8.2"
 num_cpus = { version = "1.8.0" }
 slog = { version = "2.4.1", features = [ "max_level_trace" ] }
