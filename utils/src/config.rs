@@ -9,6 +9,7 @@
 use std::convert::Into;
 use std::ffi::OsStr;
 use std::fs;
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
@@ -168,36 +169,27 @@ impl Default for ConfigMetrics {
 }
 
 #[derive(Clone, Deserialize)]
+pub enum ReplicationMode {
+    Primary,
+    Secondary,
+}
+
+#[derive(Clone, Deserialize)]
 pub struct ConfigDatabase {
-    /// The database admin username
-    pub admin_user: String,
-    /// The database username
-    pub user: String,
-    /// The database IP address
-    pub host: String,
-    /// The database port number
-    pub port: u16,
-    /// The name of the database to issue requests against
-    pub database: String,
-    /// The name of the application to use when connecting to the database
-    pub application_name: String,
-    /// The TLS connection mode
-    pub tls_mode: TlsConnectMode,
-    /// The optional path to a TLS certificate file
-    pub certificate: Option<PathBuf>,
+    /// The path to the directory containing all rocksdb databases
+    pub path: PathBuf,
+    /// The replication mode of this buckets-mdapi instance
+    pub replication_mode: ReplicationMode,
+    /// The replication peer or None if replication_mode is Primary
+    pub replication_peer: Option<SocketAddr>,
 }
 
 impl Default for ConfigDatabase {
     fn default() -> Self {
         Self {
-            admin_user: "postgres".into(),
-            user: "postgres".into(),
-            host: "127.0.0.1".to_owned(),
-            port: 5432,
-            database: "buckets_metadata".to_owned(),
-            application_name: "buckets_mdapi".into(),
-            tls_mode: TlsConnectMode::Disable,
-            certificate: None,
+            path: PathBuf::from("/data/vnodes"),
+            replication_mode: ReplicationMode::Primary,
+            replication_peer: None,
         }
     }
 }
@@ -315,18 +307,6 @@ pub fn read_cli_args(matches: &ArgMatches, config: &mut Config) {
     value_t!(matches, "port", u16)
         .map(|p| config.server.port = p)
         .unwrap_or_else(|_| ());
-
-    if let Some(h) = matches.value_of("pg ip") {
-        config.database.host = h.into();
-    }
-
-    value_t!(matches, "pg port", u16)
-        .map(|p| config.database.port = p)
-        .unwrap_or_else(|_| ());
-
-    if let Some(db) = matches.value_of("pg database") {
-        config.database.database = db.into();
-    }
 
     if let Some(h) = matches.value_of("metrics-address") {
         config.metrics.host = h.into();

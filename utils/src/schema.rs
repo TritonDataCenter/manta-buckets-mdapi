@@ -34,116 +34,117 @@ pub fn create_bucket_schemas<R>(
 where
     R: Resolver,
 {
-    let schema_template_path = [template_dir, "/", SCHEMA_TEMPLATE].concat();
-    let admin_template_path = [template_dir, "/", ADMIN_TEMPLATE].concat();
-    let db_template_path = [template_dir, "/", DB_TEMPLATE].concat();
-    let schema_template = fs::read_to_string(&schema_template_path)?;
+    // let schema_template_path = [template_dir, "/", SCHEMA_TEMPLATE].concat();
+    // let admin_template_path = [template_dir, "/", ADMIN_TEMPLATE].concat();
+    // let db_template_path = [template_dir, "/", DB_TEMPLATE].concat();
+    // let schema_template = fs::read_to_string(&schema_template_path)?;
 
-    let template = Template::new(&schema_template);
+    // let template = Template::new(&schema_template);
 
-    info!(log, "Creating buckets_mdapi role if it doesn't exist");
+    // info!(log, "Creating buckets_mdapi role if it doesn't exist");
 
-    create_user_role(admin_conn, &admin_template_path)
-        .and_then(|_| {
-            info!(
-                log,
-                "Creating buckets_metadata database if it doesn't exist"
-            );
-            create_database(admin_conn, &db_template_path)
-        })
-        .and_then(|_| {
-            // Attempt to construct the TLS configuration for postgres
-            info!(log, "Constructing postgres TLS configuration");
+    // create_user_role(admin_conn, &admin_template_path)
+    //     .and_then(|_| {
+    //         info!(
+    //             log,
+    //             "Creating buckets_metadata database if it doesn't exist"
+    //         );
+    //         create_database(admin_conn, &db_template_path)
+    //     })
+    //     .and_then(|_| {
+    //         // Attempt to construct the TLS configuration for postgres
+    //         info!(log, "Constructing postgres TLS configuration");
 
-            tls::tls_config(
-                database_config.tls_mode.clone(),
-                database_config.certificate.clone(),
-            )
-            .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))
-        })
-        .and_then(|tls_config| {
-            // Create the connection pool to the buckets_metadata database using
-            // the buckets_mdapi role
-            info!(
-                log,
-                "Creating a connection pool to the buckets_metadata database"
-            );
+    //         tls::tls_config(
+    //             database_config.tls_mode.clone(),
+    //             database_config.certificate.clone(),
+    //         )
+    //         .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))
+    //     })
+    //     .and_then(|tls_config| {
+    //         // Create the connection pool to the buckets_metadata database using
+    //         // the buckets_mdapi role
+    //         info!(
+    //             log,
+    //             "Creating a connection pool to the buckets_metadata database"
+    //         );
 
-            let pg_config = PostgresConnectionConfig {
-                user: Some(database_config.user.clone()),
-                password: None,
-                host: None,
-                port: None,
-                database: Some(database_config.database.clone()),
-                application_name: Some("schema-manager".into()),
-                tls_config,
-            };
+    //         let pg_config = PostgresConnectionConfig {
+    //             user: Some(database_config.user.clone()),
+    //             password: None,
+    //             host: None,
+    //             port: None,
+    //             database: Some(database_config.database.clone()),
+    //             application_name: Some("schema-manager".into()),
+    //             tls_config,
+    //         };
 
-            let connection_creator =
-                PostgresConnection::connection_creator(pg_config);
+    //         let connection_creator =
+    //             PostgresConnection::connection_creator(pg_config);
 
-            let pool_opts = ConnectionPoolOptions {
-                max_connections: Some(1),
-                claim_timeout: Some(10000),
-                log: Some(log.new(o!(
-                    "component" => "CueballConnectionPool"
-                ))),
-                rebalancer_action_delay: None,
-                decoherence_interval: None,
-                connection_check_interval: None,
-            };
+    //         let pool_opts = ConnectionPoolOptions {
+    //             max_connections: Some(1),
+    //             claim_timeout: Some(10000),
+    //             log: Some(log.new(o!(
+    //                 "component" => "CueballConnectionPool"
+    //             ))),
+    //             rebalancer_action_delay: None,
+    //             decoherence_interval: None,
+    //             connection_check_interval: None,
+    //         };
 
-            let pool =
-                ConnectionPool::new(pool_opts, resolver, connection_creator);
+    //         let pool =
+    //             ConnectionPool::new(pool_opts, resolver, connection_creator);
 
-            pool.claim()
-                .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))
-        })
-        .and_then(|mut conn| {
-            info!(log, "Creating buckets-mdapi schemas");
-            let mut result: Result<(), Error> = Ok(());
-            for vnode in &vnodes {
-                info!(log, "processing vnode: {}", vnode);
-                let mut args = HashMap::new();
-                args.insert("vnode", *vnode);
-                let schema_str = template.render(&args);
-                result = conn
-                    .simple_query(&schema_str)
-                    .map_err(|e| {
-                        let err_str = format!(
-                            "error on schema creation: {}, vnode: {}",
-                            e, vnode
-                        );
-                        Error::new(ErrorKind::Other, err_str)
-                    })
-                    .map(|_| ());
-            }
-            result.and_then(|_| Ok(conn))
-        })
-        .and_then(|mut conn| {
-            // Run the public schema migrations
-            info!(log, "Running public schema migrations");
-            let public_migrations_dir = migrations_dir.join("public");
-            migrations::run_public_schema_migrations(
-                &public_migrations_dir,
-                &mut conn,
-            )
-            .unwrap();
-            Ok(conn)
-        })
-        .and_then(|mut conn| {
-            info!(log, "Running vnode schema migrations");
-            let vnode_migrations_dir = migrations_dir.join("vnode");
-            migrations::run_vnode_schema_migrations(
-                vnodes,
-                &vnode_migrations_dir,
-                &mut conn,
-            )
-        })
-        .or_else(|e| {
-            error!(log, "{}", e);
-            Err(e)
-        })
+    //         pool.claim()
+    //             .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))
+    //     })
+    //     .and_then(|mut conn| {
+    //         info!(log, "Creating buckets-mdapi schemas");
+    //         let mut result: Result<(), Error> = Ok(());
+    //         for vnode in &vnodes {
+    //             info!(log, "processing vnode: {}", vnode);
+    //             let mut args = HashMap::new();
+    //             args.insert("vnode", *vnode);
+    //             let schema_str = template.render(&args);
+    //             result = conn
+    //                 .simple_query(&schema_str)
+    //                 .map_err(|e| {
+    //                     let err_str = format!(
+    //                         "error on schema creation: {}, vnode: {}",
+    //                         e, vnode
+    //                     );
+    //                     Error::new(ErrorKind::Other, err_str)
+    //                 })
+    //                 .map(|_| ());
+    //         }
+    //         result.and_then(|_| Ok(conn))
+    //     })
+    //     .and_then(|mut conn| {
+    //         // Run the public schema migrations
+    //         info!(log, "Running public schema migrations");
+    //         let public_migrations_dir = migrations_dir.join("public");
+    //         migrations::run_public_schema_migrations(
+    //             &public_migrations_dir,
+    //             &mut conn,
+    //         )
+    //         .unwrap();
+    //         Ok(conn)
+    //     })
+    //     .and_then(|mut conn| {
+    //         info!(log, "Running vnode schema migrations");
+    //         let vnode_migrations_dir = migrations_dir.join("vnode");
+    //         migrations::run_vnode_schema_migrations(
+    //             vnodes,
+    //             &vnode_migrations_dir,
+    //             &mut conn,
+    //         )
+    //     })
+    //     .or_else(|e| {
+    //         error!(log, "{}", e);
+    //         Err(e)
+    //     })
+    std::unimplemented!()
 }
 
 // create the db in its own transaction

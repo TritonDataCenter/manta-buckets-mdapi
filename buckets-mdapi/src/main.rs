@@ -1,24 +1,21 @@
 // Copyright 2020 Joyent, Inc.
 
 use std::default::Default;
+use std::fs;
 use std::net::SocketAddr;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 
 use clap::{crate_name, crate_version};
+use crossbeam_channel::bounded;
 use slog::{crit, error, info, o, Drain, LevelFilter, Logger};
 use tokio::net::TcpListener;
 use tokio::prelude::*;
 use tokio::runtime;
 
-use cueball::connection_pool::types::ConnectionPoolOptions;
-use cueball::connection_pool::ConnectionPool;
-use cueball_manatee_primary_resolver::ManateePrimaryResolver;
-use cueball_postgres_connection::{
-    PostgresConnection, PostgresConnectionConfig,
-};
 use fast_rpc::server;
+use rocksdb::{Options, DB};
 
 use utils::config::Config;
 
@@ -70,58 +67,38 @@ fn main() {
             std::process::exit(1);
         });
 
-    let tls_config = utils::config::tls::tls_config(
-        config.database.tls_mode,
-        config.database.certificate,
-    )
-    .unwrap_or_else(|e| {
-        crit!(log, "TLS configuration error"; "err" => %e);
+    // Enumerate vnodes for the shard
+    let mut vnodes: Vec<u64> = Vec::new();
+    let vnode_dir_iter = fs::read_dir(config.database.path).unwrap_or_else(|e| {
+        crit!(log, "failed to read the vnode database directory"; "err" => %e);
         std::process::exit(1);
     });
 
-    let pg_config = PostgresConnectionConfig {
-        user: Some(config.database.user),
-        password: None,
-        host: None,
-        port: None,
-        database: Some(config.database.database),
-        application_name: Some(config.database.application_name),
-        tls_config,
-    };
+    for entry in vnode_dir_iter {
+        if let Ok(e) = entry {
+            let path = e.path();
+            if path.is_dir() {
+                if let Some(path_str) = path.to_str() {
+                    if let Ok(vnode) = u64::from_str_radix(path_str, 10) {
+                        vnodes.push(vnode)
+                    }
+                }
+            }
+        }
+    }
 
-    let connection_creator = PostgresConnection::connection_creator(pg_config);
+    // TODO: Create bounded channel and spawn thread for each vnode
+    // let send_channel_map: HashMap<u64,
+    // for v in vnodes.iter() {
+    //     // Create a bounded channel with a 500 message cap
+    //     let (s, r) = bounded(500);
 
-    //
-    // TODO log the dynamic backend IP somehow? The resolver will at least emit
-    // log entries when the IP changes.
-    //
-    let pool_opts = ConnectionPoolOptions {
-        max_connections: Some(config.cueball.max_connections),
-        claim_timeout: config.cueball.claim_timeout,
-        log: Some(log.new(o!(
-            "component" => "CueballConnectionPool"
-        ))),
-        rebalancer_action_delay: config.cueball.rebalancer_action_delay,
-        decoherence_interval: None,
-        connection_check_interval: None,
-    };
-
-    let resolver = ManateePrimaryResolver::new(
-        config.zookeeper.connection_string,
-        config.zookeeper.path,
-        Some(log.new(o!(
-            "component" => "ManateePrimaryResolver"
-        ))),
-    );
-
-    let pool = ConnectionPool::new(pool_opts, resolver, connection_creator);
-
-    info!(log, "established postgres connection pool");
+    // }
+    // TODO: Create Hashmap<vnode, Send>
 
     let addr =
         [&config.server.host, ":", &config.server.port.to_string()].concat();
     let addr = addr.parse::<SocketAddr>().unwrap();
-
     let listener = TcpListener::bind(&addr).expect("failed to bind");
     info!(log, "listening"; "address" => addr);
 
