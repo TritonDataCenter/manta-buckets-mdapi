@@ -1,7 +1,10 @@
 // Copyright 2020 Joyent, Inc.
 
+use std::collections::HashMap;
 use std::vec::Vec;
 
+use crossbeam_channel::Sender;
+use rocksdb::Error as RocksdbError;
 use serde_json::Error as SerdeError;
 use serde_json::Value;
 use slog::{debug, error, Logger};
@@ -15,7 +18,7 @@ use crate::object::{
     get_sql, response, to_json, GetObjectPayload, ObjectResponse,
 };
 use crate::sql;
-use crate::types::HandlerResponse;
+use crate::types::{HandlerResponse, KVOps};
 use crate::util::array_wrap;
 
 pub(crate) fn decode_msg(
@@ -31,10 +34,18 @@ pub(crate) fn action(
     metrics: &RegisteredMetrics,
     log: &Logger,
     payload: GetObjectPayload,
-    conn: &mut PostgresConnection,
+    send_channel_map: &HashMap<
+        u64,
+        Sender<(
+            KVOps,
+            Vec<u8>,
+            Option<Vec<u8>>,
+            Sender<Result<Option<Vec<u8>>, RocksdbError>>,
+        )>,
+    >,
 ) -> Result<HandlerResponse, String> {
     // Make database request
-    do_get(method, &payload, conn, metrics, log)
+    do_get(method, &payload, send_channel_map, metrics, log)
         .and_then(|object_resp| {
             // Handle the successful database response
             debug!(log, "operation successful");
@@ -67,35 +78,42 @@ pub(crate) fn action(
 fn do_get(
     method: &str,
     payload: &GetObjectPayload,
-    mut conn: &mut PostgresConnection,
+    send_channel_map: &HashMap<
+        u64,
+        Sender<(
+            KVOps,
+            Vec<u8>,
+            Option<Vec<u8>>,
+            Sender<Result<Option<Vec<u8>>, RocksdbError>>,
+        )>,
+    >,
     metrics: &RegisteredMetrics,
     log: &Logger,
 ) -> Result<ObjectResponse, BucketsMdapiError> {
-    let sql = get_sql(payload.vnode);
+    // let sql = get_sql(payload.vnode);
 
-    /*
-     * This request is conditional, but the contitional::request method will run
-     * the same SQL as this, so we can save a roundtrip by running the query
-     * ourselves and just pass the result to the conditional check.
-     */
-    sql::query(
-        sql::Method::ObjectGet,
-        &mut conn,
-        sql.as_str(),
-        &[&payload.owner, &payload.bucket_id, &payload.name],
-        metrics,
-        log,
-    )
-    .map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))
-    .and_then(|rows| response(method, &rows))
-    .and_then(|maybe_resp| {
-        match maybe_resp {
-            None => Err(BucketsMdapiError::ObjectNotFound),
-            Some(object) => {
-                payload.conditions.check(Some(&object))?;
+    // /*
+    //  * This request is conditional, but the contitional::request method will run
+    //  * the same SQL as this, so we can save a roundtrip by running the query
+    //  * ourselves and just pass the result to the conditional check.
+    //  */
+    // sql::query(
+    //     sql::Method::ObjectGet,
+    //     &mut conn,
+    //     sql.as_str(),
+    //     &[&payload.owner, &payload.bucket_id, &payload.name],
+    //     metrics,
+    //     log,
+    // )
+    // .map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))
+    // .and_then(|rows| response(method, &rows))
+    // .and_then(|maybe_resp| match maybe_resp {
+    //     None => Err(BucketsMdapiError::ObjectNotFound),
+    //     Some(object) => {
+    //         payload.conditions.check(Some(&object))?;
 
-                Ok(object)
-            },
-        }
-    })
+    //         Ok(object)
+    //     }
+    // })
+    std::unimplemented!()
 }

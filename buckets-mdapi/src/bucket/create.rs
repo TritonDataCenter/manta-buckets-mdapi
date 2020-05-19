@@ -1,5 +1,9 @@
 // Copyright 2020 Joyent, Inc.
 
+use std::collections::HashMap;
+
+use crossbeam_channel::Sender;
+use rocksdb::Error as RocksdbError;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Error as SerdeError;
 use serde_json::Value;
@@ -13,7 +17,7 @@ use crate::bucket::{bucket_already_exists, response, to_json, BucketResponse};
 use crate::error::BucketsMdapiError;
 use crate::metrics::RegisteredMetrics;
 use crate::sql;
-use crate::types::{HandlerResponse, HasRequestId};
+use crate::types::{HandlerResponse, HasRequestId, KVOps};
 use crate::util::array_wrap;
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -43,10 +47,18 @@ pub(crate) fn action(
     metrics: &RegisteredMetrics,
     log: &Logger,
     payload: CreateBucketPayload,
-    conn: &mut PostgresConnection,
+    send_channel_map: &HashMap<
+        u64,
+        Sender<(
+            KVOps,
+            Vec<u8>,
+            Option<Vec<u8>>,
+            Sender<Result<Option<Vec<u8>>, RocksdbError>>,
+        )>,
+    >,
 ) -> Result<HandlerResponse, String> {
     // Make database request
-    do_create(method, &payload, conn, metrics, log)
+    do_create(method, &payload, send_channel_map, metrics, log)
         .and_then(|maybe_resp| {
             // Handle the successful database response
             debug!(log, "operation successful");
@@ -80,27 +92,36 @@ pub(crate) fn action(
 fn do_create(
     method: &str,
     payload: &CreateBucketPayload,
-    conn: &mut PostgresConnection,
+    send_channel_map: &HashMap<
+        u64,
+        Sender<(
+            KVOps,
+            Vec<u8>,
+            Option<Vec<u8>>,
+            Sender<Result<Option<Vec<u8>>, RocksdbError>>,
+        )>,
+    >,
     metrics: &RegisteredMetrics,
     log: &Logger,
 ) -> Result<Option<BucketResponse>, String> {
-    let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
-    let create_sql = create_sql(payload.vnode);
+    // let mut txn = (*conn).transaction().map_err(|e| e.to_string())?;
+    // let create_sql = create_sql(payload.vnode);
 
-    sql::txn_query(
-        sql::Method::BucketCreate,
-        &mut txn,
-        create_sql.as_str(),
-        &[&Uuid::new_v4(), &payload.owner, &payload.name],
-        metrics,
-        log,
-    )
-    .and_then(|rows| {
-        txn.commit()?;
-        Ok(rows)
-    })
-    .map_err(|e| e.to_string())
-    .and_then(|rows| response(method, &rows))
+    // sql::txn_query(
+    //     sql::Method::BucketCreate,
+    //     &mut txn,
+    //     create_sql.as_str(),
+    //     &[&Uuid::new_v4(), &payload.owner, &payload.name],
+    //     metrics,
+    //     log,
+    // )
+    // .and_then(|rows| {
+    //     txn.commit()?;
+    //     Ok(rows)
+    // })
+    // .map_err(|e| e.to_string())
+    // .and_then(|rows| response(method, &rows))
+    std::unimplemented!()
 }
 
 fn create_sql(vnode: u64) -> String {

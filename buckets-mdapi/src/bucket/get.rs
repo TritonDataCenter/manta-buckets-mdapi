@@ -1,5 +1,9 @@
 // Copyright 2020 Joyent, Inc.
 
+use std::collections::HashMap;
+
+use crossbeam_channel::Sender;
+use rocksdb::Error as RocksdbError;
 use serde_json::Error as SerdeError;
 use serde_json::Value;
 use slog::{debug, error, Logger};
@@ -13,7 +17,7 @@ use crate::bucket::{
 use crate::error::BucketsMdapiError;
 use crate::metrics::RegisteredMetrics;
 use crate::sql;
-use crate::types::HandlerResponse;
+use crate::types::{HandlerResponse, KVOps};
 use crate::util::array_wrap;
 
 pub(crate) fn decode_msg(
@@ -29,10 +33,18 @@ pub(crate) fn action(
     metrics: &RegisteredMetrics,
     log: &Logger,
     payload: GetBucketPayload,
-    conn: &mut PostgresConnection,
+    send_channel_map: &HashMap<
+        u64,
+        Sender<(
+            KVOps,
+            Vec<u8>,
+            Option<Vec<u8>>,
+            Sender<Result<Option<Vec<u8>>, RocksdbError>>,
+        )>,
+    >,
 ) -> Result<HandlerResponse, String> {
     // Make database request
-    do_get(method, &payload, conn, metrics, log)
+    do_get(method, &payload, send_channel_map, metrics, log)
         .and_then(|maybe_resp| {
             // Handle the successful database response
             debug!(log, "operation successful");
@@ -66,22 +78,31 @@ pub(crate) fn action(
 fn do_get(
     method: &str,
     payload: &GetBucketPayload,
-    mut conn: &mut PostgresConnection,
+    send_channel_map: &HashMap<
+        u64,
+        Sender<(
+            KVOps,
+            Vec<u8>,
+            Option<Vec<u8>>,
+            Sender<Result<Option<Vec<u8>>, RocksdbError>>,
+        )>,
+    >,
     metrics: &RegisteredMetrics,
     log: &Logger,
 ) -> Result<Option<BucketResponse>, String> {
-    let sql = get_sql(payload.vnode);
+    // let sql = get_sql(payload.vnode);
 
-    sql::query(
-        sql::Method::BucketGet,
-        &mut conn,
-        sql.as_str(),
-        &[&payload.owner, &payload.name],
-        metrics,
-        log,
-    )
-    .map_err(|e| e.to_string())
-    .and_then(|rows| response(method, &rows))
+    // sql::query(
+    //     sql::Method::BucketGet,
+    //     &mut conn,
+    //     sql.as_str(),
+    //     &[&payload.owner, &payload.name],
+    //     metrics,
+    //     log,
+    // )
+    // .map_err(|e| e.to_string())
+    // .and_then(|rows| response(method, &rows))
+    std::unimplemented!()
 }
 
 fn get_sql(vnode: u64) -> String {

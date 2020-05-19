@@ -12,28 +12,31 @@ pub mod opts;
 pub mod sql;
 
 pub mod util {
+    use std::collections::HashMap;
     use std::io::Error as IOError;
     use std::io::ErrorKind;
     use std::thread;
     use std::time::{Duration, Instant};
 
     use serde_json::Error as SerdeError;
-    use serde_json::{json, Value};
+    use serde_json::Value;
     use slog::{debug, error, o, warn, Logger};
 
+    use crossbeam_channel::{bounded, Receiver, Sender};
     use cueball::backend::Backend;
     use cueball::connection_pool::{ConnectionPool, PoolConnection};
     use cueball::error::Error as CueballError;
     use cueball::resolver::Resolver;
     use cueball_postgres_connection::PostgresConnection;
     use fast_rpc::protocol::{FastMessage, FastMessageData};
+    use rocksdb::Error as RocksdbError;
 
     use crate::bucket;
     use crate::error::BucketsMdapiError;
-    use crate::gc;
+    // use crate::gc;
     use crate::metrics::RegisteredMetrics;
     use crate::object;
-    use crate::types::{HandlerError, HandlerResponse, HasRequestId};
+    use crate::types::{HandlerError, HandlerResponse, HasRequestId, KVOps};
     use crate::util;
 
     // Attempt to claim a connection from the cueball connection pool and track
@@ -75,10 +78,14 @@ pub mod util {
 
     pub fn handle_msg(
         msg: &FastMessage,
-        pool: &ConnectionPool<
-            PostgresConnection,
-            impl Resolver,
-            impl FnMut(&Backend) -> PostgresConnection + Send + 'static,
+        send_channel_map: &HashMap<
+            u64,
+            Sender<(
+                KVOps,
+                Vec<u8>,
+                Option<Vec<u8>>,
+                Sender<Result<Option<Vec<u8>>, RocksdbError>>,
+            )>,
         >,
         metrics: &RegisteredMetrics,
         log: &Logger,
@@ -91,153 +98,58 @@ pub mod util {
         let mut connection_acquired = true;
         let method = msg.data.m.name.as_str();
 
-        claim_pool_connection(pool, metrics)
-            .map_err(HandlerError::Cueball)
-            .and_then(|mut conn| {
-                // Dispatch the request
-                match method {
-                    "getobject" => handle_request(
-                        msg.id,
-                        method,
-                        object::get::decode_msg(&msg.data.d),
-                        &mut conn,
-                        &object::get::action,
-                        metrics,
-                        log,
-                    ),
-                    "createobject" => handle_request(
-                        msg.id,
-                        method,
-                        object::create::decode_msg(&msg.data.d),
-                        &mut conn,
-                        &object::create::action,
-                        metrics,
-                        log,
-                    ),
-                    "updateobject" => handle_request(
-                        msg.id,
-                        method,
-                        object::update::decode_msg(&msg.data.d),
-                        &mut conn,
-                        &object::update::action,
-                        metrics,
-                        log,
-                    ),
-                    "deleteobject" => handle_request(
-                        msg.id,
-                        method,
-                        object::delete::decode_msg(&msg.data.d),
-                        &mut conn,
-                        &object::delete::action,
-                        metrics,
-                        log,
-                    ),
-                    "listobjects" => handle_request(
-                        msg.id,
-                        method,
-                        object::list::decode_msg(&msg.data.d),
-                        &mut conn,
-                        &object::list::action,
-                        metrics,
-                        log,
-                    ),
-                    "getbucket" => handle_request(
-                        msg.id,
-                        method,
-                        bucket::get::decode_msg(&msg.data.d),
-                        &mut conn,
-                        &bucket::get::action,
-                        metrics,
-                        log,
-                    ),
-                    "createbucket" => handle_request(
-                        msg.id,
-                        method,
-                        bucket::create::decode_msg(&msg.data.d),
-                        &mut conn,
-                        &bucket::create::action,
-                        metrics,
-                        log,
-                    ),
-                    "deletebucket" => handle_request(
-                        msg.id,
-                        method,
-                        bucket::delete::decode_msg(&msg.data.d),
-                        &mut conn,
-                        &bucket::delete::action,
-                        metrics,
-                        log,
-                    ),
-                    "listbuckets" => handle_request(
-                        msg.id,
-                        method,
-                        bucket::list::decode_msg(&msg.data.d),
-                        &mut conn,
-                        &bucket::list::action,
-                        metrics,
-                        log,
-                    ),
-                    "getgcbatch" => handle_request(
-                        msg.id,
-                        method,
-                        gc::get::decode_msg(&msg.data.d),
-                        &mut conn,
-                        &gc::get::action,
-                        metrics,
-                        log,
-                    ),
-                    "deletegcbatch" => handle_request(
-                        msg.id,
-                        method,
-                        gc::delete::decode_msg(&msg.data.d),
-                        &mut conn,
-                        &gc::delete::action,
-                        metrics,
-                        log,
-                    ),
-                    _ => {
-                        let err_msg = format!("Unsupported functon: {}", method);
-                        Err(HandlerError::IO(other_error(&err_msg)))
-                    }
-                }
-            })
-            .or_else(|err| {
-                // An error occurred while attempting to acquire a connection
-                // from the connection pool.
-                connection_acquired = false;
-                match err {
-                    HandlerError::Cueball(CueballError::ClaimFailure) => {
-                        // If the error was due to a claim timeout return an
-                        // application level error indicating the service is
-                        // overloaded as a normal Fast message so the calling
-                        // application can take appropriate action.
-                        warn!(log, "timed out claiming connection";
-                            "error" => CueballError::ClaimFailure.to_string());
-                        let value = array_wrap(json!({
-                            "error": {
-                                "name": "OverloadedError",
-                                "message": CueballError::ClaimFailure.to_string()
-                            }
-                        }));
+        // Dispatch the request
+        let request_result = match method {
+            "getobject" => handle_request(
+                msg.id,
+                method,
+                object::get::decode_msg(&msg.data.d),
+                &send_channel_map,
+                &object::get::action,
+                metrics,
+                log,
+            ),
+            "createobject" => handle_request(
+                msg.id,
+                method,
+                object::create::decode_msg(&msg.data.d),
+                &send_channel_map,
+                &object::create::action,
+                metrics,
+                log,
+            ),
+            "getbucket" => handle_request(
+                msg.id,
+                method,
+                bucket::get::decode_msg(&msg.data.d),
+                &send_channel_map,
+                &bucket::get::action,
+                metrics,
+                log,
+            ),
+            "createbucket" => handle_request(
+                msg.id,
+                method,
+                bucket::create::decode_msg(&msg.data.d),
+                &send_channel_map,
+                &bucket::create::action,
+                metrics,
+                log,
+            ),
+            _ => {
+                let err_msg = format!("Unsupported functon: {}", method);
+                Err(HandlerError::IO(other_error(&err_msg)))
+            }
+        };
 
-                        let msg_data = FastMessageData::new(method.into(), value);
-                        let msg: HandlerResponse = FastMessage::data(msg.id, msg_data).into();
-                        Ok(msg)
-                    }
-                    HandlerError::Cueball(err) => {
-                        // Any other connection pool errors are unexpected in
-                        // this context so log loudly and return an error.
-                        error!(log, "unexpected error claiming connection"; "error" => %err);
-                        Err(HandlerError::Cueball(err))
-                    }
-                    err => Err(err),
-                }
-            })
+        request_result
             .and_then(|res| {
                 // Add application level response to the `response` vector
                 match res {
                     HandlerResponse::Message(msg) => response.push(msg),
-                    HandlerResponse::Messages(mut msgs) => response.append(&mut msgs),
+                    HandlerResponse::Messages(mut msgs) => {
+                        response.append(&mut msgs)
+                    }
                 }
                 Ok(response)
             })
@@ -249,9 +161,11 @@ pub mod util {
                 let duration = now.elapsed();
                 let t = duration_to_seconds(duration);
 
-                let success = if connection_acquired { "true" } else { "false" };
+                let success =
+                    if connection_acquired { "true" } else { "false" };
 
-                metrics.fast_requests
+                metrics
+                    .fast_requests
                     .with_label_values(&[&method, success])
                     .observe(t);
 
@@ -264,7 +178,8 @@ pub mod util {
                 let duration = now.elapsed();
                 let t = duration_to_seconds(duration);
 
-                metrics.fast_requests
+                metrics
+                    .fast_requests
                     .with_label_values(&[&method, "false"])
                     .observe(t);
 
@@ -321,6 +236,23 @@ pub mod util {
         IOError::new(ErrorKind::Other, String::from(msg))
     }
 
+    pub fn create_bounded_channel() -> (
+        Sender<(
+            KVOps,
+            Vec<u8>,
+            Option<Vec<u8>>,
+            Sender<Result<Option<Vec<u8>>, RocksdbError>>,
+        )>,
+        Receiver<(
+            KVOps,
+            Vec<u8>,
+            Option<Vec<u8>>,
+            Sender<Result<Option<Vec<u8>>, RocksdbError>>,
+        )>,
+    ) {
+        bounded(1000)
+    }
+
     /// Handle a valid RPC function request. This function employs higher-ranked
     /// trait bounds in order to specify a constraint that the request type
     /// implement serde's `Deserialize` trait while not having to provide a fixed
@@ -332,14 +264,30 @@ pub mod util {
         msg_id: u32,
         method: &str,
         data: Result<Vec<X>, SerdeError>,
-        conn: &mut PostgresConnection,
+        send_channel_map: &HashMap<
+            u64,
+            Sender<(
+                KVOps,
+                Vec<u8>,
+                Option<Vec<u8>>,
+                Sender<Result<Option<Vec<u8>>, RocksdbError>>,
+            )>,
+        >,
         action: &dyn Fn(
             u32,
             &str,
             &RegisteredMetrics,
             &Logger,
             X,
-            &mut PostgresConnection,
+            &HashMap<
+                u64,
+                Sender<(
+                    KVOps,
+                    Vec<u8>,
+                    Option<Vec<u8>>,
+                    Sender<Result<Option<Vec<u8>>, RocksdbError>>,
+                )>,
+            >,
         ) -> Result<HandlerResponse, String>,
         metrics: &RegisteredMetrics,
         log: &Logger,
@@ -361,7 +309,14 @@ pub mod util {
                 debug!(log_child, "parsed payload");
 
                 // Perform the action indicated by the request
-                action(msg_id, &method, metrics, &log_child, payload, conn)
+                action(
+                    msg_id,
+                    &method,
+                    metrics,
+                    &log_child,
+                    payload,
+                    send_channel_map,
+                )
             })
             .map_err(|e| HandlerError::IO(other_error(&e)))
     }
@@ -418,7 +373,13 @@ pub mod types {
     /// that certain assumptions can be made in the code. In particular for this
     /// trait the desired assumption is that a request id field can be added to
     /// all logging output for any valid request type.
-    pub(crate) trait HasRequestId {
+    pub trait HasRequestId {
         fn request_id(&self) -> Uuid;
+    }
+
+    pub enum KVOps {
+        Get,
+        Put,
+        Delete,
     }
 }

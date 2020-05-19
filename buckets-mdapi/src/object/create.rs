@@ -1,8 +1,11 @@
 // Copyright 2020 Joyent, Inc.
 
+use std::collections::HashMap;
 use std::vec::Vec;
 
 use base64;
+use crossbeam_channel::Sender;
+use rocksdb::Error as RocksdbError;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Error as SerdeError;
 use serde_json::Value;
@@ -12,15 +15,15 @@ use uuid::Uuid;
 use cueball_postgres_connection::PostgresConnection;
 use fast_rpc::protocol::{FastMessage, FastMessageData};
 
+use crate::conditional;
 use crate::error::BucketsMdapiError;
 use crate::metrics::RegisteredMetrics;
 use crate::object::{
     insert_delete_table_sql, response, to_json, ObjectResponse,
     StorageNodeIdentifier,
 };
-use crate::conditional;
 use crate::sql;
-use crate::types::{HandlerResponse, HasRequestId, Hstore};
+use crate::types::{HandlerResponse, HasRequestId, Hstore, KVOps};
 use crate::util::array_wrap;
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -61,10 +64,18 @@ pub(crate) fn action(
     metrics: &RegisteredMetrics,
     log: &Logger,
     payload: CreateObjectPayload,
-    conn: &mut PostgresConnection,
+    send_channel_map: &HashMap<
+        u64,
+        Sender<(
+            KVOps,
+            Vec<u8>,
+            Option<Vec<u8>>,
+            Sender<Result<Option<Vec<u8>>, RocksdbError>>,
+        )>,
+    >,
 ) -> Result<HandlerResponse, String> {
     // Make database request
-    do_create(method, &payload, conn, metrics, log)
+    do_create(method, &payload, send_channel_map, metrics, log)
         .and_then(|maybe_resp| {
             // Handle the successful database response
             debug!(log, "operation successful");
@@ -101,65 +112,73 @@ pub(crate) fn action(
 fn do_create(
     method: &str,
     payload: &CreateObjectPayload,
-    conn: &mut PostgresConnection,
+    send_channel_map: &HashMap<
+        u64,
+        Sender<(
+            KVOps,
+            Vec<u8>,
+            Option<Vec<u8>>,
+            Sender<Result<Option<Vec<u8>>, RocksdbError>>,
+        )>,
+    >,
     metrics: &RegisteredMetrics,
     log: &Logger,
 ) -> Result<Option<ObjectResponse>, BucketsMdapiError> {
-    let mut txn = (*conn).transaction().map_err(|e| {
-        BucketsMdapiError::PostgresError(e.to_string())
-    })?;
-    let create_sql = create_sql(payload.vnode);
-    let move_sql = insert_delete_table_sql(payload.vnode);
-    let content_md5_bytes =
-        base64::decode(&payload.content_md5).map_err(|e| BucketsMdapiError::ContentMd5Error(e.to_string()))?;
+    // let mut txn = (*conn)
+    //     .transaction()
+    //     .map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))?;
+    // let create_sql = create_sql(payload.vnode);
+    // let move_sql = insert_delete_table_sql(payload.vnode);
+    // let content_md5_bytes = base64::decode(&payload.content_md5)
+    //     .map_err(|e| BucketsMdapiError::ContentMd5Error(e.to_string()))?;
 
-    conditional::request(
-        &mut txn,
-        &[&payload.owner, &payload.bucket_id, &payload.name],
-        payload.vnode,
-        &payload.conditions,
-        metrics,
-        log,
-    )
-    .and_then(|_| {
-        sql::txn_execute(
-            sql::Method::ObjectCreateMove,
-            &mut txn,
-            move_sql.as_str(),
-            &[&payload.owner, &payload.bucket_id, &payload.name],
-            metrics,
-            log,
-        )
-        .and_then(|_moved_rows| {
-            sql::txn_query(
-                sql::Method::ObjectCreate,
-                &mut txn,
-                create_sql.as_str(),
-                &[
-                    &payload.id,
-                    &payload.owner,
-                    &payload.bucket_id,
-                    &payload.name,
-                    &payload.content_length,
-                    &content_md5_bytes,
-                    &payload.content_type,
-                    &payload.headers,
-                    &payload.sharks,
-                    &payload.properties,
-                ],
-                metrics,
-                log,
-            )
-        })
-        .map_err(|e| {
-            BucketsMdapiError::PostgresError(e.to_string())
-        })
-    })
-    .and_then(|rows| {
-        txn.commit().map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))?;
-        Ok(rows)
-    })
-    .and_then(|rows| response(method, &rows))
+    // conditional::request(
+    //     &mut txn,
+    //     &[&payload.owner, &payload.bucket_id, &payload.name],
+    //     payload.vnode,
+    //     &payload.conditions,
+    //     metrics,
+    //     log,
+    // )
+    // .and_then(|_| {
+    //     sql::txn_execute(
+    //         sql::Method::ObjectCreateMove,
+    //         &mut txn,
+    //         move_sql.as_str(),
+    //         &[&payload.owner, &payload.bucket_id, &payload.name],
+    //         metrics,
+    //         log,
+    //     )
+    //     .and_then(|_moved_rows| {
+    //         sql::txn_query(
+    //             sql::Method::ObjectCreate,
+    //             &mut txn,
+    //             create_sql.as_str(),
+    //             &[
+    //                 &payload.id,
+    //                 &payload.owner,
+    //                 &payload.bucket_id,
+    //                 &payload.name,
+    //                 &payload.content_length,
+    //                 &content_md5_bytes,
+    //                 &payload.content_type,
+    //                 &payload.headers,
+    //                 &payload.sharks,
+    //                 &payload.properties,
+    //             ],
+    //             metrics,
+    //             log,
+    //         )
+    //     })
+    //     .map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))
+    // })
+    // .and_then(|rows| {
+    //     txn.commit()
+    //         .map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))?;
+    //     Ok(rows)
+    // })
+    // .and_then(|rows| response(method, &rows))
+    std::unimplemented!()
 }
 
 fn create_sql(vnode: u64) -> String {
@@ -190,8 +209,10 @@ fn create_sql(vnode: u64) -> String {
 // This error is only here for completeness. In practice it should never
 // actually be called. See the invocation in this module for more information.
 fn object_create_failed() -> Value {
-    serde_json::to_value(BucketsMdapiError::PostgresError("Create statement failed to return any results".to_string()))
-        .expect("failed to encode a PostgresError error")
+    serde_json::to_value(BucketsMdapiError::PostgresError(
+        "Create statement failed to return any results".to_string(),
+    ))
+    .expect("failed to encode a PostgresError error")
 }
 
 #[cfg(test)]

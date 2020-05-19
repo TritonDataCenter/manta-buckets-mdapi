@@ -1,5 +1,6 @@
 // Copyright 2020 Joyent, Inc.
 
+use std::collections::HashMap;
 use std::default::Default;
 use std::fs;
 use std::net::SocketAddr;
@@ -8,16 +9,17 @@ use std::thread;
 use std::time::Duration;
 
 use clap::{crate_name, crate_version};
-use crossbeam_channel::bounded;
 use slog::{crit, error, info, o, Drain, LevelFilter, Logger};
 use tokio::net::TcpListener;
 use tokio::prelude::*;
 use tokio::runtime;
 
 use fast_rpc::server;
-use rocksdb::{Options, DB};
+use rocksdb::{WriteBatch, DB};
 
 use utils::config::Config;
+
+use buckets_mdapi::types::KVOps;
 
 fn main() {
     let matches = buckets_mdapi::opts::parse(crate_name!());
@@ -69,7 +71,7 @@ fn main() {
 
     // Enumerate vnodes for the shard
     let mut vnodes: Vec<u64> = Vec::new();
-    let vnode_dir_iter = fs::read_dir(config.database.path).unwrap_or_else(|e| {
+    let vnode_dir_iter = fs::read_dir(config.database.path.clone()).unwrap_or_else(|e| {
         crit!(log, "failed to read the vnode database directory"; "err" => %e);
         std::process::exit(1);
     });
@@ -87,14 +89,56 @@ fn main() {
         }
     }
 
-    // TODO: Create bounded channel and spawn thread for each vnode
-    // let send_channel_map: HashMap<u64,
-    // for v in vnodes.iter() {
-    //     // Create a bounded channel with a 500 message cap
-    //     let (s, r) = bounded(500);
+    let mut send_channel_map = HashMap::new();
 
-    // }
-    // TODO: Create Hashmap<vnode, Send>
+    for v in vnodes.iter() {
+        // Create a bounded channel to communicate with the thread managing the
+        // vnode database
+        let (s, r) = buckets_mdapi::util::create_bounded_channel();
+        send_channel_map.insert(v.clone(), s);
+
+        // Spawn a thread to manage access to the vnode's database
+        let v_clone = v.clone();
+        let mut path_clone = config.database.path.clone();
+        let _ = thread::spawn(move || {
+            path_clone.set_file_name(v_clone.to_string());
+            // Open rocksdb database
+            let db = DB::open_default(path_clone.as_path()).unwrap();
+
+            loop {
+                // Recv on channel
+                let recv_result = r.recv();
+
+                if let Ok((operation, key, value, response_channel)) =
+                    recv_result
+                {
+                    // Perform db operation
+                    // Object keys are of the form: object:<owner>:<bucket_id>:<name>
+                    match operation {
+                        KVOps::Get => {
+                            let result = db.get(key);
+
+                            // Send response
+                            response_channel.send(result);
+                        }
+                        KVOps::Put => {
+                            let value = value
+                                .expect("Failed to unwrap value for KV put");
+                            let mut batch = WriteBatch::default();
+                            batch.put(key, value);
+                            db.write(batch);
+
+                            // Send response
+                            response_channel.send(Ok(None));
+                        }
+                        KVOps::Delete => {
+                            response_channel.send(Ok(None));
+                        }
+                    }
+                }
+            }
+        });
+    }
 
     let addr =
         [&config.server.host, ":", &config.server.port.to_string()].concat();
@@ -110,8 +154,8 @@ fn main() {
             move |e| error!(&err_log, "failed to accept socket"; "err" => %e),
         )
         .for_each(move |socket| {
-            let pool_clone = pool.clone();
             let metrics_clone = metrics.clone();
+            let channel_map_clone = send_channel_map.clone();
             let task_log = log.new(o!(
                 "component" => "FastServer",
                 "thread" => buckets_mdapi::util::get_thread_name()));
@@ -120,7 +164,7 @@ fn main() {
                 move |a, c| {
                     buckets_mdapi::util::handle_msg(
                         a,
-                        &pool_clone,
+                        &channel_map_clone,
                         &metrics_clone,
                         c,
                     )
