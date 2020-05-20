@@ -19,6 +19,13 @@ use slog::{error, info, Logger};
 
 use utils::config::ConfigMetrics;
 
+// 1.0 == 1 second
+const HISTOGRAM_BUCKETS: [f64; 28] = [
+    0.0001, 0.0002, 0.0003, 0.0004, 0.0005, 0.0006, 0.0007, 0.0008, 0.0009,
+    0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008, 0.009, 0.01, 0.025,
+    0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
+];
+
 #[derive(Clone)]
 pub struct RegisteredMetrics {
     pub request_count: Counter,
@@ -115,7 +122,8 @@ fn register_histogram(
     labels: Vec<&str>,
 ) -> HistogramVec {
     let opts = HistogramOpts::new(name, description)
-        .const_labels(const_labels.clone());
+        .const_labels(const_labels.clone())
+        .buckets(HISTOGRAM_BUCKETS.to_vec());
     let h_vec =
         HistogramVec::new(opts, labels.as_slice()).unwrap_or_else(|_| {
             panic!(["failed to create ", name, " histogram"].concat())
