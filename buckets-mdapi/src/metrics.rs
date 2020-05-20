@@ -15,7 +15,6 @@ use prometheus::{
     labels, opts, register_counter, Counter, Encoder, HistogramOpts,
     HistogramVec, TextEncoder,
 };
-
 use slog::{error, info, Logger};
 
 use utils::config::ConfigMetrics;
