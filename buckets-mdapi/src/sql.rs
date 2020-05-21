@@ -1,6 +1,7 @@
 // Copyright 2020 Joyent, Inc.
 
 use std::fmt::Display;
+use std::marker::Sync;
 use std::time::Instant;
 use std::vec::Vec;
 
@@ -66,7 +67,7 @@ pub fn execute<T: Display>(
     method: Method,
     conn: &mut Client,
     sql: &T,
-    items: &[&dyn ToSql],
+    items: &[&(dyn ToSql + Sync)],
     metrics: &metrics::RegisteredMetrics,
     log: &Logger,
 ) -> Result<u64, PGError>
@@ -86,7 +87,7 @@ pub fn txn_execute<T: Display>(
     method: Method,
     txn: &mut Transaction,
     sql: &T,
-    items: &[&dyn ToSql],
+    items: &[&(dyn ToSql + Sync)],
     metrics: &metrics::RegisteredMetrics,
     log: &Logger,
 ) -> Result<u64, PGError>
@@ -106,7 +107,7 @@ pub fn query<T: Display>(
     method: Method,
     conn: &mut Client,
     sql: &T,
-    items: &[&dyn ToSql],
+    items: &[&(dyn ToSql + Sync)],
     metrics: &metrics::RegisteredMetrics,
     log: &Logger,
 ) -> Result<Vec<PGRow>, PGError>
@@ -126,7 +127,7 @@ pub fn txn_query<T: Display>(
     method: Method,
     txn: &mut Transaction,
     sql: &T,
-    items: &[&dyn ToSql],
+    items: &[&(dyn ToSql + Sync)],
     metrics: &metrics::RegisteredMetrics,
     log: &Logger,
 ) -> Result<Vec<PGRow>, PGError>

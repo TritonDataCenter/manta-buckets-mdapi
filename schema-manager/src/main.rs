@@ -11,7 +11,7 @@ use slog::{crit, info, o, trace, warn, Drain, Logger};
 
 use cueball::connection_pool::types::ConnectionPoolOptions;
 use cueball::connection_pool::ConnectionPool;
-use cueball_dns_resolver::DnsResolver;
+use cueball_dns_resolver::resolver::DnsResolver;
 use cueball_manatee_primary_resolver::ManateePrimaryResolver;
 use cueball_postgres_connection::{
     PostgresConnection, PostgresConnectionConfig,
@@ -205,6 +205,7 @@ fn run(log: &Logger) -> Result<(), Box<dyn std::error::Error>> {
     let cr = DnsResolver::new(
         mdplacement_address,
         BUCKET_PLACEMENT_SVC.to_string(),
+	None,
         log.clone(),
     );
 

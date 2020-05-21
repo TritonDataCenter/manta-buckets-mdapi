@@ -4,10 +4,11 @@ use std::error::Error;
 use std::vec::Vec;
 
 use base64;
+use bytes::BytesMut;
 use postgres::types::{FromSql, IsNull, ToSql, Type};
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
-use tokio_postgres::{accepts, to_sql_checked};
+use postgres::types::{accepts, to_sql_checked};
 use uuid::Uuid;
 
 use crate::conditional;
@@ -78,7 +79,7 @@ impl ToSql for StorageNodeIdentifier {
     fn to_sql(
         &self,
         ty: &Type,
-        w: &mut Vec<u8>,
+        w: &mut BytesMut,
     ) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
         <String as ToSql>::to_sql(&self.to_string(), ty, w)
     }
