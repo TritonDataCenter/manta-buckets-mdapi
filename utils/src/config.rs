@@ -398,7 +398,7 @@ pub mod tls {
                 let cert_option = cert_result.ok();
                 Ok(TlsConfig::prefer(cert_option))
             }
-            TlsConnectMode::Require {
+            TlsConnectMode::Require => {
                 let cert_option = cert_result.ok();
                 Ok(TlsConfig::require(cert_option))
             }
