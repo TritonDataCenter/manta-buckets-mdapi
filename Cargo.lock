@@ -172,8 +172,8 @@ dependencies = [
  "bytes 0.5.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "chrono 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.33.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "cueball 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
- "cueball-manatee-primary-resolver 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cueball 0.3.5 (git+https://github.com/joyent/rust-cueball?branch=MANTA-4312)",
+ "cueball-manatee-primary-resolver 0.5.1 (git+https://github.com/joyent/rust-cueball?branch=MANTA-4312)",
  "cueball-postgres-connection 0.3.1 (git+https://github.com/joyent/rust-cueball?branch=MANTA-4312)",
  "cueball-static-resolver 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "fast-rpc 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -434,11 +434,11 @@ dependencies = [
 [[package]]
 name = "cueball-dns-resolver"
 version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
+source = "git+https://github.com/joyent/rust-cueball?branch=MANTA-4312#735f272e9cbfc4bded30a1c2f4d28e148e29243b"
 dependencies = [
  "base64 0.10.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "chrono 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)",
- "cueball 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cueball 0.3.5 (git+https://github.com/joyent/rust-cueball?branch=MANTA-4312)",
  "custom_derive 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "derive_more 0.14.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.29 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -458,11 +458,11 @@ dependencies = [
 [[package]]
 name = "cueball-manatee-primary-resolver"
 version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
+source = "git+https://github.com/joyent/rust-cueball?branch=MANTA-4312#735f272e9cbfc4bded30a1c2f4d28e148e29243b"
 dependencies = [
  "backoff 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.33.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "cueball 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cueball 0.3.5 (git+https://github.com/joyent/rust-cueball?branch=MANTA-4312)",
  "failure 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.29 (registry+https://github.com/rust-lang/crates.io-index)",
  "itertools 0.8.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -494,21 +494,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cueball-postgres-connection"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-dependencies = [
- "cueball 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
- "native-tls 0.2.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "postgres 0.17.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "postgres-native-tls 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "postgres-protocol 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "serde 1.0.110 (registry+https://github.com/rust-lang/crates.io-index)",
- "serde_derive 1.0.110 (registry+https://github.com/rust-lang/crates.io-index)",
- "unicode-normalization 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
 name = "cueball-static-resolver"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -519,9 +504,9 @@ dependencies = [
 [[package]]
 name = "cueball-tcp-stream-connection"
 version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
+source = "git+https://github.com/joyent/rust-cueball?branch=MANTA-4312#735f272e9cbfc4bded30a1c2f4d28e148e29243b"
 dependencies = [
- "cueball 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cueball 0.3.5 (git+https://github.com/joyent/rust-cueball?branch=MANTA-4312)",
 ]
 
 [[package]]
@@ -2078,11 +2063,11 @@ version = "0.2.0"
 dependencies = [
  "clap 2.33.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "cmd_lib 0.7.8 (registry+https://github.com/rust-lang/crates.io-index)",
- "cueball 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
- "cueball-dns-resolver 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "cueball-manatee-primary-resolver 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "cueball-postgres-connection 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "cueball-tcp-stream-connection 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cueball 0.3.5 (git+https://github.com/joyent/rust-cueball?branch=MANTA-4312)",
+ "cueball-dns-resolver 0.3.2 (git+https://github.com/joyent/rust-cueball?branch=MANTA-4312)",
+ "cueball-manatee-primary-resolver 0.5.1 (git+https://github.com/joyent/rust-cueball?branch=MANTA-4312)",
+ "cueball-postgres-connection 0.3.1 (git+https://github.com/joyent/rust-cueball?branch=MANTA-4312)",
+ "cueball-tcp-stream-connection 0.3.1 (git+https://github.com/joyent/rust-cueball?branch=MANTA-4312)",
  "dotenv 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "fast-rpc 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "sapi 0.2.0 (git+https://github.com/joyent/rust-triton-clients?tag=v0.2.0)",
@@ -2841,9 +2826,9 @@ name = "utils"
 version = "0.3.0"
 dependencies = [
  "clap 2.33.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "cueball 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
- "cueball-manatee-primary-resolver 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "cueball-postgres-connection 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cueball 0.3.5 (git+https://github.com/joyent/rust-cueball?branch=MANTA-4312)",
+ "cueball-manatee-primary-resolver 0.5.1 (git+https://github.com/joyent/rust-cueball?branch=MANTA-4312)",
+ "cueball-postgres-connection 0.3.1 (git+https://github.com/joyent/rust-cueball?branch=MANTA-4312)",
  "itertools 0.8.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "num_cpus 1.13.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.110 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -3006,12 +2991,11 @@ dependencies = [
 "checksum crypto-mac 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "4434400df11d95d556bac068ddfedd482915eb18fe8bea89bc80b6e4b1c179e5"
 "checksum cueball 0.3.5 (git+https://github.com/joyent/rust-cueball?branch=MANTA-4312)" = "<none>"
 "checksum cueball 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)" = "889078504a35c14fc66bdbebc71ebc2d51fc2fc51943996c7d768f2b5279eb4c"
-"checksum cueball-dns-resolver 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)" = "9e8e597156dc70af3e42d02a4699f550a4f13d4366ec08ef1fc188b610aac261"
-"checksum cueball-manatee-primary-resolver 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)" = "dc6a576218dc465a56c0663ddc6e48508694160d6834480cf9121109cb768418"
+"checksum cueball-dns-resolver 0.3.2 (git+https://github.com/joyent/rust-cueball?branch=MANTA-4312)" = "<none>"
+"checksum cueball-manatee-primary-resolver 0.5.1 (git+https://github.com/joyent/rust-cueball?branch=MANTA-4312)" = "<none>"
 "checksum cueball-postgres-connection 0.3.1 (git+https://github.com/joyent/rust-cueball?branch=MANTA-4312)" = "<none>"
-"checksum cueball-postgres-connection 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)" = "1e1d901c2cf5a172a44990f94e889e96c5cde2652d0139e6748407dadb199293"
 "checksum cueball-static-resolver 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)" = "47d4d95074c0128f1838a821008c1ce819a5a4f237d8aff7c55ebc9773b61176"
-"checksum cueball-tcp-stream-connection 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)" = "3f44023adcde6f562bd8483b3399b4908a752da5dcbfc82c99c6a1ca859434d1"
+"checksum cueball-tcp-stream-connection 0.3.1 (git+https://github.com/joyent/rust-cueball?branch=MANTA-4312)" = "<none>"
 "checksum custom_derive 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)" = "ef8ae57c4978a2acd8b869ce6b9ca1dfe817bff704c220209fdef2c0b75a01b9"
 "checksum darling 0.8.6 (registry+https://github.com/rust-lang/crates.io-index)" = "9158d690bc62a3a57c3e45b85e4d50de2008b39345592c64efd79345c7e24be0"
 "checksum darling_core 0.8.6 (registry+https://github.com/rust-lang/crates.io-index)" = "d2a368589465391e127e10c9e3a08efc8df66fd49b87dc8524c764bbe7f2ef82"
