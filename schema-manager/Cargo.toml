@@ -8,11 +8,11 @@ edition = "2018"
 [dependencies]
 clap = "2.32"
 cmd_lib = "0.7.8"
-cueball = { git = "https://github.com/joyent/rust-cueball", branch = "MANTA-5282" }
-cueball-manatee-primary-resolver = { git = "https://github.com/joyent/rust-cueball", branch = "MANTA-5282" }
-cueball-postgres-connection = { git = "https://github.com/joyent/rust-cueball", branch = "MANTA-5282" }
-cueball-dns-resolver = { git = "https://github.com/joyent/rust-cueball", branch = "MANTA-5282" }
-cueball-tcp-stream-connection = { git = "https://github.com/joyent/rust-cueball", branch = "MANTA-5282" }
+cueball = "0.3.5"
+cueball-manatee-primary-resolver = "0.5.1"
+cueball-postgres-connection = "0.3.2"
+cueball-dns-resolver = "0.3.2"
+cueball-tcp-stream-connection = "0.3.1"
 dotenv = "0.9.0"
 fast-rpc = "0.3.0"
 sapi = { git = "https://github.com/joyent/rust-triton-clients", tag = "v0.2.0" }
