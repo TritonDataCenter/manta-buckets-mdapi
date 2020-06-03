@@ -9,7 +9,7 @@ edition = "2018"
 clap = "2.32"
 cueball = "0.3.5"
 cueball-manatee-primary-resolver = "0.5.1"
-cueball-postgres-connection = "0.3.1"
+cueball-postgres-connection = "0.3.2"
 itertools = "0.8.2"
 num_cpus = { version = "1.8.0" }
 slog = { version = "2.4.1", features = [ "max_level_trace" ] }
