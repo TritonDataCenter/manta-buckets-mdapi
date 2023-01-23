@@ -1,4 +1,5 @@
 // Copyright 2020 Joyent, Inc.
+// Copyright 2023 MNX Cloud, Inc.
 
 use std::vec::Vec;
 
@@ -12,13 +13,13 @@ use uuid::Uuid;
 use cueball_postgres_connection::PostgresConnection;
 use fast_rpc::protocol::{FastMessage, FastMessageData};
 
+use crate::conditional;
 use crate::error::BucketsMdapiError;
 use crate::metrics::RegisteredMetrics;
 use crate::object::{
     insert_delete_table_sql, response, to_json, ObjectResponse,
     StorageNodeIdentifier,
 };
-use crate::conditional;
 use crate::sql;
 use crate::types::{HandlerResponse, HasRequestId, Hstore};
 use crate::util::array_wrap;
@@ -105,13 +106,13 @@ fn do_create(
     metrics: &RegisteredMetrics,
     log: &Logger,
 ) -> Result<Option<ObjectResponse>, BucketsMdapiError> {
-    let mut txn = (*conn).transaction().map_err(|e| {
-        BucketsMdapiError::PostgresError(e.to_string())
-    })?;
+    let mut txn = (*conn)
+        .transaction()
+        .map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))?;
     let create_sql = create_sql(payload.vnode);
     let move_sql = insert_delete_table_sql(payload.vnode);
-    let content_md5_bytes =
-        base64::decode(&payload.content_md5).map_err(|e| BucketsMdapiError::ContentMd5Error(e.to_string()))?;
+    let content_md5_bytes = base64::decode(&payload.content_md5)
+        .map_err(|e| BucketsMdapiError::ContentMd5Error(e.to_string()))?;
 
     conditional::request(
         &mut txn,
@@ -151,12 +152,11 @@ fn do_create(
                 log,
             )
         })
-        .map_err(|e| {
-            BucketsMdapiError::PostgresError(e.to_string())
-        })
+        .map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))
     })
     .and_then(|rows| {
-        txn.commit().map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))?;
+        txn.commit()
+            .map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))?;
         Ok(rows)
     })
     .and_then(|rows| response(method, &rows))
@@ -190,8 +190,10 @@ fn create_sql(vnode: u64) -> String {
 // This error is only here for completeness. In practice it should never
 // actually be called. See the invocation in this module for more information.
 fn object_create_failed() -> Value {
-    serde_json::to_value(BucketsMdapiError::PostgresError("Create statement failed to return any results".to_string()))
-        .expect("failed to encode a PostgresError error")
+    serde_json::to_value(BucketsMdapiError::PostgresError(
+        "Create statement failed to return any results".to_string(),
+    ))
+    .expect("failed to encode a PostgresError error")
 }
 
 #[cfg(test)]

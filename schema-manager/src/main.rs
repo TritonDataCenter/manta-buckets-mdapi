@@ -1,4 +1,5 @@
 // Copyright 2020 Joyent, Inc.
+// Copyright 2023 MNX Cloud, Inc.
 
 use std::io::{Error, ErrorKind};
 use std::path::Path;
@@ -205,7 +206,7 @@ fn run(log: &Logger) -> Result<(), Box<dyn std::error::Error>> {
     let cr = DnsResolver::new(
         mdplacement_address,
         BUCKET_PLACEMENT_SVC.to_string(),
-	None,
+        None,
         log.clone(),
     );
 

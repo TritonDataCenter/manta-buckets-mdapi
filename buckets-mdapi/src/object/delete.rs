@@ -1,4 +1,5 @@
 // Copyright 2020 Joyent, Inc.
+// Copyright 2023 MNX Cloud, Inc.
 
 use std::vec::Vec;
 
@@ -9,13 +10,13 @@ use slog::{debug, error, Logger};
 use cueball_postgres_connection::PostgresConnection;
 use fast_rpc::protocol::{FastMessage, FastMessageData};
 
+use crate::conditional;
 use crate::error::BucketsMdapiError;
 use crate::metrics::RegisteredMetrics;
 use crate::object::{
     insert_delete_table_sql, object_not_found, DeleteObjectPayload,
     DeleteObjectResponse,
 };
-use crate::conditional;
 use crate::sql;
 use crate::types::HandlerResponse;
 use crate::util::array_wrap;
@@ -74,9 +75,9 @@ fn do_delete(
     metrics: &RegisteredMetrics,
     log: &Logger,
 ) -> Result<Vec<DeleteObjectResponse>, BucketsMdapiError> {
-    let mut txn = (*conn).transaction().map_err(|e| {
-        BucketsMdapiError::PostgresError(e.to_string())
-    })?;
+    let mut txn = (*conn)
+        .transaction()
+        .map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))?;
     let move_sql = insert_delete_table_sql(payload.vnode);
     let delete_sql = delete_sql(payload.vnode);
 
@@ -137,7 +138,8 @@ fn do_delete(
         .map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))
     })
     .and_then(|rows| {
-        txn.commit().map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))?;
+        txn.commit()
+            .map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))?;
         Ok(rows)
     })
 }

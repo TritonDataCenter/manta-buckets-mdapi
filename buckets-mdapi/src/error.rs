@@ -1,7 +1,8 @@
 // Copyright 2020 Joyent, Inc.
+// Copyright 2023 MNX Cloud, Inc.
 
-use serde_derive::{Serialize, Deserialize};
-use serde_json::{Value};
+use serde_derive::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub enum BucketsMdapiError {
@@ -17,11 +18,17 @@ pub enum BucketsMdapiError {
 impl ToString for BucketsMdapiError {
     fn to_string(&self) -> String {
         match *self {
-            BucketsMdapiError::BucketAlreadyExists => "BucketAlreadyExists".into(),
+            BucketsMdapiError::BucketAlreadyExists => {
+                "BucketAlreadyExists".into()
+            }
             BucketsMdapiError::BucketNotFound => "BucketNotFound".into(),
             BucketsMdapiError::ObjectNotFound => "ObjectNotFound".into(),
-            BucketsMdapiError::LimitConstraintError(_) => "LimitConstraintError".into(),
-            BucketsMdapiError::PreconditionFailedError(_) => "PreconditionFailedError".into(),
+            BucketsMdapiError::LimitConstraintError(_) => {
+                "LimitConstraintError".into()
+            }
+            BucketsMdapiError::PreconditionFailedError(_) => {
+                "PreconditionFailedError".into()
+            }
             BucketsMdapiError::PostgresError(_) => "PostgresError".into(),
             BucketsMdapiError::ContentMd5Error(_) => "ContentMd5Error".into(),
         }
@@ -31,15 +38,21 @@ impl ToString for BucketsMdapiError {
 impl BucketsMdapiError {
     pub fn message(&self) -> String {
         match self {
-            BucketsMdapiError::BucketAlreadyExists => "requested bucket already exists".into(),
-            BucketsMdapiError::BucketNotFound => "requested bucket not found".into(),
-            BucketsMdapiError::ObjectNotFound => "requested object not found".into(),
+            BucketsMdapiError::BucketAlreadyExists => {
+                "requested bucket already exists".into()
+            }
+            BucketsMdapiError::BucketNotFound => {
+                "requested bucket not found".into()
+            }
+            BucketsMdapiError::ObjectNotFound => {
+                "requested object not found".into()
+            }
             BucketsMdapiError::LimitConstraintError(msg) => msg.to_string(),
             BucketsMdapiError::PreconditionFailedError(msg) => msg.to_string(),
             BucketsMdapiError::PostgresError(msg) => msg.to_string(),
             BucketsMdapiError::ContentMd5Error(msg) => {
                 format!("content_md5 is not valid base64 encoded data: {}", msg)
-            },
+            }
         }
     }
 

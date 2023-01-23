@@ -1,4 +1,5 @@
 // Copyright 2020 Joyent, Inc.
+// Copyright 2023 MNX Cloud, Inc.
 
 use std::vec::Vec;
 
@@ -11,10 +12,10 @@ use uuid::Uuid;
 use cueball_postgres_connection::PostgresConnection;
 use fast_rpc::protocol::{FastMessage, FastMessageData};
 
+use crate::conditional;
 use crate::error::BucketsMdapiError;
 use crate::metrics::RegisteredMetrics;
 use crate::object::{object_not_found, response, to_json, ObjectResponse};
-use crate::conditional;
 use crate::sql;
 use crate::types::{HandlerResponse, HasRequestId, Hstore};
 use crate::util::array_wrap;
@@ -91,9 +92,9 @@ fn do_update(
     metrics: &RegisteredMetrics,
     log: &Logger,
 ) -> Result<Option<ObjectResponse>, BucketsMdapiError> {
-    let mut txn = (*conn).transaction().map_err(|e| {
-        BucketsMdapiError::PostgresError(e.to_string())
-    })?;
+    let mut txn = (*conn)
+        .transaction()
+        .map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))?;
     let update_sql = update_sql(payload.vnode);
 
     conditional::request(
@@ -123,7 +124,8 @@ fn do_update(
         .map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))
     })
     .and_then(|updated_rows| {
-        txn.commit().map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))?;
+        txn.commit()
+            .map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))?;
         Ok(updated_rows)
     })
     .and_then(|rows| response(method, &rows))
@@ -227,7 +229,7 @@ mod test {
                 headers,
                 properties,
                 request_id,
-                conditions
+                conditions,
             }
         }
     }
