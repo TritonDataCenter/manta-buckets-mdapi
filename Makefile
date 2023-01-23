@@ -1,10 +1,14 @@
 #
 # Copyright 2020 Joyent, Inc.
+# Copyright 2023 MNX Cloud, Inc.
 #
 
 NAME = manta-buckets-mdapi
 
-RUST_CODE = 1
+RUST_TOOLCHAIN = 1.40.0
+
+# Rust < 1.49 must specify sun-solaris target:
+RUST_BOOTSTRAP_TARGET = x86_64-sun-solaris
 
 SMF_MANIFESTS = smf/manifests/buckets-mdapi.xml smf/manifests/buckets-mdapi-setup.xml
 
@@ -17,13 +21,11 @@ TOP ?= $(error Unable to access eng.git submodule Makefiles.)
 
 include ./deps/eng/tools/mk/Makefile.agent_prebuilt.defs
 include ./deps/eng/tools/mk/Makefile.smf.defs
+include ./deps/eng/tools/mk/Makefile.rust.defs
 
 #
 # Variables
 #
-
-# TODO: Use this to download or verify install of expected rust version
-RUST_PREBUILT_VERSION =		1.40.0
 
 RELEASE_TARBALL :=	$(NAME)-pkg-$(STAMP).tar.gz
 ROOT :=			$(shell pwd)
@@ -93,15 +95,23 @@ publish: release
 	cp $(ROOT)/$(RELEASE_TARBALL) \
 	    $(ENGBLD_BITS_DIR)/$(NAME)/$(RELEASE_TARBALL)
 
+.PHONY: debug
+debug: | $(CARGO_EXEC)
+	$(CARGO) build
+
 .PHONY: build-buckets-mdapi
-build-buckets-mdapi:
+build-buckets-mdapi: | $(CARGO_EXEC)
 	$(CARGO) build --release
 
+.PHONY: test
+test: test-unit
+
 .PHONY: test-unit
-test-unit:
+test-unit: | $(CARGO_EXEC)
 	$(CARGO) test --lib
 
 include ./deps/eng/tools/mk/Makefile.deps
 include ./deps/eng/tools/mk/Makefile.agent_prebuilt.targ
 include ./deps/eng/tools/mk/Makefile.smf.targ
 include ./deps/eng/tools/mk/Makefile.targ
+include ./deps/eng/tools/mk/Makefile.rust.targ

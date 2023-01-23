@@ -35,6 +35,6 @@ uuid = { version = "0.8", features = ["serde", "v4"] }
 [dev-dependencies]
 cueball-static-resolver = "0.3.1"
 quickcheck = "0.8.5"
-quickcheck_helpers = { git = "https://github.com/joyent/rust-quickcheck-helpers" }
+quickcheck_helpers = { git = "https://github.com/TritonDataCenter/rust-quickcheck-helpers" }
 slog-term = "2.4.0"
 url = "1.7.2"
