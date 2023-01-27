@@ -20,3 +20,4 @@ config.toml
 /bits
 *.tar.gz
 /rust
+/cache
