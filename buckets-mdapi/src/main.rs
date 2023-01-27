@@ -1,5 +1,4 @@
 // Copyright 2020 Joyent, Inc.
-// Copyright 2023 MNX Cloud, Inc.
 
 use std::default::Default;
 use std::net::SocketAddr;
