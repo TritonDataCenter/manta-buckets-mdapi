@@ -1,11 +1,12 @@
 // Copyright 2020 Joyent, Inc.
+// Copyright 2023 MNX Cloud, Inc.
 
 use std::marker::Sync;
 
 use postgres::types::ToSql;
 use postgres::Transaction;
-use slog::{trace, Logger};
 use serde_derive::{Deserialize, Serialize};
+use slog::{trace, Logger};
 
 use crate::error::BucketsMdapiError;
 use crate::metrics;
@@ -44,10 +45,10 @@ impl Conditions {
             None => {
                 if let Some(client_etags) = &self.if_match {
                     if check_if_match_wildcard(client_etags) {
-                        return Err(error(
-                            format!("if-match '{}' matched a non-existent object",
-                                print_etags(&client_etags)),
-                        ));
+                        return Err(error(format!(
+                            "if-match '{}' matched a non-existent object",
+                            print_etags(&client_etags)
+                        )));
                     }
                 }
 
@@ -58,7 +59,7 @@ impl Conditions {
                 }
 
                 return Err(BucketsMdapiError::ObjectNotFound);
-            },
+            }
             Some(object) => object,
         };
 
@@ -67,41 +68,41 @@ impl Conditions {
 
         if let Some(client_etags) = &self.if_match {
             if !check_if_match(&etag, client_etags) {
-                return Err(error(
-                    format!("if-match '{}' didn't match etag '{}'",
-                        print_etags(&client_etags), etag),
-                ));
+                return Err(error(format!(
+                    "if-match '{}' didn't match etag '{}'",
+                    print_etags(&client_etags),
+                    etag
+                )));
             }
         }
 
         if let Some(client_unmodified) = self.if_unmodified_since {
             if last_modified > client_unmodified {
-                return Err(error(
-                    format!(
-                        "object was modified at '{}'; if-unmodified-since '{}'",
-                        last_modified.to_rfc3339(), client_unmodified.to_rfc3339(),
-                    ),
-                ));
+                return Err(error(format!(
+                    "object was modified at '{}'; if-unmodified-since '{}'",
+                    last_modified.to_rfc3339(),
+                    client_unmodified.to_rfc3339(),
+                )));
             }
         }
 
         if let Some(client_etags) = &self.if_none_match {
             if check_if_match(&etag, client_etags) {
-                return Err(error(
-                    format!("if-none-match '{}' matched etag '{}'",
-                        print_etags(&client_etags), etag),
-                ));
+                return Err(error(format!(
+                    "if-none-match '{}' matched etag '{}'",
+                    print_etags(&client_etags),
+                    etag
+                )));
             }
         }
 
         if let Some(client_modified) = self.if_modified_since {
             if last_modified <= client_modified {
-                return Err(error(
-                    format!(
-                        "object was modified at '{}'; if-modified-since '{}'",
-                        last_modified.to_rfc3339(), client_modified.to_rfc3339(),
-                    ),
-                ));
+                return Err(error(format!(
+                    "object was modified at '{}'; if-modified-since '{}'",
+                    last_modified.to_rfc3339(),
+                    client_modified.to_rfc3339(),
+                )));
             }
         }
 
@@ -134,9 +135,9 @@ pub fn request(
         metrics,
         log,
     )
-    .map_err(|e| { BucketsMdapiError::PostgresError(e.to_string()) })
-    .and_then(|rows| { response("getobject", &rows) })
-    .and_then(|maybe_resp| { conditions.check(maybe_resp.as_ref()) })
+    .map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))
+    .and_then(|rows| response("getobject", &rows))
+    .and_then(|maybe_resp| conditions.check(maybe_resp.as_ref()))
 }
 
 fn check_if_match_wildcard(client_etags: &[String]) -> bool {
@@ -154,17 +155,19 @@ fn check_if_match(etag: &str, client_etags: &[String]) -> bool {
 }
 
 fn print_etags(etags: &[String]) -> String {
-    etags.iter().map(|e| {
-        format!("\"{}\"", e)
-    }).collect::<Vec<String>>().join(", ")
+    etags
+        .iter()
+        .map(|e| format!("\"{}\"", e))
+        .collect::<Vec<String>>()
+        .join(", ")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono;
     use quickcheck::quickcheck;
     use serde_json::{json, Value};
-    use chrono;
     use uuid::Uuid;
 
     fn conditions_from_value(v: Value) -> Conditions {

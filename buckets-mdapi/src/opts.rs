@@ -1,6 +1,5 @@
-/*
- * Copyright 2019 Joyent, Inc.
- */
+// Copyright 2019 Joyent, Inc.
+// Copyright 2023 MNX Cloud, Inc.
 
 use clap::{crate_version, App, Arg, ArgMatches};
 
@@ -59,7 +58,9 @@ pub fn parse<'a>(app: &str) -> ArgMatches<'a> {
                 .short("l")
                 .long("level")
                 .takes_value(true)
-                .possible_values(&["trace", "debug", "info", "warning", "error", "critical"])
+                .possible_values(&[
+                    "trace", "debug", "info", "warning", "error", "critical",
+                ])
                 .required(false),
         )
         .arg(

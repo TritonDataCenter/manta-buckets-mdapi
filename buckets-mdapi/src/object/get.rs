@@ -1,4 +1,5 @@
 // Copyright 2020 Joyent, Inc.
+// Copyright 2023 MNX Cloud, Inc.
 
 use std::vec::Vec;
 
@@ -88,14 +89,12 @@ fn do_get(
     )
     .map_err(|e| BucketsMdapiError::PostgresError(e.to_string()))
     .and_then(|rows| response(method, &rows))
-    .and_then(|maybe_resp| {
-        match maybe_resp {
-            None => Err(BucketsMdapiError::ObjectNotFound),
-            Some(object) => {
-                payload.conditions.check(Some(&object))?;
+    .and_then(|maybe_resp| match maybe_resp {
+        None => Err(BucketsMdapiError::ObjectNotFound),
+        Some(object) => {
+            payload.conditions.check(Some(&object))?;
 
-                Ok(object)
-            },
+            Ok(object)
         }
     })
 }

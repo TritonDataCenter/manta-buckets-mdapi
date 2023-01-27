@@ -1,4 +1,5 @@
 // Copyright 2020 Joyent, Inc.
+// Copyright 2023 MNX Cloud, Inc.
 
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr};
@@ -6,8 +7,8 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::Mutex;
 
-use slog::{error, info, o, Drain, Level, LevelFilter, Logger};
 use serde_json::json;
+use slog::{error, info, o, Drain, Level, LevelFilter, Logger};
 use url::Url;
 use uuid::Uuid;
 
@@ -20,12 +21,12 @@ use cueball_static_resolver::StaticIpResolver;
 use fast_rpc::protocol::{FastMessage, FastMessageData};
 
 use buckets_mdapi::bucket;
+use buckets_mdapi::conditional;
 use buckets_mdapi::error::{BucketsMdapiError, BucketsMdapiWrappedError};
 use buckets_mdapi::gc;
 use buckets_mdapi::metrics;
 use buckets_mdapi::object;
 use buckets_mdapi::util;
-use buckets_mdapi::conditional;
 use utils::{config, schema};
 
 // This test suite requires PostgreSQL and pg_tmp
@@ -38,7 +39,8 @@ fn verify_rpc_handlers() {
         Mutex::new(LevelFilter::new(
             slog_term::FullFormat::new(plain).build(),
             Level::Error,
-        )).fuse(),
+        ))
+        .fuse(),
         o!(),
     );
 
@@ -173,15 +175,19 @@ fn verify_rpc_handlers() {
     let get_bucket_response = get_bucket_result.unwrap();
     assert_eq!(get_bucket_response.len(), 1);
 
-    let get_bucket_response_result_data = get_bucket_response[0].data.d[0].clone();
+    let get_bucket_response_result_data =
+        get_bucket_response[0].data.d[0].clone();
     /*
      * All errors should have a "name" and "message" property to comply with the error format in
      * the Fast protocol.
      */
-    assert_eq!(get_bucket_response_result_data, json!({"error": {
-        "name": "BucketNotFound",
-        "message": "requested bucket not found",
-    }}));
+    assert_eq!(
+        get_bucket_response_result_data,
+        json!({"error": {
+            "name": "BucketNotFound",
+            "message": "requested bucket not found",
+        }})
+    );
     let get_bucket_response_result: Result<BucketsMdapiWrappedError, _> =
         serde_json::from_value(get_bucket_response_result_data);
     assert!(get_bucket_response_result.is_ok());
@@ -397,7 +403,8 @@ fn verify_rpc_handlers() {
     };
     let conditions = serde_json::from_value::<conditional::Conditions>(json!({
         "if-match": [ "*" ]
-    })).unwrap();
+    }))
+    .unwrap();
 
     let create_object_payload = object::create::CreateObjectPayload {
         owner: owner_id,
@@ -433,8 +440,10 @@ fn verify_rpc_handlers() {
     assert!(create_object_response_result.is_ok());
     assert_eq!(
         create_object_response_result.unwrap(),
-        BucketsMdapiWrappedError::new(BucketsMdapiError::PreconditionFailedError(
-            format!("if-match '\"*\"' matched a non-existent object"))
+        BucketsMdapiWrappedError::new(
+            BucketsMdapiError::PreconditionFailedError(format!(
+                "if-match '\"*\"' matched a non-existent object"
+            ))
         ),
     );
 
@@ -449,7 +458,8 @@ fn verify_rpc_handlers() {
     };
     let conditions = serde_json::from_value::<conditional::Conditions>(json!({
         "if-none-match": [ "*" ]
-    })).unwrap();
+    }))
+    .unwrap();
 
     let create_object_payload = object::create::CreateObjectPayload {
         owner: owner_id,
@@ -496,7 +506,8 @@ fn verify_rpc_handlers() {
     };
     let conditions = serde_json::from_value::<conditional::Conditions>(json!({
         "if-none-match": [ "*" ]
-    })).unwrap();
+    }))
+    .unwrap();
 
     let create_object_payload = object::create::CreateObjectPayload {
         owner: owner_id,
@@ -532,8 +543,11 @@ fn verify_rpc_handlers() {
     assert!(create_object_response_result.is_ok());
     assert_eq!(
         create_object_response_result.unwrap(),
-        BucketsMdapiWrappedError::new(BucketsMdapiError::PreconditionFailedError(
-            format!("if-none-match '\"*\"' matched etag '{}'", object_id))
+        BucketsMdapiWrappedError::new(
+            BucketsMdapiError::PreconditionFailedError(format!(
+                "if-none-match '\"*\"' matched etag '{}'",
+                object_id
+            ))
         ),
     );
 
@@ -586,7 +600,8 @@ fn verify_rpc_handlers() {
 
     let conditions = serde_json::from_value::<conditional::Conditions>(json!({
         "if-match": [ object_id.to_string() ],
-    })).unwrap();
+    }))
+    .unwrap();
 
     let get_object_payload = object::GetObjectPayload {
         owner: owner_id,
@@ -623,7 +638,8 @@ fn verify_rpc_handlers() {
     let if_match_etag = Uuid::new_v4();
     let conditions = serde_json::from_value::<conditional::Conditions>(json!({
         "if-match": [ if_match_etag ],
-    })).unwrap();
+    }))
+    .unwrap();
 
     let mut get_object_payload = object::GetObjectPayload {
         owner: owner_id,
@@ -652,8 +668,11 @@ fn verify_rpc_handlers() {
     assert!(get_object_response_result.is_ok());
     assert_eq!(
         get_object_response_result.unwrap(),
-        BucketsMdapiWrappedError::new(BucketsMdapiError::PreconditionFailedError(
-            format!("if-match '\"{}\"' didn't match etag '{}'", if_match_etag, object_id))
+        BucketsMdapiWrappedError::new(
+            BucketsMdapiError::PreconditionFailedError(format!(
+                "if-match '\"{}\"' didn't match etag '{}'",
+                if_match_etag, object_id
+            ))
         ),
     );
 

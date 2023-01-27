@@ -183,7 +183,7 @@ dependencies = [
  "postgres 0.17.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "prometheus 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "quickcheck 0.8.5 (registry+https://github.com/rust-lang/crates.io-index)",
- "quickcheck_helpers 0.1.0 (git+https://github.com/joyent/rust-quickcheck-helpers)",
+ "quickcheck_helpers 0.1.0 (git+https://github.com/TritonDataCenter/rust-quickcheck-helpers)",
  "rand 0.7.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.111 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.111 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1693,7 +1693,7 @@ dependencies = [
 [[package]]
 name = "quickcheck_helpers"
 version = "0.1.0"
-source = "git+https://github.com/joyent/rust-quickcheck-helpers#52a286ced9d285988deab2738a72b73a4ba81dd3"
+source = "git+https://github.com/TritonDataCenter/rust-quickcheck-helpers#52a286ced9d285988deab2738a72b73a4ba81dd3"
 dependencies = [
  "quickcheck 0.8.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2016,7 +2016,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "sapi"
 version = "0.2.0"
-source = "git+https://github.com/joyent/rust-triton-clients?tag=v0.2.0#a2d8db26fe28a927079acfc612d8f0709894ea9f"
+source = "git+https://github.com/TritonDataCenter/rust-triton-clients?tag=v0.2.0#a2d8db26fe28a927079acfc612d8f0709894ea9f"
 dependencies = [
  "flate2 1.0.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "miniz_oxide 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2053,7 +2053,7 @@ dependencies = [
  "cueball-tcp-stream-connection 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "dotenv 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "fast-rpc 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "sapi 0.2.0 (git+https://github.com/joyent/rust-triton-clients?tag=v0.2.0)",
+ "sapi 0.2.0 (git+https://github.com/TritonDataCenter/rust-triton-clients?tag=v0.2.0)",
  "serde 1.0.111 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.53 (registry+https://github.com/rust-lang/crates.io-index)",
  "slog 2.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -3114,7 +3114,7 @@ dependencies = [
 "checksum publicsuffix 1.5.4 (registry+https://github.com/rust-lang/crates.io-index)" = "3bbaa49075179162b49acac1c6aa45fb4dafb5f13cf6794276d77bc7fd95757b"
 "checksum quick-error 1.2.3 (registry+https://github.com/rust-lang/crates.io-index)" = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
 "checksum quickcheck 0.8.5 (registry+https://github.com/rust-lang/crates.io-index)" = "9c35d9c36a562f37eca96e79f66d5fd56eefbc22560dacc4a864cabd2d277456"
-"checksum quickcheck_helpers 0.1.0 (git+https://github.com/joyent/rust-quickcheck-helpers)" = "<none>"
+"checksum quickcheck_helpers 0.1.0 (git+https://github.com/TritonDataCenter/rust-quickcheck-helpers)" = "<none>"
 "checksum quote 0.6.13 (registry+https://github.com/rust-lang/crates.io-index)" = "6ce23b6b870e8f94f81fb0a363d65d86675884b34a09043c81e5562f11c1f8e1"
 "checksum quote 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)" = "54a21852a652ad6f610c9510194f398ff6f8692e334fd1145fed931f7fbe44ea"
 "checksum radix_trie 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)" = "3d3681b28cd95acfb0560ea9441f82d6a4504fa3b15b97bd7b6e952131820e95"
@@ -3149,7 +3149,7 @@ dependencies = [
 "checksum rustc_version 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)" = "138e3e0acb6c9fb258b19b67cb8abd63c00679d2851805ea151465464fe9030a"
 "checksum ryu 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)" = "71d301d4193d031abdd79ff7e3dd721168a9572ef3fe51a1517aba235bd8f86e"
 "checksum safemem 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)" = "ef703b7cb59335eae2eb93ceb664c0eb7ea6bf567079d843e09420219668e072"
-"checksum sapi 0.2.0 (git+https://github.com/joyent/rust-triton-clients?tag=v0.2.0)" = "<none>"
+"checksum sapi 0.2.0 (git+https://github.com/TritonDataCenter/rust-triton-clients?tag=v0.2.0)" = "<none>"
 "checksum schannel 0.1.19 (registry+https://github.com/rust-lang/crates.io-index)" = "8f05ba609c234e60bee0d547fe94a4c7e9da733d1c962cf6e59efa4cd9c8bc75"
 "checksum scoped-tls 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "332ffa32bf586782a3efaeb58f127980944bbc8c4d6913a86107ac2a5ab24b28"
 "checksum scopeguard 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"

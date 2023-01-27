@@ -19,3 +19,5 @@ config.toml
 /make_stamps
 /bits
 *.tar.gz
+/rust
+/cache
