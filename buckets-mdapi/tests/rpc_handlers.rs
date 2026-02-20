@@ -74,7 +74,7 @@ macro_rules! setup_test_env {
         let pg_tmp_check_output = Command::new("which")
             .arg("pg_tmp")
             .output()
-            expect("failed to check for pg_tmp — ensure 'which' is available on PATH")
+            .expect("failed to run 'which pg_tmp' — ensure 'which' is available on PATH");
 
         if !pg_tmp_check_output.status.success() {
             error!($log, "pg_tmp is required to run this test");
@@ -84,7 +84,7 @@ macro_rules! setup_test_env {
         let create_db_output =
             Command::new("../tools/postgres/create-ephemeral-db.sh")
                 .output()
-                .expect("failed to execute process");
+                .expect("failed to run '../tools/postgres/create-ephemeral-db.sh' — check the script exists and is executable");
 
         assert!(create_db_output.status.success());
 
