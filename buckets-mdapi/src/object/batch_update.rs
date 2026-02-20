@@ -174,8 +174,8 @@ pub(crate) fn action(
 ///
 /// # Time complexity
 ///
-/// O(N) where N is total objects: one SQL UPDATE per
-/// object, grouped into V transactions (V = distinct
+/// O(N) where N is total items across vnodes: one SQL UPDATE per
+/// item, grouped into V transactions (V = distinct
 /// vnodes).
 ///
 /// # Space complexity
