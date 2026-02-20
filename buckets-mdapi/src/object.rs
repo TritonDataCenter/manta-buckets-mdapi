@@ -1,5 +1,6 @@
 // Copyright 2020 Joyent, Inc.
 // Copyright 2023 MNX Cloud, Inc.
+// Copyright 2026 Edgecast Cloud LLC.
 
 use std::error::Error;
 use std::vec::Vec;
@@ -16,6 +17,7 @@ use crate::conditional;
 use crate::error::BucketsMdapiError;
 use crate::types::{HasRequestId, Hstore, RowSlice, Timestamptz};
 
+pub mod batch_update;
 pub mod create;
 pub mod delete;
 pub mod get;

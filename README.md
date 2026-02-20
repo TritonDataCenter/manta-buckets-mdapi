@@ -128,3 +128,10 @@ The functional tests require that postgresql is installed as well as
 and configure a temporary postgres database and once the test has completed the
 temporary database is removed within a few seconds. The tests use the same code
 used by the `schema-manager` to prepare the database for use by the test suite.
+
+To build `ephemeralpg` from source on SmartOS, the socket library must be linked
+explicitly:
+
+```
+LDFLAGS=-lsocket make
+```
