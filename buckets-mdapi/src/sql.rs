@@ -37,6 +37,9 @@ pub enum Method {
     GarbageBatchIdGet,
     GarbageBatchIdUpdate,
     GarbageRefresh,
+    ListVnodes,
+    ListOwners,
+    VnodeExists,
 }
 
 impl Method {
@@ -61,6 +64,9 @@ impl Method {
             Method::GarbageBatchIdGet => "GarbageBatchIdGet",
             Method::GarbageBatchIdUpdate => "GarbageBatchIdUpdate",
             Method::GarbageRefresh => "GarbageRefresh",
+            Method::ListVnodes => "ListVnodes",
+            Method::ListOwners => "ListOwners",
+            Method::VnodeExists => "VnodeExists",
         }
     }
 }

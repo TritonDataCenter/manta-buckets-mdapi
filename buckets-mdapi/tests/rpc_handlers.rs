@@ -2,12 +2,16 @@
 // Copyright 2023 MNX Cloud, Inc.
 // Copyright 2026 Edgecast Cloud LLC.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
 use std::process::Command;
-use std::sync::{Mutex, Once};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, Once};
+use std::thread;
+use std::time::Instant;
 
+use rand::Rng;
 use serde_json::json;
 use slog::{error, info, o, Drain, Level, LevelFilter, Logger};
 use url::Url;
@@ -23,6 +27,7 @@ use fast_rpc::protocol::{FastMessage, FastMessageData};
 
 use buckets_mdapi::bucket;
 use buckets_mdapi::conditional;
+use buckets_mdapi::discovery;
 use buckets_mdapi::error::{BucketsMdapiError, BucketsMdapiWrappedError};
 use buckets_mdapi::gc;
 use buckets_mdapi::metrics;
@@ -1688,4 +1693,604 @@ fn verify_gc_handlers() {
     get_garbage_unwrapped_result = get_garbage_response_result.unwrap();
     assert!(get_garbage_unwrapped_result.batch_id.is_none());
     assert!(get_garbage_unwrapped_result.garbage.is_empty());
+}
+
+////////////////////////////////////////////////////////////
+// Discovery RPC tests
+////////////////////////////////////////////////////////////
+
+// Helper: call listvnodes and return the parsed response
+fn do_listvnodes(
+    msg_id: u32,
+    pool: &ConnectionPool<
+        PostgresConnection,
+        impl cueball::resolver::Resolver,
+        impl FnMut(&cueball::backend::Backend) -> PostgresConnection
+            + Send
+            + 'static,
+    >,
+    metrics: &RegisteredMetrics,
+    log: &Logger,
+) -> discovery::ListVnodesResponse {
+    let payload = discovery::ListVnodesPayload {
+        request_id: Uuid::new_v4(),
+    };
+    let json = serde_json::to_value(vec![&payload]).unwrap();
+    let msg_data = FastMessageData::new("listvnodes".into(), json);
+    let msg = FastMessage::data(msg_id, msg_data);
+    let result = util::handle_msg(&msg, pool, metrics, log);
+    assert!(result.is_ok());
+    let response = result.unwrap();
+    assert_eq!(response.len(), 1);
+    serde_json::from_value(response[0].data.d[0].clone())
+        .expect("failed to parse ListVnodesResponse")
+}
+
+// Helper: call listowners for a vnode and return the parsed response
+fn do_listowners(
+    msg_id: u32,
+    vnode: u64,
+    pool: &ConnectionPool<
+        PostgresConnection,
+        impl cueball::resolver::Resolver,
+        impl FnMut(&cueball::backend::Backend) -> PostgresConnection
+            + Send
+            + 'static,
+    >,
+    metrics: &RegisteredMetrics,
+    log: &Logger,
+) -> discovery::ListOwnersResponse {
+    let payload = discovery::ListOwnersPayload {
+        vnode,
+        request_id: Uuid::new_v4(),
+    };
+    let json = serde_json::to_value(vec![&payload]).unwrap();
+    let msg_data = FastMessageData::new("listowners".into(), json);
+    let msg = FastMessage::data(msg_id, msg_data);
+    let result = util::handle_msg(&msg, pool, metrics, log);
+    assert!(result.is_ok());
+    let response = result.unwrap();
+    assert_eq!(response.len(), 1);
+    serde_json::from_value(response[0].data.d[0].clone())
+        .expect("failed to parse ListOwnersResponse")
+}
+
+#[test]
+fn verify_discovery_handlers() {
+    setup_test_env!(pool, metrics, log);
+    let msg_id: u32 = 0x1;
+
+    // listvnodes: the test harness creates schemas for vnodes 0 and 1
+    let vnodes_resp = do_listvnodes(msg_id, &pool, &metrics, &log);
+    assert!(
+        vnodes_resp.vnodes.contains(&0),
+        "expected vnode 0 in response"
+    );
+    assert!(
+        vnodes_resp.vnodes.contains(&1),
+        "expected vnode 1 in response"
+    );
+
+    // listowners on both vnodes before any data -> empty
+    for vnode in &[0u64, 1] {
+        let owners_resp = do_listowners(msg_id, *vnode, &pool, &metrics, &log);
+        assert!(
+            owners_resp.owners.is_empty(),
+            "expected empty owners on vnode {} with no buckets",
+            vnode
+        );
+    }
+
+    // Create buckets for 3 random owners spread across both vnodes.
+    // owner_a: buckets on vnode 0 only
+    // owner_b: buckets on vnode 1 only
+    // owner_c: buckets on both vnodes
+    let owner_a = Uuid::new_v4();
+    let owner_b = Uuid::new_v4();
+    let owner_c = Uuid::new_v4();
+
+    // Use random bucket names to avoid collisions
+    let bucket_a0 = format!("disc_{}", Uuid::new_v4());
+    let bucket_b1 = format!("disc_{}", Uuid::new_v4());
+    let bucket_c0 = format!("disc_{}", Uuid::new_v4());
+    let bucket_c1 = format!("disc_{}", Uuid::new_v4());
+
+    create_test_bucket!(
+        msg_id,
+        owner_a,
+        bucket_a0.as_str(),
+        0,
+        Uuid::new_v4(),
+        pool,
+        metrics,
+        log
+    );
+    create_test_bucket!(
+        msg_id,
+        owner_b,
+        bucket_b1.as_str(),
+        1,
+        Uuid::new_v4(),
+        pool,
+        metrics,
+        log
+    );
+    create_test_bucket!(
+        msg_id,
+        owner_c,
+        bucket_c0.as_str(),
+        0,
+        Uuid::new_v4(),
+        pool,
+        metrics,
+        log
+    );
+    create_test_bucket!(
+        msg_id,
+        owner_c,
+        bucket_c1.as_str(),
+        1,
+        Uuid::new_v4(),
+        pool,
+        metrics,
+        log
+    );
+
+    // listowners on vnode 0: should contain owner_a and owner_c
+    let owners_v0 = do_listowners(msg_id, 0, &pool, &metrics, &log);
+    assert_eq!(
+        owners_v0.owners.len(),
+        2,
+        "expected 2 distinct owners on vnode 0, got {:?}",
+        owners_v0.owners
+    );
+    assert!(owners_v0.owners.contains(&owner_a));
+    assert!(owners_v0.owners.contains(&owner_c));
+
+    // listowners on vnode 1: should contain owner_b and owner_c
+    let owners_v1 = do_listowners(msg_id, 1, &pool, &metrics, &log);
+    assert_eq!(
+        owners_v1.owners.len(),
+        2,
+        "expected 2 distinct owners on vnode 1, got {:?}",
+        owners_v1.owners
+    );
+    assert!(owners_v1.owners.contains(&owner_b));
+    assert!(owners_v1.owners.contains(&owner_c));
+
+    // listvnodes should still return the same vnodes (data doesn't
+    // change the schema set)
+    let vnodes_resp = do_listvnodes(msg_id, &pool, &metrics, &log);
+    assert_eq!(vnodes_resp.vnodes, vec![0, 1]);
+}
+
+#[test]
+fn verify_listowners_invalid_vnode() {
+    setup_test_env!(pool, metrics, _log);
+
+    // Use a Critical-level logger to suppress the expected ERRO line
+    // from the invalid-vnode error path, keeping test output clean.
+    let plain = slog_term::PlainSyncDecorator::new(std::io::stdout());
+    let log = Logger::root(
+        Mutex::new(LevelFilter::new(
+            slog_term::FullFormat::new(plain).build(),
+            Level::Critical,
+        ))
+        .fuse(),
+        o!(),
+    );
+
+    let msg_id: u32 = 0x1;
+
+    // Pick a vnode that definitely does not exist in the test harness
+    let bad_vnode: u64 = 99999;
+
+    let payload = discovery::ListOwnersPayload {
+        vnode: bad_vnode,
+        request_id: Uuid::new_v4(),
+    };
+    let json = serde_json::to_value(vec![&payload]).unwrap();
+    let msg_data = FastMessageData::new("listowners".into(), json);
+    let msg = FastMessage::data(msg_id, msg_data);
+    let result = util::handle_msg(&msg, &pool, &metrics, &log);
+    assert!(result.is_ok());
+    let response = result.unwrap();
+    assert_eq!(response.len(), 1);
+
+    // The response should be a wrapped PostgresError, not a
+    // successful ListOwnersResponse.
+    let err_result: Result<BucketsMdapiWrappedError, _> =
+        serde_json::from_value(response[0].data.d[0].clone());
+    assert!(
+        err_result.is_ok(),
+        "expected a BucketsMdapiWrappedError for invalid vnode"
+    );
+    let wrapped = err_result.unwrap();
+    assert_eq!(wrapped.error.name, "PostgresError");
+    assert!(
+        wrapped.error.message.contains("does not exist"),
+        "expected 'does not exist' in error message, got: {}",
+        wrapped.error.message
+    );
+}
+
+////////////////////////////////////////////////////////////
+// Discovery concurrency and performance tests
+////////////////////////////////////////////////////////////
+
+/// Validate that multiple threads can perform discovery
+/// RPCs simultaneously without errors or data corruption.
+///
+/// Spawns 8 threads, each running 20 iterations of
+/// listvnodes + listowners on both vnodes, contending on
+/// a pool of 5 connections.
+#[test]
+fn verify_discovery_concurrent_reads() {
+    setup_test_env!(pool, metrics, log);
+    let msg_id: u32 = 0x1;
+
+    // Seed data: 5 owners on both vnodes (10 buckets).
+    let mut expected_v0: HashSet<Uuid> = HashSet::new();
+    let mut expected_v1: HashSet<Uuid> = HashSet::new();
+
+    for i in 0u32..5 {
+        let owner = Uuid::new_v4();
+        let bkt_v0 = format!("conc_r_{}_v0_{}", i, Uuid::new_v4());
+        let bkt_v1 = format!("conc_r_{}_v1_{}", i, Uuid::new_v4());
+
+        create_test_bucket!(
+            msg_id,
+            owner,
+            bkt_v0.as_str(),
+            0,
+            Uuid::new_v4(),
+            pool,
+            metrics,
+            log
+        );
+        create_test_bucket!(
+            msg_id,
+            owner,
+            bkt_v1.as_str(),
+            1,
+            Uuid::new_v4(),
+            pool,
+            metrics,
+            log
+        );
+        expected_v0.insert(owner);
+        expected_v1.insert(owner);
+    }
+
+    let num_threads = 8;
+    let iterations = 20;
+
+    let handles: Vec<_> = (0..num_threads)
+        .map(|t| {
+            let pool_c = pool.clone();
+            let metrics_c = metrics.clone();
+            let log_c = log.clone();
+            let exp_v0 = expected_v0.clone();
+            let exp_v1 = expected_v1.clone();
+
+            thread::spawn(move || {
+                for iter in 0..iterations {
+                    let mid = ((t * iterations + iter) as u32) + 1;
+
+                    // listvnodes
+                    let vr = do_listvnodes(mid, &pool_c, &metrics_c, &log_c);
+                    assert!(
+                        vr.vnodes.contains(&0) && vr.vnodes.contains(&1),
+                        "thread {} iter {}: bad vnodes {:?}",
+                        t,
+                        iter,
+                        vr.vnodes
+                    );
+
+                    // listowners vnode 0
+                    let o0 = do_listowners(mid, 0, &pool_c, &metrics_c, &log_c);
+                    let set0: HashSet<Uuid> = o0.owners.into_iter().collect();
+                    assert_eq!(
+                        set0, exp_v0,
+                        "thread {} iter {}: vnode 0 owners",
+                        t, iter
+                    );
+
+                    // listowners vnode 1
+                    let o1 = do_listowners(mid, 1, &pool_c, &metrics_c, &log_c);
+                    let set1: HashSet<Uuid> = o1.owners.into_iter().collect();
+                    assert_eq!(
+                        set1, exp_v1,
+                        "thread {} iter {}: vnode 1 owners",
+                        t, iter
+                    );
+                }
+            })
+        })
+        .collect();
+
+    for h in handles {
+        h.join().expect("reader thread panicked");
+    }
+}
+
+/// Validate discovery reads return consistent results
+/// while concurrent bucket creation is happening.
+///
+/// Reader threads assert monotonically non-decreasing
+/// owner counts (no stale reads showing fewer owners
+/// than a previous read).
+///
+/// Invariant: for each vnode, |owners(t2)| >= |owners(t1)|
+///            when t2 > t1 during concurrent inserts.
+#[test]
+fn verify_discovery_concurrent_reads_writes() {
+    setup_test_env!(pool, metrics, log);
+
+    let done = Arc::new(AtomicBool::new(false));
+    let num_readers = 4;
+
+    // Spawn reader threads before writes begin.
+    let reader_handles: Vec<_> = (0..num_readers)
+        .map(|t| {
+            let pool_c = pool.clone();
+            let metrics_c = metrics.clone();
+            let log_c = log.clone();
+            let done_c = done.clone();
+
+            thread::spawn(move || {
+                let mut prev_v0: usize = 0;
+                let mut prev_v1: usize = 0;
+                let mut reads: u64 = 0;
+
+                while !done_c.load(Ordering::Relaxed) {
+                    let mid =
+                        ((t as u32) * 10000) + ((reads as u32) % 10000) + 1;
+
+                    // listvnodes: always [0, 1]
+                    let vr = do_listvnodes(mid, &pool_c, &metrics_c, &log_c);
+                    assert!(
+                        vr.vnodes.contains(&0) && vr.vnodes.contains(&1),
+                        "reader {}: bad vnodes {:?}",
+                        t,
+                        vr.vnodes
+                    );
+
+                    // listowners vnode 0: monotonic
+                    let o0 = do_listowners(mid, 0, &pool_c, &metrics_c, &log_c);
+                    let cur_v0 = o0.owners.len();
+                    assert!(
+                        cur_v0 >= prev_v0,
+                        "reader {}: vnode 0 owners shrank \
+                         from {} to {} (read #{})",
+                        t,
+                        prev_v0,
+                        cur_v0,
+                        reads
+                    );
+                    prev_v0 = cur_v0;
+
+                    // listowners vnode 1: monotonic
+                    let o1 = do_listowners(mid, 1, &pool_c, &metrics_c, &log_c);
+                    let cur_v1 = o1.owners.len();
+                    assert!(
+                        cur_v1 >= prev_v1,
+                        "reader {}: vnode 1 owners shrank \
+                         from {} to {} (read #{})",
+                        t,
+                        prev_v1,
+                        cur_v1,
+                        reads
+                    );
+                    prev_v1 = cur_v1;
+
+                    reads += 1;
+                }
+            })
+        })
+        .collect();
+
+    // Writer: create 10 buckets with distinct owners,
+    // alternating vnodes.
+    let msg_id: u32 = 0x1;
+    for i in 0u32..10 {
+        let owner = Uuid::new_v4();
+        let vnode = (i % 2) as u64;
+        let bkt = format!("conc_rw_{}_{}", i, Uuid::new_v4());
+        create_test_bucket!(
+            msg_id,
+            owner,
+            bkt.as_str(),
+            vnode,
+            Uuid::new_v4(),
+            pool,
+            metrics,
+            log
+        );
+    }
+
+    // Signal readers to stop.
+    done.store(true, Ordering::Relaxed);
+
+    for h in reader_handles {
+        h.join().expect("reader thread panicked");
+    }
+}
+
+/// Test discovery correctness with a larger, randomized
+/// dataset of owners distributed across vnodes.
+///
+/// Generates 10-20 random owners, each with 1-3 buckets
+/// on a random vnode. Validates that listowners returns
+/// exactly the expected owner sets and their union covers
+/// all owners.
+#[test]
+fn verify_discovery_random_owners_workload() {
+    setup_test_env!(pool, metrics, log);
+    let msg_id: u32 = 0x1;
+
+    let mut rng = rand::thread_rng();
+    let num_owners: usize = rng.gen_range(10, 21);
+
+    let mut expected_v0: HashSet<Uuid> = HashSet::new();
+    let mut expected_v1: HashSet<Uuid> = HashSet::new();
+    let mut all_owners: HashSet<Uuid> = HashSet::new();
+
+    for i in 0..num_owners {
+        let owner = Uuid::new_v4();
+        all_owners.insert(owner);
+
+        let num_buckets: usize = rng.gen_range(1, 4);
+        for j in 0..num_buckets {
+            let vnode: u64 = rng.gen_range(0, 2);
+            let bkt = format!("rand_{}_{}_{}", i, j, Uuid::new_v4());
+            create_test_bucket!(
+                msg_id,
+                owner,
+                bkt.as_str(),
+                vnode,
+                Uuid::new_v4(),
+                pool,
+                metrics,
+                log
+            );
+            if vnode == 0 {
+                expected_v0.insert(owner);
+            } else {
+                expected_v1.insert(owner);
+            }
+        }
+    }
+
+    // Verify listowners(0)
+    let o0 = do_listowners(msg_id, 0, &pool, &metrics, &log);
+    let actual_v0: HashSet<Uuid> = o0.owners.into_iter().collect();
+    assert_eq!(
+        actual_v0,
+        expected_v0,
+        "vnode 0 owners mismatch: expected {} got {}",
+        expected_v0.len(),
+        actual_v0.len()
+    );
+
+    // Verify listowners(1)
+    let o1 = do_listowners(msg_id, 1, &pool, &metrics, &log);
+    let actual_v1: HashSet<Uuid> = o1.owners.into_iter().collect();
+    assert_eq!(
+        actual_v1,
+        expected_v1,
+        "vnode 1 owners mismatch: expected {} got {}",
+        expected_v1.len(),
+        actual_v1.len()
+    );
+
+    // Union of both vnodes must cover all owners.
+    let union: HashSet<Uuid> = actual_v0.union(&actual_v1).cloned().collect();
+    assert_eq!(
+        union,
+        all_owners,
+        "union of vnode owners ({}) != all owners ({})",
+        union.len(),
+        all_owners.len()
+    );
+
+    // listvnodes must still report [0, 1]
+    let vr = do_listvnodes(msg_id, &pool, &metrics, &log);
+    assert!(
+        vr.vnodes.contains(&0) && vr.vnodes.contains(&1),
+        "expected vnodes [0,1], got {:?}",
+        vr.vnodes
+    );
+}
+
+/// Smoke test that discovery RPCs complete within
+/// reasonable time bounds, catching gross performance
+/// regressions.
+///
+/// Uses generous bounds (50ms average per RPC) to avoid
+/// flaky CI. Real latency on ephemeral PG is 1-5ms.
+#[test]
+fn verify_discovery_performance() {
+    setup_test_env!(pool, metrics, log);
+    let msg_id: u32 = 0x1;
+
+    // Seed 20 owners across both vnodes (40 buckets).
+    for i in 0u32..20 {
+        let owner = Uuid::new_v4();
+        let bkt_v0 = format!("perf_{}_v0_{}", i, Uuid::new_v4());
+        let bkt_v1 = format!("perf_{}_v1_{}", i, Uuid::new_v4());
+        create_test_bucket!(
+            msg_id,
+            owner,
+            bkt_v0.as_str(),
+            0,
+            Uuid::new_v4(),
+            pool,
+            metrics,
+            log
+        );
+        create_test_bucket!(
+            msg_id,
+            owner,
+            bkt_v1.as_str(),
+            1,
+            Uuid::new_v4(),
+            pool,
+            metrics,
+            log
+        );
+    }
+
+    // Warm up: prime the connection pool and PG caches.
+    let _ = do_listvnodes(msg_id, &pool, &metrics, &log);
+    let _ = do_listowners(msg_id, 0, &pool, &metrics, &log);
+    let _ = do_listowners(msg_id, 1, &pool, &metrics, &log);
+
+    let iterations: u32 = 100;
+    let max_total = std::time::Duration::from_secs(5);
+
+    // Benchmark listvnodes
+    let start = Instant::now();
+    for i in 0..iterations {
+        let vr = do_listvnodes(i + 1, &pool, &metrics, &log);
+        assert!(vr.vnodes.contains(&0));
+    }
+    let elapsed_vnodes = start.elapsed();
+    assert!(
+        elapsed_vnodes < max_total,
+        "listvnodes: {} iterations took {:?} (> {:?})",
+        iterations,
+        elapsed_vnodes,
+        max_total
+    );
+
+    // Benchmark listowners(0)
+    let start = Instant::now();
+    for i in 0..iterations {
+        let o0 = do_listowners(i + 1, 0, &pool, &metrics, &log);
+        assert_eq!(o0.owners.len(), 20);
+    }
+    let elapsed_owners_v0 = start.elapsed();
+    assert!(
+        elapsed_owners_v0 < max_total,
+        "listowners(0): {} iterations took {:?} (> {:?})",
+        iterations,
+        elapsed_owners_v0,
+        max_total
+    );
+
+    // Benchmark listowners(1)
+    let start = Instant::now();
+    for i in 0..iterations {
+        let o1 = do_listowners(i + 1, 1, &pool, &metrics, &log);
+        assert_eq!(o1.owners.len(), 20);
+    }
+    let elapsed_owners_v1 = start.elapsed();
+    assert!(
+        elapsed_owners_v1 < max_total,
+        "listowners(1): {} iterations took {:?} (> {:?})",
+        iterations,
+        elapsed_owners_v1,
+        max_total
+    );
 }
