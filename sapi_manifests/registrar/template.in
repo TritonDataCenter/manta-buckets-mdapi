@@ -5,9 +5,9 @@
     "service": {
       "type": "service",
       "service": {
-        "srvce": "_buckets_mdapi",
+        "srvce": "_buckets-mdapi",
         "proto": "_tcp",
-        "port": 2020
+        "port": 2030
       },
       "ttl": 60
     },
