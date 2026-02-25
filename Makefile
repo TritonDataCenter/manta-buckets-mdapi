@@ -1,6 +1,7 @@
 #
 # Copyright 2020 Joyent, Inc.
 # Copyright 2023 MNX Cloud, Inc.
+# Copyright 2026 Edgecast Cloud LLC.
 #
 
 NAME = manta-buckets-mdapi
@@ -48,7 +49,7 @@ manta-scripts: deps/manta-scripts/.git
 	cp deps/manta-scripts/*.sh $(BUILD)/scripts
 
 .PHONY: release
-release: all deps docs $(SMF_MANIFESTS)
+release: all deps docs $(SMF_MANIFESTS) sapi_manifests/registrar/template
 	@echo "Building $(RELEASE_TARBALL)"
 	@mkdir -p $(RELSTAGEDIR)/root/opt/smartdc/buckets-mdapi/deps
 	@mkdir -p $(RELSTAGEDIR)/root/opt/smartdc/buckets-mdapi/bin
