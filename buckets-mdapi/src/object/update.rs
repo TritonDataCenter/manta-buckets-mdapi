@@ -1,5 +1,6 @@
 // Copyright 2020 Joyent, Inc.
 // Copyright 2023 MNX Cloud, Inc.
+// Copyright 2026 Edgecast Cloud LLC.
 
 use std::vec::Vec;
 
@@ -15,7 +16,9 @@ use fast_rpc::protocol::{FastMessage, FastMessageData};
 use crate::conditional;
 use crate::error::BucketsMdapiError;
 use crate::metrics::RegisteredMetrics;
-use crate::object::{object_not_found, response, to_json, ObjectResponse};
+use crate::object::{
+    object_not_found, response, to_json, ObjectResponse, StorageNodeIdentifier,
+};
 use crate::sql;
 use crate::types::{HandlerResponse, HasRequestId, Hstore};
 use crate::util::array_wrap;
@@ -29,6 +32,8 @@ pub struct UpdateObjectPayload {
     pub vnode: u64,
     pub content_type: String,
     pub headers: Hstore,
+    #[serde(default)]
+    pub sharks: Option<Vec<StorageNodeIdentifier>>,
     pub properties: Option<Value>,
     pub request_id: Uuid,
 
@@ -113,10 +118,12 @@ fn do_update(
             &[
                 &payload.content_type,
                 &payload.headers,
+                &payload.sharks,
                 &payload.properties,
                 &payload.owner,
                 &payload.bucket_id,
                 &payload.name,
+                &payload.id,
             ],
             metrics,
             log,
@@ -136,16 +143,18 @@ fn update_sql(vnode: u64) -> String {
         "UPDATE manta_bucket_",
         &vnode.to_string(),
         &".manta_bucket_object \
-       SET content_type = $1,
-       headers = $2, \
-       properties = $3, \
-       modified = current_timestamp \
-       WHERE owner = $4 \
-       AND bucket_id = $5 \
-       AND name = $6 \
-       RETURNING id, owner, bucket_id, name, created, modified, \
-       content_length, content_md5, content_type, headers, \
-       sharks, properties",
+          SET content_type = $1, \
+          headers = $2, \
+          sharks = COALESCE($3, sharks), \
+          properties = $4, \
+          modified = current_timestamp \
+          WHERE owner = $5 \
+          AND bucket_id = $6 \
+          AND name = $7 \
+          AND id = $8 \
+          RETURNING id, owner, bucket_id, name, created, modified, \
+          content_length, content_md5, content_type, headers, \
+          sharks, properties",
     ]
     .concat()
 }
@@ -160,6 +169,8 @@ mod test {
     use quickcheck_helpers::random;
     use serde_json;
     use serde_json::Map;
+
+    use crate::object::StorageNodeIdentifier;
 
     #[derive(Clone, Debug)]
     struct UpdateObjectJson(Value);
@@ -196,6 +207,25 @@ mod test {
             obj.insert("vnode".into(), vnode);
             obj.insert("content_type".into(), content_type);
             obj.insert("headers".into(), headers);
+            // Sometimes include sharks, sometimes omit to
+            // test #[serde(default)] deserialization.
+            if bool::arbitrary(g) {
+                let shark_1 = StorageNodeIdentifier {
+                    datacenter: random::string(g, 32),
+                    manta_storage_id: random::string(g, 32),
+                };
+                let shark_2 = StorageNodeIdentifier {
+                    datacenter: random::string(g, 32),
+                    manta_storage_id: random::string(g, 32),
+                };
+                let sharks = if bool::arbitrary(g) {
+                    serde_json::to_value(vec![shark_1, shark_2])
+                        .expect("failed to convert sharks to Value")
+                } else {
+                    Value::Null
+                };
+                obj.insert("sharks".into(), sharks);
+            }
             obj.insert("request_id".into(), request_id);
             UpdateObjectJson(Value::Object(obj))
         }
@@ -214,7 +244,19 @@ mod test {
                 .insert(random::string(g, 32), Some(random::string(g, 32)));
             let _ = headers
                 .insert(random::string(g, 32), Some(random::string(g, 32)));
-
+            let shark_1 = StorageNodeIdentifier {
+                datacenter: random::string(g, 32),
+                manta_storage_id: random::string(g, 32),
+            };
+            let shark_2 = StorageNodeIdentifier {
+                datacenter: random::string(g, 32),
+                manta_storage_id: random::string(g, 32),
+            };
+            let sharks = if bool::arbitrary(g) {
+                Some(vec![shark_1, shark_2])
+            } else {
+                None
+            };
             let properties = None;
             let request_id = Uuid::new_v4();
             let conditions: conditional::Conditions = Default::default();
@@ -227,6 +269,7 @@ mod test {
                 vnode,
                 content_type,
                 headers,
+                sharks,
                 properties,
                 request_id,
                 conditions,

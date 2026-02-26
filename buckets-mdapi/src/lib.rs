@@ -1,4 +1,5 @@
 // Copyright 2020 Joyent, Inc.
+// Copyright 2026 Edgecast Cloud LLC.
 
 #![allow(clippy::module_name_repetitions)]
 
@@ -120,6 +121,17 @@ pub mod util {
                         object::update::decode_msg(&msg.data.d),
                         &mut conn,
                         &object::update::action,
+                        metrics,
+                        log,
+                    ),
+                    "batchupdateobjects" => handle_request(
+                        msg.id,
+                        method,
+                        object::batch_update::decode_msg(
+                            &msg.data.d,
+                        ),
+                        &mut conn,
+                        &object::batch_update::action,
                         metrics,
                         log,
                     ),
