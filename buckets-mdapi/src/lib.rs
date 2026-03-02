@@ -1,9 +1,11 @@
 // Copyright 2020 Joyent, Inc.
+// Copyright 2026 Edgecast Cloud LLC.
 
 #![allow(clippy::module_name_repetitions)]
 
 pub mod bucket;
 pub mod conditional;
+pub mod discovery;
 pub mod error;
 pub mod gc;
 pub mod metrics;
@@ -29,6 +31,7 @@ pub mod util {
     use fast_rpc::protocol::{FastMessage, FastMessageData};
 
     use crate::bucket;
+    use crate::discovery;
     use crate::error::BucketsMdapiError;
     use crate::gc;
     use crate::metrics::RegisteredMetrics;
@@ -123,6 +126,17 @@ pub mod util {
                         metrics,
                         log,
                     ),
+                    "batchupdateobjects" => handle_request(
+                        msg.id,
+                        method,
+                        object::batch_update::decode_msg(
+                            &msg.data.d,
+                        ),
+                        &mut conn,
+                        &object::batch_update::action,
+                        metrics,
+                        log,
+                    ),
                     "deleteobject" => handle_request(
                         msg.id,
                         method,
@@ -192,6 +206,24 @@ pub mod util {
                         gc::delete::decode_msg(&msg.data.d),
                         &mut conn,
                         &gc::delete::action,
+                        metrics,
+                        log,
+                    ),
+                    "listvnodes" => handle_request(
+                        msg.id,
+                        method,
+                        discovery::decode_listvnodes_msg(&msg.data.d),
+                        &mut conn,
+                        &discovery::listvnodes_action,
+                        metrics,
+                        log,
+                    ),
+                    "listowners" => handle_request(
+                        msg.id,
+                        method,
+                        discovery::decode_listowners_msg(&msg.data.d),
+                        &mut conn,
+                        &discovery::listowners_action,
                         metrics,
                         log,
                     ),

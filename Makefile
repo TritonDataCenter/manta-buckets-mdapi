@@ -105,11 +105,15 @@ build-buckets-mdapi: | $(CARGO_EXEC)
 	$(CARGO) build --release
 
 .PHONY: test
-test: test-unit
+test: test-unit test-integration
 
 .PHONY: test-unit
 test-unit: | $(CARGO_EXEC)
 	$(CARGO) test --lib
+
+.PHONY: test-integration
+test-integration: | $(CARGO_EXEC)
+	$(CARGO) test --test rpc_handlers -- --nocapture
 
 include ./deps/eng/tools/mk/Makefile.deps
 include ./deps/eng/tools/mk/Makefile.agent_prebuilt.targ

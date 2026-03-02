@@ -1,4 +1,5 @@
 // Copyright 2020 Joyent, Inc.
+// Copyright 2026 Edgecast Cloud LLC.
 
 use std::fmt::Display;
 use std::marker::Sync;
@@ -29,12 +30,16 @@ pub enum Method {
     ObjectDelete,
     ObjectDeleteMove,
     ObjectUpdate,
+    ObjectBatchUpdate,
     GarbageGet,
     GarbageDelete,
     GarbageRecordDelete,
     GarbageBatchIdGet,
     GarbageBatchIdUpdate,
     GarbageRefresh,
+    ListVnodes,
+    ListOwners,
+    VnodeExists,
 }
 
 impl Method {
@@ -52,12 +57,16 @@ impl Method {
             Method::ObjectDelete => "ObjectDelete",
             Method::ObjectDeleteMove => "ObjectDeleteMove",
             Method::ObjectUpdate => "ObjectUpdate",
+            Method::ObjectBatchUpdate => "ObjectBatchUpdate",
             Method::GarbageGet => "GarbageGet",
             Method::GarbageDelete => "GarbageDelete",
             Method::GarbageRecordDelete => "GarbageRecordDelete",
             Method::GarbageBatchIdGet => "GarbageBatchIdGet",
             Method::GarbageBatchIdUpdate => "GarbageBatchIdUpdate",
             Method::GarbageRefresh => "GarbageRefresh",
+            Method::ListVnodes => "ListVnodes",
+            Method::ListOwners => "ListOwners",
+            Method::VnodeExists => "VnodeExists",
         }
     }
 }
